@@ -1,0 +1,136 @@
+<!-- Ad Server Client Integration Example -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ad Server Integration Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1e3c72;
+            margin-top: 0;
+        }
+        .ad-container {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+        }
+        .ad-label {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Ad Server Integration Example</h1>
+        
+        <p>This page demonstrates how to integrate ads from your ad server using the client SDK.</p>
+
+        <hr>
+
+        <h2>Example 1: 100% Width Ad</h2>
+        <div class="ad-container">
+            <div class="ad-label">Ad Code: <code>ad-unit-10percent</code> - Width: 100%</div>
+            <div id="ad-1" data-ad-code="ad-unit-10percent" data-width="100%"></div>
+        </div>
+
+        <hr>
+
+        <h2>Example 2: Flexible Width Ad</h2>
+        <div class="ad-container">
+            <div class="ad-label">Ad Code: <code>ad-unit-flexible</code> - Width: 100%</div>
+            <div id="ad-2" data-ad-code="ad-unit-flexible" data-width="100%"></div>
+        </div>
+
+        <hr>
+
+        <h2>Example 3: Multiple Ads</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px;">
+            <div class="ad-container">
+                <div class="ad-label">Ad Code: <code>ad-unit-1</code></div>
+                <div id="ad-3" data-ad-code="ad-unit-1"></div>
+            </div>
+            <div class="ad-container">
+                <div class="ad-label">Ad Code: <code>ad-unit-2</code></div>
+                <div id="ad-4" data-ad-code="ad-unit-2"></div>
+            </div>
+            <div class="ad-container">
+                <div class="ad-label">Ad Code: <code>ad-unit-3</code></div>
+                <div id="ad-5" data-ad-code="ad-unit-3"></div>
+            </div>
+        </div>
+
+        <hr>
+
+        <h2>How to Integrate</h2>
+        <p>Simply add the ad server script to your page:</p>
+        <pre>&lt;script src="http://localhost:5001/ad-client.js"&gt;&lt;/script&gt;
+
+&lt;!-- Add ad containers with data-ad-code attribute --&gt;
+&lt;div id="my-ad" data-ad-code="ad-unit-1" data-width="100%"&gt;&lt;/div&gt;
+
+&lt;script&gt;
+  // Manually load specific ad
+  AdServer.loadAd('my-ad');
+  
+  // Or use auto-load for all ads with data-ad-code
+  // (automatically runs on page load)
+&lt;/script&gt;</pre>
+
+        <h2>API Reference</h2>
+        <ul>
+            <li><strong>AdServer.loadAd(containerId)</strong> - Load ad in specific container</li>
+            <li><strong>AdServer.recordImpression(adCode)</strong> - Manually record impression</li>
+            <li><strong>AdServer.recordClick(adCode)</strong> - Manually record click</li>
+            <li><strong>AdServer.getAdStats(adCode)</strong> - Get ad statistics</li>
+            <li><strong>AdServer.autoLoad()</strong> - Load all ads with data-ad-code</li>
+        </ul>
+
+        <h2>Configuration</h2>
+        <p>Update the API_BASE URL in <code>ad-client.js</code> to match your ad server:</p>
+        <pre>const API_BASE = 'http://your-ad-server.com/api';</pre>
+    </div>
+
+    <!-- Ad Server Client SDK -->
+    <script src="http://localhost:5001/ad-client.js"></script>
+
+    <!-- Optional: Get stats for each ad -->
+    <script>
+        async function showAdStats(adCode, elementId) {
+            const stats = await AdServer.getAdStats(adCode);
+            if (stats) {
+                console.log(`Stats for ${adCode}:`, stats);
+            }
+        }
+
+        // Show stats after ads load (wait 2 seconds)
+        setTimeout(() => {
+            showAdStats('ad-unit-10percent', 'ad-1');
+            showAdStats('ad-unit-flexible', 'ad-2');
+        }, 2000);
+    </script>
+</body>
+</html>

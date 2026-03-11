@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ad Server Test - Ad Placement Examples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #1e3c72;
+            margin-bottom: 10px;
+        }
+
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .sections {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+        }
+
+        .section {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #1e3c72;
+            font-size: 18px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #1e3c72;
+            padding-bottom: 10px;
+        }
+
+        .ad-placeholder {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border-radius: 6px;
+        }
+
+        .ad-placeholder:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .ad-10percent {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+        }
+
+        .ad-flexible {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+        }
+
+        .code-section {
+            background: #f8f8f8;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 3px solid #1e3c72;
+        }
+
+        .code-section h3 {
+            font-size: 13px;
+            color: #1e3c72;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .code-snippet {
+            background: #2d3436;
+            color: #00ff00;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+            line-height: 1.5;
+        }
+
+        .copy-btn {
+            background: #1e3c72;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 8px;
+            transition: background 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: #2a5298;
+        }
+
+        .info-box {
+            background: #e8f4f8;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 3px solid #1e3c72;
+            font-size: 13px;
+            color: #333;
+            margin-top: 10px;
+        }
+
+        .stats {
+            background: #f0f0f0;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .stats span {
+            display: inline-block;
+            margin-right: 15px;
+        }
+
+        .stats strong {
+            color: #1e3c72;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: #1e3c72;
+            color: white;
+            border-color: #1e3c72;
+        }
+
+        @media (max-width: 768px) {
+            .sections {
+                grid-template-columns: 1fr;
+            }
+
+            .ad-10percent {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Ad Server Test & Integration Guide</h1>
+        <p class="description">Example ad placements and integration code for your ad server</p>
+
+        <div class="sections">
+            <!-- 100% Width Ad -->
+            <div class="section">
+                <h2>100% Width Ad Unit (1:1)</h2>
+                <div class="ad-placeholder ad-10percent" id="ad-unit-1" data-ad-code="ad-unit-10percent">
+                    100% Width<br/>1:1 Ratio
+                </div>
+                
+                <div class="code-section">
+                    <h3>Implementation</h3>
+                    <div class="code-snippet">&lt;div style="width: 100%; aspect-ratio: 1/1;"&gt;
+  &lt;img src="ad-image.jpg" /&gt;
+&lt;/div&gt;</div>
+                </div>
+
+                <div class="info-box">
+                    <strong>Info:</strong> Fixed 100% width with square aspect ratio. Adapts to parent container width.
+                </div>
+
+                <div class="stats">
+                    <span>Impressions: <strong id="imp-1">0</strong></span>
+                    <span>Clicks: <strong id="click-1">0</strong></span>
+                </div>
+
+                <div class="btn-group">
+                    <button onclick="recordImpression('ad-unit-10percent')">Record Impression</button>
+                    <button onclick="recordClick('ad-unit-10percent')">Record Click</button>
+                </div>
+            </div>
+
+            <!-- Flexible Width Ad -->
+            <div class="section">
+                <h2>Flexible Width Ad Unit (1:1)</h2>
+                <div class="ad-placeholder ad-flexible" id="ad-unit-2" data-ad-code="ad-unit-flexible">
+                    Flexible Width<br/>1:1 Ratio
+                </div>
+
+                <div class="code-section">
+                    <h3>Implementation</h3>
+                    <div class="code-snippet">&lt;div style="width: 100%; aspect-ratio: 1/1;"&gt;
+  &lt;img src="ad-image.jpg" /&gt;
+&lt;/div&gt;</div>
+                </div>
+
+                <div class="info-box">
+                    <strong>Info:</strong> Full width container with square aspect ratio. Responsive to screen size.
+                </div>
+
+                <div class="stats">
+                    <span>Impressions: <strong id="imp-2">0</strong></span>
+                    <span>Clicks: <strong id="click-2">0</strong></span>
+                </div>
+
+                <div class="btn-group">
+                    <button onclick="recordImpression('ad-unit-flexible')">Record Impression</button>
+                    <button onclick="recordClick('ad-unit-flexible')">Record Click</button>
+                </div>
+            </div>
+
+            <!-- Integration Guide -->
+            <div class="section">
+                <h2>📝 Integration Guide</h2>
+                
+                <div class="code-section">
+                    <h3>Step 1: Load Ad Script</h3>
+                    <div class="code-snippet">&lt;script src="http://localhost:5001/ads.js"&gt;
+&lt;/script&gt;</div>
+                </div>
+
+                <div class="code-section">
+                    <h3>Step 2: Add Ad Container</h3>
+                    <div class="code-snippet">&lt;div id="ad-container"&gt;
+  &lt;img src="banner.jpg" /&gt;
+&lt;/div&gt;</div>
+                </div>
+
+                <div class="code-section">
+                    <h3>Step 3: Track Events</h3>
+                    <div class="code-snippet">fetch('/api/tracking/
+{adCode}/impression', 
+{method: 'POST'})</div>
+                </div>
+
+                <div class="info-box">
+                    <strong>Setup:</strong> Backend runs on http://localhost:5001<br/>
+                    <strong>Dashboard:</strong> Access analytics at http://localhost:3000
+                </div>
+            </div>
+
+            <!-- API Reference -->
+            <div class="section">
+                <h2>🔌 API Reference</h2>
+
+                <div class="code-section">
+                    <h3>Record Impression</h3>
+                    <div class="code-snippet">POST /api/tracking/{adCode}/
+impression</div>
+                </div>
+
+                <div class="code-section">
+                    <h3>Record Click</h3>
+                    <div class="code-snippet">POST /api/tracking/{adCode}/
+click</div>
+                </div>
+
+                <div class="code-section">
+                    <h3>Get Campaign Stats</h3>
+                    <div class="code-snippet">GET /api/campaigns/{id}/
+stats</div>
+                </div>
+
+                <div class="info-box">
+                    All endpoints return JSON responses. CORS enabled for cross-origin requests.
+                </div>
+            </div>
+
+            <!-- Testing -->
+            <div class="section">
+                <h2>🧪 Testing</h2>
+
+                <div class="code-section">
+                    <h3>cURL - Record Impression</h3>
+                    <div class="code-snippet">curl -X POST \
+  http://localhost:5001/\
+api/tracking/\
+{adCode}/impression</div>
+                </div>
+
+                <div class="code-section">
+                    <h3>cURL - Record Click</h3>
+                    <div class="code-snippet">curl -X POST \
+  http://localhost:5001/\
+api/tracking/\
+{adCode}/click</div>
+                </div>
+
+                <div class="info-box">
+                    <strong>Tip:</strong> Use the buttons above to test impression and click tracking in real-time.
+                </div>
+            </div>
+
+            <!-- Best Practices -->
+            <div class="section">
+                <h2>✨ Best Practices</h2>
+
+                <div class="info-box" style="margin-bottom: 10px;">
+                    <strong>✓ Do:</strong>
+                    <ul style="margin: 8px 0 0 20px; font-size: 13px;">
+                        <li>Record impressions when ad becomes visible</li>
+                        <li>Record clicks when user clicks the ad</li>
+                        <li>Use unique ad codes for tracking</li>
+                        <li>Implement ad lazy loading</li>
+                        <li>Cache ad responses</li>
+                    </ul>
+                </div>
+
+                <div class="info-box">
+                    <strong>✗ Don't:</strong>
+                    <ul style="margin: 8px 0 0 20px; font-size: 13px;">
+                        <li>Record duplicate impressions</li>
+                        <li>Click track without impression</li>
+                        <li>Block tracking endpoints</li>
+                        <li>Share ad codes between ads</li>
+                        <li>Expose API credentials</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5001/api';
+
+        // Simulate real-time stat updates
+        const stats = {
+            'ad-unit-10percent': { impressions: 0, clicks: 0 },
+            'ad-unit-flexible': { impressions: 0, clicks: 0 }
+        };
+
+        async function recordImpression(adCode) {
+            try {
+                const response = await fetch(`${API_BASE}/tracking/${adCode}/impression`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    stats[adCode].impressions++;
+                    updateStats(adCode);
+                    console.log(`✓ Impression recorded for ${adCode}`);
+                }
+            } catch (error) {
+                console.error('Error recording impression:', error);
+                alert('Error recording impression. Check console.');
+            }
+        }
+
+        async function recordClick(adCode) {
+            try {
+                const response = await fetch(`${API_BASE}/tracking/${adCode}/click`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    stats[adCode].clicks++;
+                    updateStats(adCode);
+                    console.log(`✓ Click recorded for ${adCode}`);
+                }
+            } catch (error) {
+                console.error('Error recording click:', error);
+                alert('Error recording click. Check console.');
+            }
+        }
+
+        function updateStats(adCode) {
+            if (adCode === 'ad-unit-10percent') {
+                document.getElementById('imp-1').textContent = stats[adCode].impressions;
+                document.getElementById('click-1').textContent = stats[adCode].clicks;
+            } else {
+                document.getElementById('imp-2').textContent = stats[adCode].impressions;
+                document.getElementById('click-2').textContent = stats[adCode].clicks;
+            }
+        }
+
+        // Add click event listeners to ad placeholders
+        document.querySelectorAll('.ad-placeholder').forEach(ad => {
+            ad.addEventListener('click', () => {
+                const adCode = ad.dataset.adCode;
+                recordClick(adCode);
+            });
+        });
+
+        // Record impression when page loads (simulate ad view)
+        window.addEventListener('load', () => {
+            recordImpression('ad-unit-10percent');
+            recordImpression('ad-unit-flexible');
+        });
+    </script>
+</body>
+</html>
