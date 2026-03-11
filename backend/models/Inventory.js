@@ -27,6 +27,11 @@ const inventorySchema = new mongoose.Schema(
       type: String,
       trim: true
     },
+    rotationMode: {
+      type: String,
+      enum: ['single', 'rotate'],
+      default: 'single'
+    },
     isActive: {
       type: Boolean,
       default: true

@@ -11,7 +11,7 @@ const slugifyKey = (value) => {
 
 exports.createInventory = async (req, res) => {
   try {
-    const { name, key, description } = req.body;
+    const { name, key, description, rotationMode } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Inventory name is required' });
@@ -24,7 +24,8 @@ exports.createInventory = async (req, res) => {
       account: req.user.accountId,
       name: name.trim(),
       key: finalKey,
-      description: description ? description.trim() : ''
+      description: description ? description.trim() : '',
+      rotationMode: rotationMode === 'rotate' ? 'rotate' : 'single'
     });
 
     res.status(201).json(inventory);
@@ -65,7 +66,7 @@ exports.getInventory = async (req, res) => {
 
 exports.updateInventory = async (req, res) => {
   try {
-    const { name, key, description, isActive } = req.body;
+    const { name, key, description, isActive, rotationMode } = req.body;
     let inventory = await Inventory.findById(req.params.id);
     if (!inventory) return res.status(404).json({ error: 'Inventory not found' });
 
@@ -77,6 +78,9 @@ exports.updateInventory = async (req, res) => {
     if (key !== undefined) inventory.key = slugifyKey(key);
     if (description !== undefined) inventory.description = description ? description.trim() : '';
     if (isActive !== undefined) inventory.isActive = !!isActive;
+    if (rotationMode !== undefined) {
+      inventory.rotationMode = rotationMode === 'rotate' ? 'rotate' : 'single';
+    }
 
     await inventory.save();
     res.json(inventory);

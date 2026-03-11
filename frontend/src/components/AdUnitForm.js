@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { inventoryAPI } from '../services/api';
 
 function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCancel }) {
   const [formData, setFormData] = useState({
     name: '',
     campaignId: campaignId,
+    inventoryId: '',
     startDate: '',
     endDate: '',
     imageUrl: '',
@@ -12,6 +14,8 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
   const [errors, setErrors] = useState({});
   const [imagePreview, setImagePreview] = useState(null);
   const [imageError, setImageError] = useState(null);
+  const [inventories, setInventories] = useState([]);
+  const [inventoryError, setInventoryError] = useState(null);
 
   useEffect(() => {
     // Convert ISO datetime to datetime-local format (YYYY-MM-DDTHH:mm)
@@ -30,6 +34,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       setFormData({
         name: adUnit.name || '',
         campaignId: adUnit.campaignId || campaignId,
+        inventoryId: adUnit.inventory?._id || adUnit.inventory || '',
         startDate: formatToLocalDateTime(adUnit.startDate),
         endDate: formatToLocalDateTime(adUnit.endDate),
         imageUrl: adUnit.imageUrl || '',
@@ -43,6 +48,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       setFormData({
         name: '',
         campaignId: campaignId,
+        inventoryId: '',
         startDate: defaultStartDate,
         endDate: defaultEndDate,
         imageUrl: '',
@@ -54,12 +60,29 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
     setImageError(null);
   }, [adUnit, campaignId, campaign]);
 
+  useEffect(() => {
+    const loadInventories = async () => {
+      try {
+        const response = await inventoryAPI.getAll();
+        setInventories(response.data || []);
+        setInventoryError(null);
+      } catch (err) {
+        setInventoryError('Failed to load inventories');
+      }
+    };
+    loadInventories();
+  }, []);
+
   const validateForm = () => {
     const newErrors = {};
     const now = new Date();
     
     if (!formData.name.trim()) {
       newErrors.name = 'Ad unit name is required';
+    }
+
+    if (!formData.inventoryId) {
+      newErrors.inventoryId = 'Inventory is required';
     }
 
     if (!formData.startDate) {
@@ -225,6 +248,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       const submitData = {
         name: formData.name,
         campaign: formData.campaignId,
+        inventory: formData.inventoryId,
         startDate: formData.startDate ? new Date(formData.startDate).toISOString() : '',
         endDate: formData.endDate ? new Date(formData.endDate).toISOString() : '',
         imageUrl: formData.imageUrl,
@@ -251,6 +275,25 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       </div>
 
       <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="inventoryId">Inventory *</label>
+          <select
+            id="inventoryId"
+            name="inventoryId"
+            value={formData.inventoryId}
+            onChange={handleChange}
+            className={errors.inventoryId ? 'error' : ''}
+          >
+            <option value="">Select inventory</option>
+            {inventories.map((inv) => (
+              <option key={inv._id} value={inv._id}>
+                {inv.name} ({inv.key})
+              </option>
+            ))}
+          </select>
+          {inventoryError && <span className="error-message">{inventoryError}</span>}
+          {errors.inventoryId && <span className="error-message">{errors.inventoryId}</span>}
+        </div>
         <div className="form-group">
           <label htmlFor="startDate">Start Date & Time *</label>
           <input

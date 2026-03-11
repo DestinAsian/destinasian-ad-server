@@ -68,3 +68,11 @@ export const accountAPI = {
   delete: (id) => axiosInstance.delete(`/accounts/${id}`),
   getStats: (id) => axiosInstance.get(`/accounts/${id}/stats`)
 };
+
+export const inventoryAPI = {
+  getAll: () => axiosInstance.get('/inventories'),
+  getById: (id) => axiosInstance.get(`/inventories/${id}`),
+  create: (data) => axiosInstance.post('/inventories', data),
+  update: (id, data) => axiosInstance.put(`/inventories/${id}`, data),
+  delete: (id) => axiosInstance.delete(`/inventories/${id}`)
+};

@@ -47,6 +47,13 @@ exports.createAdUnit = async (req, res) => {
       if (inventoryDoc.user.toString() !== req.user.id || inventoryDoc.account.toString() !== req.user.accountId) {
         return res.status(403).json({ error: 'Not authorized to use this inventory' });
       }
+
+      if (inventoryDoc.rotationMode === 'single') {
+        const existing = await AdUnit.findOne({ inventory: inventoryDoc._id });
+        if (existing) {
+          return res.status(400).json({ error: 'Inventory allows only one ad unit' });
+        }
+      }
     }
 
     const adUnit = new AdUnit({
@@ -79,7 +86,9 @@ exports.createAdUnit = async (req, res) => {
 
 exports.getAllAdUnits = async (req, res) => {
   try {
-    const adUnits = await AdUnit.find({ user: req.user.id, account: req.user.accountId }).populate('campaign');
+    const adUnits = await AdUnit.find({ user: req.user.id, account: req.user.accountId })
+      .populate('campaign')
+      .populate('inventory');
     
     // Enrich ad units with real-time stats from tracking data
     const enrichedAdUnits = await Promise.all(
@@ -103,7 +112,9 @@ exports.getAllAdUnits = async (req, res) => {
 
 exports.getAdUnit = async (req, res) => {
   try {
-    const adUnit = await AdUnit.findById(req.params.id).populate('campaign');
+    const adUnit = await AdUnit.findById(req.params.id)
+      .populate('campaign')
+      .populate('inventory');
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
     
     // Check if user owns this ad unit and it belongs to their account
@@ -144,9 +155,18 @@ exports.updateAdUnit = async (req, res) => {
       if (inventoryDoc.user.toString() !== req.user.id || inventoryDoc.account.toString() !== req.user.accountId) {
         return res.status(403).json({ error: 'Not authorized to use this inventory' });
       }
+
+      if (inventoryDoc.rotationMode === 'single') {
+        const existing = await AdUnit.findOne({ inventory: inventoryDoc._id, _id: { $ne: req.params.id } });
+        if (existing) {
+          return res.status(400).json({ error: 'Inventory allows only one ad unit' });
+        }
+      }
     }
 
-    adUnit = await AdUnit.findByIdAndUpdate(req.params.id, req.body, { new: true }).populate('campaign');
+    adUnit = await AdUnit.findByIdAndUpdate(req.params.id, req.body, { new: true })
+      .populate('campaign')
+      .populate('inventory');
     res.json(adUnit);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -200,7 +220,8 @@ exports.getAdUnitStats = async (req, res) => {
 
 exports.getAdUnitByCampaign = async (req, res) => {
   try {
-    const adUnits = await AdUnit.find({ user: req.user.id, account: req.user.accountId, campaign: req.params.campaignId });
+    const adUnits = await AdUnit.find({ user: req.user.id, account: req.user.accountId, campaign: req.params.campaignId })
+      .populate('inventory');
     
     // Enrich ad units with real-time stats from tracking data
     const enrichedAdUnits = await Promise.all(
@@ -258,13 +279,22 @@ exports.serveAd = async (req, res) => {
         $or: [{ endDate: { $exists: false } }, { endDate: null }, { endDate: { $gte: now } }]
       }).select('_id');
 
-      adUnit = await AdUnit.findOne({
+      const adQuery = {
         inventory: inventoryDoc._id,
         status: 'active',
         startDate: { $lte: now },
         endDate: { $gte: now },
         campaign: { $in: activeCampaignIds.map(c => c._id) }
-      }).populate('campaign');
+      };
+
+      if (inventoryDoc.rotationMode === 'rotate') {
+        const candidates = await AdUnit.find(adQuery).populate('campaign');
+        if (candidates.length > 0) {
+          adUnit = candidates[Math.floor(Math.random() * candidates.length)];
+        }
+      } else {
+        adUnit = await AdUnit.findOne(adQuery).populate('campaign');
+      }
     }
 
     if (!adUnit) {

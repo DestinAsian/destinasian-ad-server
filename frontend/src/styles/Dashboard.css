@@ -270,6 +270,36 @@
   flex: 1;
 }
 
+.ad-unit-cms {
+  margin-top: 10px;
+  background: #f7f8fb;
+  border: 1px dashed #cfd5e2;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.ad-unit-cms-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.ad-unit-cms-code {
+  display: block;
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid #e6e9f0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.ad-unit-cms-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .no-data {
   text-align: center;
   color: #999;

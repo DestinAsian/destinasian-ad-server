@@ -6,6 +6,7 @@ import Signup from './pages/Signup';
 import AccountManagement from './pages/AccountManagement';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Inventory from './pages/Inventory';
 
 function App() {
   const { isAuthenticated, loading, user, logout } = useAuth();
@@ -105,6 +106,21 @@ function App() {
             My Accounts
           </button>
           <button
+            onClick={() => setCurrentPage('inventory')}
+            style={{
+              padding: '8px 16px',
+              background: currentPage === 'inventory' ? '#1e3c72' : '#fff',
+              color: currentPage === 'inventory' ? '#fff' : '#333',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            Inventory
+          </button>
+          <button
             onClick={logout}
             style={{
               padding: '8px 16px',
@@ -123,6 +139,7 @@ function App() {
       </div>
       {currentPage === 'dashboard' && <Dashboard />}
       {currentPage === 'accounts' && <AccountManagement />}
+      {currentPage === 'inventory' && <Inventory />}
     </div>
   );
 }
