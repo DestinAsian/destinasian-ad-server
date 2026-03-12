@@ -19,6 +19,11 @@ exports.createInventory = async (req, res) => {
 
     const finalKey = key && key.trim() ? slugifyKey(key) : slugifyKey(name);
 
+    const nameExists = await Inventory.findOne({ account: req.user.accountId, name: name.trim() });
+    if (nameExists) {
+      return res.status(409).json({ error: 'Inventory name already exists' });
+    }
+
     const inventory = await Inventory.create({
       user: req.user.id,
       account: req.user.accountId,
@@ -31,7 +36,7 @@ exports.createInventory = async (req, res) => {
     res.status(201).json(inventory);
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ error: 'Inventory key already exists' });
+      return res.status(409).json({ error: 'Inventory name or key already exists' });
     }
     res.status(400).json({ error: error.message });
   }
@@ -74,7 +79,14 @@ exports.updateInventory = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to update this inventory' });
     }
 
-    if (name !== undefined) inventory.name = name.trim();
+    if (name !== undefined) {
+      const trimmed = name.trim();
+      const nameExists = await Inventory.findOne({ account: req.user.accountId, name: trimmed, _id: { $ne: req.params.id } });
+      if (nameExists) {
+        return res.status(409).json({ error: 'Inventory name already exists' });
+      }
+      inventory.name = trimmed;
+    }
     if (key !== undefined) inventory.key = slugifyKey(key);
     if (description !== undefined) inventory.description = description ? description.trim() : '';
     if (isActive !== undefined) inventory.isActive = !!isActive;
@@ -86,7 +98,7 @@ exports.updateInventory = async (req, res) => {
     res.json(inventory);
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ error: 'Inventory key already exists' });
+      return res.status(409).json({ error: 'Inventory name or key already exists' });
     }
     res.status(400).json({ error: error.message });
   }

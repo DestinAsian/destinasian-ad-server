@@ -201,6 +201,57 @@ function Dashboard() {
     }
   };
 
+  const generateCopyName = (baseName, existingNames) => {
+    const clean = baseName.trim();
+    const copyBase = `${clean} (Copy)`;
+    if (!existingNames.has(copyBase)) return copyBase;
+    let i = 2;
+    while (existingNames.has(`${clean} (Copy ${i})`)) {
+      i += 1;
+    }
+    return `${clean} (Copy ${i})`;
+  };
+
+  const handleDuplicateCampaign = async (campaign) => {
+    try {
+      const existing = new Set(campaigns.map(c => c.name));
+      const name = generateCopyName(campaign.name, existing);
+      await campaignAPI.create({
+        name,
+        description: campaign.description || '',
+        startDate: campaign.startDate,
+        endDate: campaign.endDate
+      });
+      setSuccessMessage('Campaign duplicated successfully!');
+      await fetchCampaigns();
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to duplicate campaign');
+    }
+  };
+
+  const handleDuplicateAdUnit = async (adUnit) => {
+    try {
+      await adUnitAPI.create({
+        name: adUnit.name,
+        campaign: adUnit.campaign?._id || adUnit.campaign || selectedCampaign,
+        inventory: adUnit.inventory?._id || adUnit.inventory,
+        startDate: adUnit.startDate,
+        endDate: adUnit.endDate,
+        imageUrl: adUnit.imageUrl,
+        clickUrl: adUnit.clickUrl,
+        width: adUnit.width
+      });
+      setSuccessMessage('Ad unit duplicated successfully!');
+      if (selectedCampaign) {
+        await fetchAdUnits(selectedCampaign);
+      }
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to duplicate ad unit');
+    }
+  };
+
   if (loading) return <div className="loading">Loading...</div>;
 
   return (
@@ -249,8 +300,20 @@ function Dashboard() {
                       handleToggleCampaignStatus(campaign._id, campaign.status);
                     }}
                     title={campaign.status === 'active' ? 'Pause' : 'Activate'}
+                    aria-label={campaign.status === 'active' ? 'Pause campaign' : 'Activate campaign'}
                   >
                     {campaign.status === 'active' ? '⏸' : '▶'}
+                  </button>
+                  <button
+                    className="btn-icon btn-edit"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDuplicateCampaign(campaign);
+                    }}
+                    title="Duplicate"
+                    aria-label="Duplicate campaign"
+                  >
+                    📄
                   </button>
                   <button
                     className="btn-icon btn-edit"
@@ -259,6 +322,7 @@ function Dashboard() {
                       handleOpenEditModal(campaign);
                     }}
                     title="Edit"
+                    aria-label="Edit campaign"
                   >
                     ✏️
                   </button>
@@ -269,6 +333,7 @@ function Dashboard() {
                       handleDeleteCampaign(campaign._id);
                     }}
                     title="Delete"
+                    aria-label="Delete campaign"
                   >
                     🗑️
                   </button>
@@ -305,13 +370,23 @@ function Dashboard() {
                           className={`btn-icon btn-status ${adUnit.status}`}
                           onClick={() => handleToggleAdUnitStatus(adUnit._id, adUnit.status)}
                           title={adUnit.status === 'active' ? 'Pause' : 'Activate'}
+                          aria-label={adUnit.status === 'active' ? 'Pause ad unit' : 'Activate ad unit'}
                         >
                           {adUnit.status === 'active' ? '⏸' : '▶'}
                         </button>
                         <button
                           className="btn-icon btn-edit"
+                          onClick={() => handleDuplicateAdUnit(adUnit)}
+                          title="Duplicate"
+                          aria-label="Duplicate ad unit"
+                        >
+                          📄
+                        </button>
+                        <button
+                          className="btn-icon btn-edit"
                           onClick={() => handleOpenEditAdUnitModal(adUnit)}
                           title="Edit"
+                          aria-label="Edit ad unit"
                         >
                           ✏️
                         </button>
@@ -319,6 +394,7 @@ function Dashboard() {
                           className="btn-icon btn-delete"
                           onClick={() => handleDeleteAdUnit(adUnit._id)}
                           title="Delete"
+                          aria-label="Delete ad unit"
                         >
                           🗑️
                         </button>

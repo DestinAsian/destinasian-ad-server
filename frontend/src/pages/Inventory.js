@@ -14,7 +14,9 @@ function Inventory() {
   const loadInventories = async () => {
     try {
       const response = await inventoryAPI.getAll();
-      setInventories(response.data || []);
+      const list = response.data || [];
+      const unique = Array.from(new Map(list.map(item => [item._id, item])).values());
+      setInventories(unique);
       setLoading(false);
     } catch (err) {
       setError('Failed to load inventories');
@@ -85,6 +87,79 @@ function Inventory() {
       await loadInventories();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to delete inventory');
+    }
+  };
+
+  const slugifyKey = (value) => {
+    return value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  };
+
+  const generateCopyName = (baseName, existingNames) => {
+    const clean = baseName.trim();
+    const match = clean.match(/^(.*?)(?:\s+(\d+))$/);
+    let base = clean;
+    let num = null;
+    if (match) {
+      base = (match[1] || clean).trim();
+      num = parseInt(match[2], 10);
+    }
+    if (num !== null) {
+      const candidate = `${base} ${num + 1}`;
+      if (!existingNames.has(candidate)) return candidate;
+    }
+    let i = 2;
+    let candidate = `${clean} ${i}`;
+    while (existingNames.has(candidate)) {
+      i += 1;
+      candidate = `${clean} ${i}`;
+    }
+    return candidate;
+  };
+
+  const generateCopyKey = (baseKey, existingKeys) => {
+    const clean = slugifyKey(baseKey);
+    const match = clean.match(/^(.*?)-(\d+)$/);
+    let base = clean;
+    let num = null;
+    if (match) {
+      base = match[1];
+      num = parseInt(match[2], 10);
+    }
+    if (num !== null) {
+      const candidate = `${base}-${num + 1}`;
+      if (!existingKeys.has(candidate)) return candidate;
+    }
+    let i = 2;
+    let candidate = `${clean}-${i}`;
+    while (existingKeys.has(candidate)) {
+      i += 1;
+      candidate = `${clean}-${i}`;
+    }
+    return candidate;
+  };
+
+  const handleDuplicate = async (inv) => {
+    setError(null);
+    try {
+      const existingNames = new Set(inventories.map(i => i.name));
+      const existingKeys = new Set(inventories.map(i => i.key));
+      const name = generateCopyName(inv.name, existingNames);
+      const key = generateCopyKey(inv.key, existingKeys);
+      await inventoryAPI.create({
+        name,
+        key,
+        description: inv.description || '',
+        rotationMode: inv.rotationMode || 'single'
+      });
+      setSuccessMessage('Inventory duplicated');
+      setTimeout(() => setSuccessMessage(null), 2500);
+      await loadInventories();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to duplicate inventory');
     }
   };
 
@@ -219,6 +294,7 @@ function Inventory() {
                   </div>
                 </div>
                 <div className="inventory-actions">
+                  <button className="btn btn-secondary btn-sm" onClick={() => handleDuplicate(inv)}>Duplicate</button>
                   <button className="btn btn-secondary btn-sm" onClick={() => startEdit(inv)}>Edit</button>
                   <button className="btn btn-danger btn-sm" onClick={() => handleDelete(inv)}>Delete</button>
                 </div>

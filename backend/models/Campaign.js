@@ -49,4 +49,6 @@ const campaignSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+campaignSchema.index({ account: 1, name: 1 }, { unique: true });
+
 module.exports = mongoose.model('Campaign', campaignSchema);

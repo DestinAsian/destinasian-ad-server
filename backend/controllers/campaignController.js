@@ -18,6 +18,9 @@ exports.createCampaign = async (req, res) => {
     await campaign.save();
     res.status(201).json(campaign);
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ error: 'Campaign name already exists' });
+    }
     res.status(400).json({ error: error.message });
   }
 };
@@ -84,6 +87,9 @@ exports.updateCampaign = async (req, res) => {
     campaign = await Campaign.findByIdAndUpdate(req.params.id, req.body, { new: true }).populate('adUnits');
     res.json(campaign);
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ error: 'Campaign name already exists' });
+    }
     res.status(400).json({ error: error.message });
   }
 };
