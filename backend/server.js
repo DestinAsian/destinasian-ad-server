@@ -10,8 +10,10 @@ const { initializeCampaignStatsJob } = require('./jobs/updateCampaignStats');
 
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000'
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  credentials: true
 }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
@@ -42,7 +44,7 @@ app.get('/', (req, res) => {
       campaigns: '/api/campaigns',
       adUnits: '/api/ad-units',
       tracking: '/api/tracking',
-      dashboard: 'http://localhost:3000'
+      dashboard: process.env.DASHBOARD_URL || 'http://localhost:3000'
     }
   });
 });
@@ -52,17 +54,18 @@ app.get('/health', (req, res) => {
   res.json({ status: 'Ad Server is running' });
 });
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ad-server')
+// ❗ FIX #1 — correct env name
+mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ad-server')
   .then(() => {
     console.log('MongoDB connected');
+
     // Initialize scheduled jobs after DB connection
     initializeCampaignStatsJob();
   })
   .catch(err => console.log('MongoDB connection error:', err));
 
-// Start server
+// ❗ FIX #2 — bind to localhost only (security)
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log(`Ad Server backend running on port ${PORT}`);
 });
