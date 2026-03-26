@@ -28,14 +28,22 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.VPS_PORT }}" -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Debug loaded SSH keys
+        run: |
+          ssh-add -L || true
+
+      - name: Debug SSH login
+        run: |
+          ssh -v -o BatchMode=yes -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "echo connected"
+
       - name: Deploy main to production
         if: github.ref_name == 'main'
         run: |
-          ssh -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+          ssh -o BatchMode=yes -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "/srv/apps/scripts/deploy-adserver.sh main /srv/apps/production/destinasian-ad-server"
 
       - name: Deploy test to staging
         if: github.ref_name == 'test'
         run: |
-          ssh -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+          ssh -o BatchMode=yes -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "/srv/apps/scripts/deploy-adserver.sh test /srv/apps/staging/destinasian-ad-server"
