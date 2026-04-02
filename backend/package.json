@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "migrate:add-ad-events": "node migrations/20260402_add_ad_event_and_daily_stat_collections.js up",
+    "migrate:rollback:add-ad-events": "node migrations/20260402_add_ad_event_and_daily_stat_collections.js down"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

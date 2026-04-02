@@ -1,4 +1,5 @@
 import React from 'react';
+import AdUnit from './AdUnit';
 
 function AdUnitChart({ adUnit }) {
   // Use CTR from API if available, otherwise calculate
@@ -6,6 +7,8 @@ function AdUnitChart({ adUnit }) {
   const inventoryKey = adUnit.inventory?.key;
   const cmsScriptTag = `<script src=\"https://YOUR-AD-SERVER.DOMAIN/ad-client.js\"></script>`;
   const cmsDivTag = inventoryKey ? `<div data-inventory=\"${inventoryKey}\" data-width=\"100%\"></div>` : '';
+  const useResponsiveAdPreview = process.env.REACT_APP_ENABLE_RESPONSIVE_AD_PREVIEW === 'true';
+  const hasRenderableCreative = Boolean(adUnit.imageUrl || adUnit.htmlCreative || adUnit.iframeUrl);
 
   const formatDateTime = (dateString) => {
     const date = new Date(dateString);
@@ -16,11 +19,13 @@ function AdUnitChart({ adUnit }) {
 
   return (
     <div className="ad-unit-display">
-      {adUnit.imageUrl && (
+      {useResponsiveAdPreview && hasRenderableCreative ? (
+        <AdUnit adUnit={adUnit} className="ad-unit-preview-slot" />
+      ) : adUnit.imageUrl ? (
         <div className="ad-unit-image">
           <img src={adUnit.imageUrl} alt={adUnit.name} />
         </div>
-      )}
+      ) : null}
       <div className="ad-unit-info">
         <h4>{adUnit.name}</h4>
         <p className="ad-code">Code: {adUnit.adCode}</p>

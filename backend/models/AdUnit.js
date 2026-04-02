@@ -54,11 +54,18 @@ const adUnitSchema = new mongoose.Schema(
     },
     imageUrl: {
       type: String,
-      required: true
+      trim: true
+    },
+    htmlCreative: {
+      type: String
+    },
+    iframeUrl: {
+      type: String,
+      trim: true
     },
     clickUrl: {
       type: String,
-      required: true
+      trim: true
     },
     status: {
       type: String,
@@ -76,5 +83,13 @@ const adUnitSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+adUnitSchema.pre('validate', function(next) {
+  if (!this.imageUrl && !this.htmlCreative && !this.iframeUrl) {
+    this.invalidate('imageUrl', 'At least one creative is required');
+  }
+
+  next();
+});
 
 module.exports = mongoose.model('AdUnit', adUnitSchema);

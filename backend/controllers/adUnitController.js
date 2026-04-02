@@ -25,7 +25,7 @@ const calculateAdUnitStats = async (adUnitId) => {
 
 exports.createAdUnit = async (req, res) => {
   try {
-    const { name, description, campaign, inventory, startDate, endDate, imageUrl, clickUrl, width } = req.body;
+    const { name, description, campaign, inventory, startDate, endDate, imageUrl, htmlCreative, iframeUrl, clickUrl, width } = req.body;
     const adCode = `ad-${uuidv4()}`;
 
     const campaignDoc = await Campaign.findById(campaign);
@@ -67,6 +67,8 @@ exports.createAdUnit = async (req, res) => {
       endDate,
       adCode,
       imageUrl,
+      htmlCreative,
+      iframeUrl,
       clickUrl,
       width: width || '100%'
     });
@@ -305,6 +307,8 @@ exports.serveAd = async (req, res) => {
       adCode: adUnit.adCode,
       name: adUnit.name,
       imageUrl: adUnit.imageUrl,
+      htmlCreative: adUnit.htmlCreative,
+      iframeUrl: adUnit.iframeUrl,
       clickUrl: adUnit.clickUrl,
       width: adUnit.width,
       aspectRatio: adUnit.aspectRatio,

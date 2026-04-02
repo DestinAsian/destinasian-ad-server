@@ -59,79 +59,36 @@ function App() {
   }
 
   return (
-    <div>
-      <div style={{
-        background: '#f5f5f5',
-        borderBottom: '1px solid #ddd',
-        padding: '15px 20px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <h1 style={{ margin: 0, fontSize: '24px', color: '#333' }}>
+    <div className="app-shell">
+      <div className="app-topbar">
+        <h1 className="app-title">
           Ad Server Dashboard
         </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <span style={{ color: '#666' }}>
+        <div className="app-toolbar">
+          <span className="app-greeting">
             Welcome, <strong>{user?.name}</strong>
           </span>
           <button
             onClick={() => setCurrentPage('dashboard')}
-            style={{
-              padding: '8px 16px',
-              background: currentPage === 'dashboard' ? '#1e3c72' : '#fff',
-              color: currentPage === 'dashboard' ? '#fff' : '#333',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}
+            className={`app-nav-button ${currentPage === 'dashboard' ? 'is-active' : ''}`}
           >
             Dashboard
           </button>
           <button
             onClick={() => setCurrentPage('accounts')}
-            style={{
-              padding: '8px 16px',
-              background: currentPage === 'accounts' ? '#1e3c72' : '#fff',
-              color: currentPage === 'accounts' ? '#fff' : '#333',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}
+            className={`app-nav-button ${currentPage === 'accounts' ? 'is-active' : ''}`}
           >
             My Accounts
           </button>
           <button
             onClick={() => setCurrentPage('inventory')}
-            style={{
-              padding: '8px 16px',
-              background: currentPage === 'inventory' ? '#1e3c72' : '#fff',
-              color: currentPage === 'inventory' ? '#fff' : '#333',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}
+            className={`app-nav-button ${currentPage === 'inventory' ? 'is-active' : ''}`}
           >
             Inventory
           </button>
           <button
             onClick={logout}
-            style={{
-              padding: '8px 16px',
-              background: '#dc3545',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}
+            className="app-logout-button"
           >
             Logout
           </button>

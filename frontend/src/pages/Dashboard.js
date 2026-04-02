@@ -239,6 +239,8 @@ function Dashboard() {
         startDate: adUnit.startDate,
         endDate: adUnit.endDate,
         imageUrl: adUnit.imageUrl,
+        htmlCreative: adUnit.htmlCreative,
+        iframeUrl: adUnit.iframeUrl,
         clickUrl: adUnit.clickUrl,
         width: adUnit.width
       });

@@ -6,5 +6,6 @@ const router = express.Router();
 router.post('/:adUnitId/impression', trackingController.recordImpression);
 router.post('/:adUnitId/click', trackingController.recordClick);
 router.get('/stats', protect, trackingController.getTrackingStats);
+router.get('/analytics', protect, trackingController.getAnalytics);
 
 module.exports = router;

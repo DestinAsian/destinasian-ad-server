@@ -1,7 +1,7 @@
 /**
  * Ad Server Client SDK
  * Include this script in your website to load and track ads
- * 
+ *
  * Usage:
  * <script src="https://your-ad-server.com/ad-client.js"></script>
  * <div id="my-ad" data-ad-code="ad-code-here" data-width="100%"></div>
@@ -10,16 +10,115 @@
  * </script>
  */
 
-window.AdServer = (function() {
+(function(root, factory) {
+  const exported = factory(root);
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = exported;
+  }
+
+  if (root) {
+    root.AdServer = exported;
+
+    if (root.document) {
+      root.document.addEventListener('DOMContentLoaded', exported.autoLoad);
+    }
+  }
+})(typeof window !== 'undefined' ? window : globalThis, function(root) {
   const API_BASE = 'http://localhost:5001/api';
   const ads = {};
 
-  /**
-   * Load and initialize an ad unit
-   * @param {string} containerId - HTML element ID where ad will be loaded
-   */
+  function setContainerStyles(container, width) {
+    container.style.width = width;
+    container.style.aspectRatio = '1/1';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.overflow = 'hidden';
+    container.style.backgroundColor = '#f0f0f0';
+    container.style.cursor = 'pointer';
+    container.style.borderRadius = '4px';
+  }
+
+  function renderAdImage(container, adUnit) {
+    const img = root.document.createElement('img');
+    img.src = adUnit.imageUrl;
+    img.alt = adUnit.name;
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'cover';
+    container.appendChild(img);
+  }
+
+  function createImpressionTracker(options) {
+    const {
+      container,
+      adCode,
+      recordImpressionFn,
+      observerFactory,
+      visibilityThreshold = 0.5
+    } = options;
+
+    let hasTracked = false;
+    let observer = null;
+
+    const trackOnce = async () => {
+      if (hasTracked) {
+        return false;
+      }
+
+      hasTracked = true;
+      await recordImpressionFn(adCode);
+      return true;
+    };
+
+    const handleIntersect = (entries) => {
+      const visibleEntry = entries.find((entry) => entry.target === container);
+      if (!visibleEntry) {
+        return;
+      }
+
+      if (visibleEntry.isIntersecting && visibleEntry.intersectionRatio >= visibilityThreshold) {
+        if (observer && typeof observer.unobserve === 'function') {
+          observer.unobserve(container);
+        }
+
+        trackOnce().catch((error) => {
+          console.error('[AdServer] Error recording impression:', error);
+        });
+      }
+    };
+
+    const start = () => {
+      const createObserver = observerFactory || ((callback, config) => {
+        if (!root.IntersectionObserver) {
+          return null;
+        }
+
+        return new root.IntersectionObserver(callback, config);
+      });
+
+      observer = createObserver(handleIntersect, { threshold: [visibilityThreshold] });
+
+      if (!observer || typeof observer.observe !== 'function') {
+        trackOnce().catch((error) => {
+          console.error('[AdServer] Error recording impression:', error);
+        });
+        return null;
+      }
+
+      observer.observe(container);
+      return observer;
+    };
+
+    return {
+      start,
+      hasTracked: () => hasTracked
+    };
+  }
+
   async function loadAd(containerId) {
-    const container = document.getElementById(containerId);
+    const container = root.document.getElementById(containerId);
     if (!container) {
       console.error(`[AdServer] Container #${containerId} not found`);
       return;
@@ -35,9 +134,8 @@ window.AdServer = (function() {
     }
 
     try {
-      // Fetch ad unit data
       const query = adCode ? `adCode=${encodeURIComponent(adCode)}` : `inventory=${encodeURIComponent(inventory)}`;
-      const response = await fetch(`${API_BASE}/serve?${query}`);
+      const response = await root.fetch(`${API_BASE}/serve?${query}`);
       if (!response.ok) {
         console.error('[AdServer] Ad server response error');
         return;
@@ -49,37 +147,22 @@ window.AdServer = (function() {
         return;
       }
 
-      // Set container styles
-      container.style.width = width;
-      container.style.aspectRatio = '1/1';
-      container.style.display = 'flex';
-      container.style.alignItems = 'center';
-      container.style.justifyContent = 'center';
-      container.style.overflow = 'hidden';
-      container.style.backgroundColor = '#f0f0f0';
-      container.style.cursor = 'pointer';
-      container.style.borderRadius = '4px';
+      container.replaceChildren();
+      setContainerStyles(container, width);
+      renderAdImage(container, adUnit);
 
-      // Create and insert image
-      const img = document.createElement('img');
-      img.src = adUnit.imageUrl;
-      img.alt = adUnit.name;
-      img.style.width = '100%';
-      img.style.height = '100%';
-      img.style.objectFit = 'cover';
-
-      container.appendChild(img);
-
-      // Record impression
-      await recordImpression(adUnit.adCode);
-
-      // Record click
-      container.addEventListener('click', async () => {
-        await recordClick(adUnit.adCode);
-        window.open(adUnit.clickUrl, '_blank');
+      const impressionTracker = createImpressionTracker({
+        container,
+        adCode: adUnit.adCode,
+        recordImpressionFn: recordImpression
       });
+      impressionTracker.start();
 
-      // Store ad reference
+      container.onclick = async () => {
+        await recordClick(adUnit.adCode);
+        root.open(adUnit.clickUrl, '_blank');
+      };
+
       ads[containerId] = adUnit;
 
       console.log(`[AdServer] Ad loaded: ${adUnit.name}`);
@@ -88,16 +171,14 @@ window.AdServer = (function() {
     }
   }
 
-  /**
-   * Record impression
-   */
   async function recordImpression(adCode) {
     try {
-      await fetch(`${API_BASE}/tracking/${adCode}/impression`, {
+      await root.fetch(`${API_BASE}/tracking/${adCode}/impression`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        keepalive: true
       });
       console.log(`[AdServer] Impression recorded: ${adCode}`);
     } catch (error) {
@@ -105,16 +186,14 @@ window.AdServer = (function() {
     }
   }
 
-  /**
-   * Record click
-   */
   async function recordClick(adCode) {
     try {
-      await fetch(`${API_BASE}/tracking/${adCode}/click`, {
+      await root.fetch(`${API_BASE}/tracking/${adCode}/click`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        keepalive: true
       });
       console.log(`[AdServer] Click recorded: ${adCode}`);
     } catch (error) {
@@ -122,18 +201,15 @@ window.AdServer = (function() {
     }
   }
 
-  /**
-   * Get ad stats
-   */
   async function getAdStats(adCode) {
     try {
-      const response = await fetch(`${API_BASE}/ad-units?adCode=${adCode}`);
+      const response = await root.fetch(`${API_BASE}/ad-units?adCode=${adCode}`);
       const adUnits = await response.json();
-      const adUnit = adUnits.find(ad => ad.adCode === adCode);
+      const adUnit = adUnits.find((ad) => ad.adCode === adCode);
       return {
         impressions: adUnit.impressions,
         clicks: adUnit.clicks,
-        ctr: adUnit.impressions > 0 
+        ctr: adUnit.impressions > 0
           ? ((adUnit.clicks / adUnit.impressions) * 100).toFixed(2)
           : 0
       };
@@ -143,11 +219,8 @@ window.AdServer = (function() {
     }
   }
 
-  /**
-   * Load all ads with data-ad attribute
-   */
   function autoLoad() {
-    const adElements = document.querySelectorAll('[data-ad-code]');
+    const adElements = root.document.querySelectorAll('[data-ad-code], [data-inventory]');
     adElements.forEach((el, index) => {
       if (!el.id) {
         el.id = `ad-server-${index}`;
@@ -156,16 +229,13 @@ window.AdServer = (function() {
     });
   }
 
-  // Public API
   return {
     loadAd,
     recordImpression,
     recordClick,
     getAdStats,
     autoLoad,
-    version: '1.0.0'
+    createImpressionTracker,
+    version: '1.1.0'
   };
-})();
-
-// Auto-load ads when DOM is ready
-document.addEventListener('DOMContentLoaded', AdServer.autoLoad);
+});
