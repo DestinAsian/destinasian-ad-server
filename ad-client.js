@@ -31,23 +31,158 @@
   function setContainerStyles(container, width) {
     container.style.width = width;
     container.style.aspectRatio = '1/1';
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.justifyContent = 'center';
+    container.style.display = 'block';
+    container.style.position = 'relative';
     container.style.overflow = 'hidden';
     container.style.backgroundColor = '#f0f0f0';
-    container.style.cursor = 'pointer';
     container.style.borderRadius = '4px';
   }
 
-  function renderAdImage(container, adUnit) {
+  function createSurface(container) {
+    const surface = root.document.createElement('div');
+    surface.style.position = 'absolute';
+    surface.style.inset = '0';
+    surface.style.width = '100%';
+    surface.style.height = '100%';
+    surface.style.display = 'flex';
+    surface.style.alignItems = 'stretch';
+    surface.style.justifyContent = 'stretch';
+    return surface;
+  }
+
+  function renderAdImage(surface, adUnit) {
     const img = root.document.createElement('img');
     img.src = adUnit.imageUrl;
     img.alt = adUnit.name;
     img.style.width = '100%';
     img.style.height = '100%';
     img.style.objectFit = 'cover';
-    container.appendChild(img);
+    img.style.display = 'block';
+    surface.appendChild(img);
+  }
+
+  function renderAdHtml(surface, adUnit) {
+    const htmlContainer = root.document.createElement('div');
+    htmlContainer.style.width = '100%';
+    htmlContainer.style.height = '100%';
+    htmlContainer.style.overflow = 'auto';
+    htmlContainer.innerHTML = adUnit.htmlCreative;
+    surface.appendChild(htmlContainer);
+    return htmlContainer;
+  }
+
+  function renderAdIframe(container, adUnit) {
+    const iframe = root.document.createElement('iframe');
+    iframe.src = adUnit.iframeUrl;
+    iframe.title = adUnit.name || 'Advertisement';
+    iframe.loading = 'lazy';
+    iframe.style.position = 'absolute';
+    iframe.style.inset = '0';
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = '0';
+    iframe.style.display = 'block';
+    container.appendChild(iframe);
+
+    if (adUnit.clickUrl) {
+      const overlay = root.document.createElement('button');
+      overlay.type = 'button';
+      overlay.setAttribute('aria-label', `Open ${adUnit.name || 'advertisement'}`);
+      overlay.style.position = 'absolute';
+      overlay.style.inset = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.style.border = '0';
+      overlay.style.padding = '0';
+      overlay.style.margin = '0';
+      overlay.style.background = 'transparent';
+      overlay.style.cursor = 'pointer';
+      container.appendChild(overlay);
+      return overlay;
+    }
+
+    return iframe;
+  }
+
+  function getCreativeType(adUnit) {
+    if (adUnit.htmlCreative) {
+      return 'html';
+    }
+
+    if (adUnit.iframeUrl) {
+      return 'iframe';
+    }
+
+    if (adUnit.imageUrl) {
+      return 'image';
+    }
+
+    return 'empty';
+  }
+
+  function openTrackedDestination(destination) {
+    if (!destination) {
+      return;
+    }
+
+    const openedWindow = root.open(destination, '_blank');
+    if (openedWindow) {
+      openedWindow.opener = null;
+    }
+  }
+
+  async function handleTrackedClick(adUnit, destination) {
+    if (!destination) {
+      return;
+    }
+
+    await recordClick(adUnit.adCode);
+    openTrackedDestination(destination);
+  }
+
+  function renderAdCreative(container, adUnit) {
+    const creativeType = getCreativeType(adUnit);
+
+    if (creativeType === 'iframe') {
+      return {
+        creativeType,
+        interactiveNode: renderAdIframe(container, adUnit)
+      };
+    }
+
+    const surface = createSurface(container);
+    container.appendChild(surface);
+
+    if (creativeType === 'html') {
+      return {
+        creativeType,
+        interactiveNode: renderAdHtml(surface, adUnit)
+      };
+    }
+
+    if (creativeType === 'image') {
+      renderAdImage(surface, adUnit);
+      return {
+        creativeType,
+        interactiveNode: surface
+      };
+    }
+
+    const emptyState = root.document.createElement('div');
+    emptyState.textContent = 'No creative available';
+    emptyState.style.width = '100%';
+    emptyState.style.height = '100%';
+    emptyState.style.display = 'flex';
+    emptyState.style.alignItems = 'center';
+    emptyState.style.justifyContent = 'center';
+    emptyState.style.color = '#666';
+    emptyState.style.fontSize = '14px';
+    surface.appendChild(emptyState);
+
+    return {
+      creativeType,
+      interactiveNode: surface
+    };
   }
 
   function createImpressionTracker(options) {
@@ -149,7 +284,7 @@
 
       container.replaceChildren();
       setContainerStyles(container, width);
-      renderAdImage(container, adUnit);
+      const rendered = renderAdCreative(container, adUnit);
 
       const impressionTracker = createImpressionTracker({
         container,
@@ -158,10 +293,35 @@
       });
       impressionTracker.start();
 
-      container.onclick = async () => {
-        await recordClick(adUnit.adCode);
-        root.open(adUnit.clickUrl, '_blank');
-      };
+      container.onclick = null;
+      if (rendered.creativeType === 'html') {
+        rendered.interactiveNode.onclick = async (event) => {
+          const target = event.target && typeof event.target.closest === 'function'
+            ? event.target.closest('a[href]')
+            : null;
+
+          if (target) {
+            event.preventDefault();
+            await handleTrackedClick(adUnit, target.href);
+            return;
+          }
+
+          if (adUnit.clickUrl) {
+            await handleTrackedClick(adUnit, adUnit.clickUrl);
+          }
+        };
+      } else if (rendered.creativeType === 'iframe') {
+        if (rendered.interactiveNode && rendered.interactiveNode.tagName === 'BUTTON') {
+          rendered.interactiveNode.onclick = async () => {
+            await handleTrackedClick(adUnit, adUnit.clickUrl);
+          };
+        }
+      } else if (adUnit.clickUrl) {
+        container.style.cursor = 'pointer';
+        container.onclick = async () => {
+          await handleTrackedClick(adUnit, adUnit.clickUrl);
+        };
+      }
 
       ads[containerId] = adUnit;
 
@@ -236,6 +396,8 @@
     getAdStats,
     autoLoad,
     createImpressionTracker,
+    getCreativeType,
+    renderAdCreative,
     version: '1.1.0'
   };
 });

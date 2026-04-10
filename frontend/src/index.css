@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@500;600;700&family=Rubik:wght@300;400;500;600&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=EB+Garamond:wght@500;600;700&family=Rubik:wght@300;400;500;600&display=swap");
 
 :root {
   --bg-base: #f6f3ed;
@@ -21,7 +21,7 @@
 
 body {
   margin: 0;
-  font-family: 'Rubik', sans-serif;
+  font-family: "Rubik", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-base);
@@ -29,8 +29,8 @@ body {
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
 * {
@@ -47,8 +47,16 @@ textarea {
 .app-shell {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(140, 184, 193, 0.12), transparent 28%),
-    radial-gradient(circle at top right, rgba(219, 236, 239, 0.25), transparent 24%),
+    radial-gradient(
+      circle at top left,
+      rgba(140, 184, 193, 0.12),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(219, 236, 239, 0.25),
+      transparent 24%
+    ),
     linear-gradient(180deg, #fcfbf8 0%, var(--bg-base) 100%);
 }
 
@@ -68,11 +76,25 @@ textarea {
 
 .app-title {
   margin: 0;
-  font-family: 'EB Garamond', serif;
-  font-size: 2.1rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-strong);
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1;
+}
+
+.app-title-main {
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  color: #111827;
+}
+
+.app-title-sub {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  color: #14b8a6;
 }
 
 .app-toolbar {
@@ -98,7 +120,11 @@ textarea {
   background: rgba(255, 253, 249, 0.86);
   color: var(--ink-body);
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    color 0.2s ease;
 }
 
 .app-nav-button:hover,

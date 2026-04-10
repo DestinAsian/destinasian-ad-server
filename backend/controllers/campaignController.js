@@ -1,8 +1,18 @@
 const Campaign = require('../models/Campaign');
 const AdUnit = require('../models/AdUnit');
+const Inventory = require('../models/Inventory');
 const Impression = require('../models/Impression');
 const Click = require('../models/Click');
 const { calculateCampaignStats } = require('../jobs/updateCampaignStats');
+
+const normalizeGroupName = (value) => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || null;
+};
 
 exports.createCampaign = async (req, res) => {
   try {
@@ -27,7 +37,35 @@ exports.createCampaign = async (req, res) => {
 
 exports.getAllCampaigns = async (req, res) => {
   try {
-    const campaigns = await Campaign.find({ user: req.user.id, account: req.user.accountId }).populate('adUnits');
+    const filter = { user: req.user.id, account: req.user.accountId };
+    const groupName = normalizeGroupName(req.query.groupName);
+
+    if (groupName) {
+      const groupedInventories = await Inventory.find({
+        user: req.user.id,
+        account: req.user.accountId,
+        groupName
+      }).select('_id');
+
+      if (groupedInventories.length === 0) {
+        return res.json([]);
+      }
+
+      const groupedAdUnits = await AdUnit.find({
+        user: req.user.id,
+        account: req.user.accountId,
+        inventory: { $in: groupedInventories.map((inventory) => inventory._id) }
+      }).select('campaign');
+
+      const campaignIds = [...new Set(groupedAdUnits.map((adUnit) => adUnit.campaign?.toString()).filter(Boolean))];
+      if (campaignIds.length === 0) {
+        return res.json([]);
+      }
+
+      filter._id = { $in: campaignIds };
+    }
+
+    const campaigns = await Campaign.find(filter).populate('adUnits');
     
     // Enrich campaigns with real-time stats from tracking data
     const enrichedCampaigns = await Promise.all(

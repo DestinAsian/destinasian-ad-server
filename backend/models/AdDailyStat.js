@@ -41,6 +41,18 @@ const adDailyStatSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    impressionRevenue: {
+      type: Number,
+      default: 0
+    },
+    clickRevenue: {
+      type: Number,
+      default: 0
+    },
+    revenue: {
+      type: Number,
+      default: 0
+    },
     ctr: {
       type: Number,
       default: 0

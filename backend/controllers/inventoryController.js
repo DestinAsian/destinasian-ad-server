@@ -1,5 +1,6 @@
 const Inventory = require('../models/Inventory');
 const AdUnit = require('../models/AdUnit');
+const InventoryGroup = require('../models/InventoryGroup');
 
 const slugifyKey = (value) => {
   return value
@@ -9,15 +10,78 @@ const slugifyKey = (value) => {
     .replace(/(^-|-$)/g, '');
 };
 
+const normalizeGroupName = (value) => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
+
+const ensureExampleGroup = async (userId, accountId) => {
+  let exampleGroup = await InventoryGroup.findOne({ user: userId, account: accountId }).sort({ sortOrder: 1, createdAt: 1 });
+
+  if (!exampleGroup) {
+    exampleGroup = await InventoryGroup.create({
+      user: userId,
+      account: accountId,
+      name: 'Singapore Banner',
+      description: 'Example inventory group',
+      sortOrder: 1
+    });
+  }
+
+  await Inventory.updateMany(
+    {
+      user: userId,
+      account: accountId,
+      $or: [
+        { groupName: { $exists: false } },
+        { groupName: null },
+        { groupName: '' }
+      ]
+    },
+    {
+      $set: { groupName: exampleGroup.name }
+    }
+  );
+
+  return exampleGroup;
+};
+
+const validateInventoryGroup = async (userId, accountId, groupName) => {
+  const normalizedGroupName = normalizeGroupName(groupName);
+  if (!normalizedGroupName) {
+    return null;
+  }
+
+  return InventoryGroup.findOne({
+    user: userId,
+    account: accountId,
+    name: normalizedGroupName
+  });
+};
+
 exports.createInventory = async (req, res) => {
   try {
-    const { name, key, description, rotationMode } = req.body;
+    const { name, key, description, rotationMode, groupName } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Inventory name is required' });
     }
 
     const finalKey = key && key.trim() ? slugifyKey(key) : slugifyKey(name);
+    const normalizedGroupName = normalizeGroupName(groupName);
+
+    if (!normalizedGroupName) {
+      return res.status(400).json({ error: 'Inventory group is required' });
+    }
+
+    const inventoryGroup = await validateInventoryGroup(req.user.id, req.user.accountId, normalizedGroupName);
+    if (!inventoryGroup) {
+      return res.status(404).json({ error: 'Inventory group not found' });
+    }
 
     const nameExists = await Inventory.findOne({ account: req.user.accountId, name: name.trim() });
     if (nameExists) {
@@ -30,6 +94,7 @@ exports.createInventory = async (req, res) => {
       name: name.trim(),
       key: finalKey,
       description: description ? description.trim() : '',
+      groupName: inventoryGroup.name,
       rotationMode: rotationMode === 'rotate' ? 'rotate' : 'single'
     });
 
@@ -44,10 +109,19 @@ exports.createInventory = async (req, res) => {
 
 exports.getAllInventories = async (req, res) => {
   try {
-    const inventories = await Inventory.find({
+    await ensureExampleGroup(req.user.id, req.user.accountId);
+
+    const filter = {
       user: req.user.id,
       account: req.user.accountId
-    }).sort({ createdAt: -1 });
+    };
+    const groupName = normalizeGroupName(req.query.groupName);
+
+    if (groupName) {
+      filter.groupName = groupName;
+    }
+
+    const inventories = await Inventory.find(filter).sort({ groupName: 1, createdAt: -1 });
     res.json(inventories);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -71,7 +145,7 @@ exports.getInventory = async (req, res) => {
 
 exports.updateInventory = async (req, res) => {
   try {
-    const { name, key, description, isActive, rotationMode } = req.body;
+    const { name, key, description, isActive, rotationMode, groupName } = req.body;
     let inventory = await Inventory.findById(req.params.id);
     if (!inventory) return res.status(404).json({ error: 'Inventory not found' });
 
@@ -89,6 +163,19 @@ exports.updateInventory = async (req, res) => {
     }
     if (key !== undefined) inventory.key = slugifyKey(key);
     if (description !== undefined) inventory.description = description ? description.trim() : '';
+    if (groupName !== undefined) {
+      const normalizedGroupName = normalizeGroupName(groupName);
+      if (!normalizedGroupName) {
+        return res.status(400).json({ error: 'Inventory group is required' });
+      }
+
+      const inventoryGroup = await validateInventoryGroup(req.user.id, req.user.accountId, normalizedGroupName);
+      if (!inventoryGroup) {
+        return res.status(404).json({ error: 'Inventory group not found' });
+      }
+
+      inventory.groupName = inventoryGroup.name;
+    }
     if (isActive !== undefined) inventory.isActive = !!isActive;
     if (rotationMode !== undefined) {
       inventory.rotationMode = rotationMode === 'rotate' ? 'rotate' : 'single';

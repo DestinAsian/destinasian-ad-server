@@ -27,6 +27,10 @@ const inventorySchema = new mongoose.Schema(
       type: String,
       trim: true
     },
+    groupName: {
+      type: String,
+      trim: true
+    },
     rotationMode: {
       type: String,
       enum: ['single', 'rotate'],
@@ -42,5 +46,6 @@ const inventorySchema = new mongoose.Schema(
 
 inventorySchema.index({ account: 1, key: 1 }, { unique: true });
 inventorySchema.index({ account: 1, name: 1 }, { unique: true });
+inventorySchema.index({ account: 1, groupName: 1 });
 
 module.exports = mongoose.model('Inventory', inventorySchema);

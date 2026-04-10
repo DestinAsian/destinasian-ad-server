@@ -1,94 +1,111 @@
-import React, { useEffect, useState } from 'react';
-import { inventoryAPI } from '../services/api';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { inventoryAPI, inventoryGroupAPI } from '../services/api';
 import '../styles/Inventory.css';
 
 function Inventory() {
   const [inventories, setInventories] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-  const [form, setForm] = useState({ name: '', key: '', description: '', rotationMode: 'single' });
+  const [inventorySort, setInventorySort] = useState('recent');
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [selectedInventoryIds, setSelectedInventoryIds] = useState({});
+  const [form, setForm] = useState({ name: '', key: '', description: '', groupName: '', rotationMode: 'single' });
+  const [groupForm, setGroupForm] = useState({ name: '', description: '', sortOrder: '' });
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ name: '', key: '', description: '', rotationMode: 'single', isActive: true });
+  const [editingGroupId, setEditingGroupId] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', key: '', description: '', groupName: '', rotationMode: 'single', isActive: true });
+  const [editGroupForm, setEditGroupForm] = useState({ name: '', description: '', sortOrder: '' });
 
-  const loadInventories = async () => {
+  const loadData = async () => {
     try {
-      const response = await inventoryAPI.getAll();
-      const list = response.data || [];
-      const unique = Array.from(new Map(list.map(item => [item._id, item])).values());
-      setInventories(unique);
+      const [groupResponse, inventoryResponse] = await Promise.all([
+        inventoryGroupAPI.getAll(),
+        inventoryAPI.getAll()
+      ]);
+
+      const inventoryList = inventoryResponse.data || [];
+      const uniqueInventories = Array.from(new Map(inventoryList.map((item) => [item._id, item])).values());
+      const groupList = groupResponse.data || [];
+
+      setGroups(groupList);
+      setInventories(uniqueInventories);
+      setCollapsedGroups((current) => {
+        const nextState = { ...current };
+        groupList.forEach((group) => {
+          if (typeof nextState[group._id] === 'undefined') {
+            nextState[group._id] = false;
+          }
+        });
+
+        const validKeys = new Set(groupList.map((group) => group._id));
+        if (uniqueInventories.some((inventory) => inventory.groupName && !groupList.some((group) => group.name === inventory.groupName))) {
+          validKeys.add('orphaned-group');
+          if (typeof nextState['orphaned-group'] === 'undefined') {
+            nextState['orphaned-group'] = false;
+          }
+        }
+
+        return Object.keys(nextState).reduce((accumulator, key) => {
+          if (validKeys.has(key)) {
+            accumulator[key] = nextState[key];
+          }
+          return accumulator;
+        }, {});
+      });
+      setForm((current) => ({
+        ...current,
+        groupName: current.groupName || groupList[0]?.name || ''
+      }));
       setLoading(false);
     } catch (err) {
-      setError('Failed to load inventories');
+      setError('Failed to load inventory data');
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadInventories();
+    loadData();
   }, []);
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    setError(null);
-    try {
-      await inventoryAPI.create({
-        name: form.name,
-        key: form.key,
-        description: form.description,
-        rotationMode: form.rotationMode
+  const sortInventories = useCallback((inventoryList) => {
+    const list = [...inventoryList];
+
+    switch (inventorySort) {
+      case 'name':
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+      case 'key':
+        return list.sort((a, b) => a.key.localeCompare(b.key));
+      case 'active':
+        return list.sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.name.localeCompare(b.name));
+      case 'recent':
+      default:
+        return list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+  }, [inventorySort]);
+
+  const groupedInventories = useMemo(() => {
+    const sections = groups.map((group) => ({
+      ...group,
+      inventories: sortInventories(
+        inventories.filter((inventory) => inventory.groupName === group.name)
+      )
+    }));
+
+    const orphanedInventories = inventories.filter((inventory) => inventory.groupName && !groups.some((group) => group.name === inventory.groupName));
+    if (orphanedInventories.length > 0) {
+      sections.push({
+        _id: 'orphaned-group',
+        name: 'Unlinked Groups',
+        description: 'Legacy inventories with missing group records',
+        sortOrder: 9999,
+        inventories: sortInventories(orphanedInventories)
       });
-      setForm({ name: '', key: '', description: '', rotationMode: 'single' });
-      setSuccessMessage('Inventory created');
-      setTimeout(() => setSuccessMessage(null), 2500);
-      await loadInventories();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create inventory');
     }
-  };
 
-  const startEdit = (inv) => {
-    setEditingId(inv._id);
-    setEditForm({
-      name: inv.name || '',
-      key: inv.key || '',
-      description: inv.description || '',
-      rotationMode: inv.rotationMode || 'single',
-      isActive: inv.isActive !== false
-    });
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditForm({ name: '', key: '', description: '', rotationMode: 'single', isActive: true });
-  };
-
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-    setError(null);
-    try {
-      await inventoryAPI.update(editingId, editForm);
-      setSuccessMessage('Inventory updated');
-      setTimeout(() => setSuccessMessage(null), 2500);
-      setEditingId(null);
-      await loadInventories();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to update inventory');
-    }
-  };
-
-  const handleDelete = async (inv) => {
-    if (!window.confirm(`Delete inventory "${inv.name}"?`)) return;
-    setError(null);
-    try {
-      await inventoryAPI.delete(inv._id);
-      setSuccessMessage('Inventory deleted');
-      setTimeout(() => setSuccessMessage(null), 2500);
-      await loadInventories();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to delete inventory');
-    }
-  };
+    return sections;
+  }, [groups, inventories, sortInventories]);
 
   const slugifyKey = (value) => {
     return value
@@ -103,20 +120,24 @@ function Inventory() {
     const match = clean.match(/^(.*?)(?:\s+(\d+))$/);
     let base = clean;
     let num = null;
+
     if (match) {
       base = (match[1] || clean).trim();
       num = parseInt(match[2], 10);
     }
+
     if (num !== null) {
       const candidate = `${base} ${num + 1}`;
       if (!existingNames.has(candidate)) return candidate;
     }
+
     let i = 2;
     let candidate = `${clean} ${i}`;
     while (existingNames.has(candidate)) {
       i += 1;
       candidate = `${clean} ${i}`;
     }
+
     return candidate;
   };
 
@@ -125,42 +146,218 @@ function Inventory() {
     const match = clean.match(/^(.*?)-(\d+)$/);
     let base = clean;
     let num = null;
+
     if (match) {
       base = match[1];
       num = parseInt(match[2], 10);
     }
+
     if (num !== null) {
       const candidate = `${base}-${num + 1}`;
       if (!existingKeys.has(candidate)) return candidate;
     }
+
     let i = 2;
     let candidate = `${clean}-${i}`;
     while (existingKeys.has(candidate)) {
       i += 1;
       candidate = `${clean}-${i}`;
     }
+
     return candidate;
   };
 
-  const handleDuplicate = async (inv) => {
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
     setError(null);
+
     try {
-      const existingNames = new Set(inventories.map(i => i.name));
-      const existingKeys = new Set(inventories.map(i => i.key));
-      const name = generateCopyName(inv.name, existingNames);
-      const key = generateCopyKey(inv.key, existingKeys);
+      await inventoryGroupAPI.create({
+        name: groupForm.name,
+        description: groupForm.description,
+        sortOrder: groupForm.sortOrder === '' ? undefined : Number(groupForm.sortOrder)
+      });
+
+      setGroupForm({ name: '', description: '', sortOrder: '' });
+      setSuccessMessage('Inventory group created');
+      setTimeout(() => setSuccessMessage(null), 2500);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to create inventory group');
+    }
+  };
+
+  const startEditGroup = (group) => {
+    setEditingGroupId(group._id);
+    setEditGroupForm({
+      name: group.name || '',
+      description: group.description || '',
+      sortOrder: group.sortOrder ?? ''
+    });
+  };
+
+  const cancelEditGroup = () => {
+    setEditingGroupId(null);
+    setEditGroupForm({ name: '', description: '', sortOrder: '' });
+  };
+
+  const handleUpdateGroup = async (e) => {
+    e.preventDefault();
+    setError(null);
+
+    try {
+      await inventoryGroupAPI.update(editingGroupId, {
+        name: editGroupForm.name,
+        description: editGroupForm.description,
+        sortOrder: editGroupForm.sortOrder === '' ? 0 : Number(editGroupForm.sortOrder)
+      });
+
+      setEditingGroupId(null);
+      setSuccessMessage('Inventory group updated');
+      setTimeout(() => setSuccessMessage(null), 2500);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update inventory group');
+    }
+  };
+
+  const handleDeleteGroup = async (group) => {
+    if (!window.confirm(`Delete inventory group "${group.name}"?`)) return;
+    setError(null);
+
+    try {
+      await inventoryGroupAPI.delete(group._id);
+      setSuccessMessage('Inventory group deleted');
+      setTimeout(() => setSuccessMessage(null), 2500);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete inventory group');
+    }
+  };
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setError(null);
+
+    try {
+      await inventoryAPI.create({
+        name: form.name,
+        key: form.key,
+        description: form.description,
+        groupName: form.groupName,
+        rotationMode: form.rotationMode
+      });
+
+      setForm({
+        name: '',
+        key: '',
+        description: '',
+        groupName: groups[0]?.name || '',
+        rotationMode: 'single'
+      });
+      setSuccessMessage('Inventory created');
+      setTimeout(() => setSuccessMessage(null), 2500);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to create inventory');
+    }
+  };
+
+  const startEdit = (inventory) => {
+    setEditingId(inventory._id);
+    setEditForm({
+      name: inventory.name || '',
+      key: inventory.key || '',
+      description: inventory.description || '',
+      groupName: inventory.groupName || groups[0]?.name || '',
+      rotationMode: inventory.rotationMode || 'single',
+      isActive: inventory.isActive !== false
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({ name: '', key: '', description: '', groupName: groups[0]?.name || '', rotationMode: 'single', isActive: true });
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    setError(null);
+
+    try {
+      await inventoryAPI.update(editingId, editForm);
+      setEditingId(null);
+      setSuccessMessage('Inventory updated');
+      setTimeout(() => setSuccessMessage(null), 2500);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to update inventory');
+    }
+  };
+
+  const handleDelete = async (inventory) => {
+    if (!window.confirm(`Delete inventory "${inventory.name}"?`)) return;
+    setError(null);
+
+    try {
+      await inventoryAPI.delete(inventory._id);
+      setSuccessMessage('Inventory deleted');
+      setTimeout(() => setSuccessMessage(null), 2500);
+      await loadData();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to delete inventory');
+    }
+  };
+
+  const handleDuplicate = async (inventory) => {
+    setError(null);
+
+    try {
+      const existingNames = new Set(inventories.map((item) => item.name));
+      const existingKeys = new Set(inventories.map((item) => item.key));
+      const name = generateCopyName(inventory.name, existingNames);
+      const key = generateCopyKey(inventory.key, existingKeys);
+
       await inventoryAPI.create({
         name,
         key,
-        description: inv.description || '',
-        rotationMode: inv.rotationMode || 'single'
+        description: inventory.description || '',
+        groupName: inventory.groupName,
+        rotationMode: inventory.rotationMode || 'single'
       });
+
       setSuccessMessage('Inventory duplicated');
       setTimeout(() => setSuccessMessage(null), 2500);
-      await loadInventories();
+      await loadData();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to duplicate inventory');
     }
+  };
+
+  const toggleGroupCollapse = (groupId) => {
+    setCollapsedGroups((current) => ({
+      ...current,
+      [groupId]: !current[groupId]
+    }));
+  };
+
+  const toggleInventorySelection = (inventoryId) => {
+    setSelectedInventoryIds((current) => ({
+      ...current,
+      [inventoryId]: !current[inventoryId]
+    }));
+  };
+
+  const toggleGroupSelection = (groupInventories) => {
+    const allSelected = groupInventories.length > 0 && groupInventories.every((inventory) => selectedInventoryIds[inventory._id]);
+
+    setSelectedInventoryIds((current) => {
+      const nextState = { ...current };
+      groupInventories.forEach((inventory) => {
+        nextState[inventory._id] = !allSelected;
+      });
+      return nextState;
+    });
   };
 
   if (loading) return <div className="loading">Loading inventory...</div>;
@@ -168,7 +365,23 @@ function Inventory() {
   return (
     <div className="inventory-page">
       <header className="inventory-header">
-        <h2>Inventory</h2>
+        <div>
+          <h2>Inventory</h2>
+          <p>Manage inventory groups first, then place each inventory inside the right group.</p>
+        </div>
+        <div className="inventory-toolbar">
+          <label htmlFor="inventory-sort">Sort Inventory</label>
+          <select
+            id="inventory-sort"
+            value={inventorySort}
+            onChange={(e) => setInventorySort(e.target.value)}
+          >
+            <option value="recent">Newest First</option>
+            <option value="name">Name</option>
+            <option value="key">Key</option>
+            <option value="active">Active First</option>
+          </select>
+        </div>
       </header>
 
       {successMessage && <div className="alert alert-success">{successMessage}</div>}
@@ -178,6 +391,81 @@ function Inventory() {
           <button onClick={() => setError(null)} className="alert-close">✕</button>
         </div>
       )}
+
+      <div className="inventory-group-card inventory-card">
+        <h3>Inventory Groups</h3>
+        <form onSubmit={handleCreateGroup} className="inventory-group-form">
+          <input
+            type="text"
+            placeholder='Group Name (e.g., Singapore Banner)'
+            value={groupForm.name}
+            onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Description (optional)"
+            value={groupForm.description}
+            onChange={(e) => setGroupForm({ ...groupForm, description: e.target.value })}
+          />
+          <input
+            type="number"
+            placeholder="Sort Order"
+            value={groupForm.sortOrder}
+            onChange={(e) => setGroupForm({ ...groupForm, sortOrder: e.target.value })}
+            min="0"
+          />
+          <button type="submit" className="btn btn-primary">Add Group</button>
+        </form>
+
+        <div className="inventory-group-list">
+          {groups.map((group) => {
+            const inventoryCount = inventories.filter((inventory) => inventory.groupName === group.name).length;
+
+            return (
+              <div key={group._id} className="inventory-group-item">
+                {editingGroupId === group._id ? (
+                  <form onSubmit={handleUpdateGroup} className="inventory-group-edit-form">
+                    <input
+                      type="text"
+                      value={editGroupForm.name}
+                      onChange={(e) => setEditGroupForm({ ...editGroupForm, name: e.target.value })}
+                      required
+                    />
+                    <input
+                      type="text"
+                      value={editGroupForm.description}
+                      onChange={(e) => setEditGroupForm({ ...editGroupForm, description: e.target.value })}
+                      placeholder="Description"
+                    />
+                    <input
+                      type="number"
+                      value={editGroupForm.sortOrder}
+                      onChange={(e) => setEditGroupForm({ ...editGroupForm, sortOrder: e.target.value })}
+                      min="0"
+                    />
+                    <button type="submit" className="btn btn-primary btn-sm">Save</button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEditGroup}>Cancel</button>
+                  </form>
+                ) : (
+                  <>
+                    <div className="inventory-group-info">
+                      <div className="inventory-group-name">{group.name}</div>
+                      {group.description && <div className="inventory-group-meta">{group.description}</div>}
+                      <div className="inventory-group-meta">Sort Order: {group.sortOrder ?? 0}</div>
+                      <div className="inventory-group-meta">{inventoryCount} inventories</div>
+                    </div>
+                    <div className="inventory-actions">
+                      <button className="btn btn-secondary btn-sm" onClick={() => startEditGroup(group)}>Edit</button>
+                      <button className="btn btn-danger btn-sm" onClick={() => handleDeleteGroup(group)}>Delete</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="inventory-card">
         <h3>Create Inventory</h3>
@@ -202,6 +490,18 @@ function Inventory() {
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
           <select
+            value={form.groupName}
+            onChange={(e) => setForm({ ...form, groupName: e.target.value })}
+            required
+          >
+            <option value="">Select Inventory Group</option>
+            {groups.map((group) => (
+              <option key={group._id} value={group.name}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+          <select
             value={form.rotationMode}
             onChange={(e) => setForm({ ...form, rotationMode: e.target.value })}
           >
@@ -212,95 +512,141 @@ function Inventory() {
         </form>
       </div>
 
-      <div className="inventory-list">
-        {inventories.length === 0 && <p>No inventory yet.</p>}
-        {inventories.map((inv) => (
-          <div key={inv._id} className="inventory-item">
-            {editingId === inv._id ? (
-              <form onSubmit={handleUpdate} className="inventory-edit-form">
-                <input
-                  type="text"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  required
-                />
-                <input
-                  type="text"
-                  value={editForm.key}
-                  onChange={(e) => setEditForm({ ...editForm, key: e.target.value })}
-                />
-                <input
-                  type="text"
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                />
-                <select
-                  value={editForm.rotationMode}
-                  onChange={(e) => setEditForm({ ...editForm, rotationMode: e.target.value })}
+      <div className="inventory-section-list">
+        {groupedInventories.map((group) => (
+          <section key={group._id} className={`inventory-group-section ${collapsedGroups[group._id] ? 'is-collapsed' : ''}`}>
+            <button
+              type="button"
+              className="inventory-group-section-header"
+              onClick={() => toggleGroupCollapse(group._id)}
+              aria-expanded={!collapsedGroups[group._id]}
+            >
+              <div>
+                <h3>{group.name}</h3>
+                {group.description && <p>{group.description}</p>}
+              </div>
+              <div className="inventory-group-section-header-actions">
+                <span className="inventory-group-section-count">{group.inventories.length} inventories</span>
+                <span className="inventory-group-section-arrow">{collapsedGroups[group._id] ? '+' : '−'}</span>
+              </div>
+            </button>
+
+            {!collapsedGroups[group._id] && (
+              <div className="inventory-list">
+                {group.inventories.length > 0 && (
+                  <label className="inventory-select-all">
+                    <input
+                      type="checkbox"
+                      checked={group.inventories.length > 0 && group.inventories.every((inventory) => selectedInventoryIds[inventory._id])}
+                      onChange={() => toggleGroupSelection(group.inventories)}
+                    />
+                    Select all in {group.name}
+                  </label>
+                )}
+              {group.inventories.length === 0 && <p className="no-data">No inventory in this group yet.</p>}
+              {group.inventories.map((inventory) => (
+                <div
+                  key={inventory._id}
+                  className={`inventory-item ${selectedInventoryIds[inventory._id] ? 'is-selected' : ''}`}
                 >
-                  <option value="single">Single ad</option>
-                  <option value="rotate">Rotate ads</option>
-                </select>
-                <label className="inventory-toggle">
-                  <input
-                    type="checkbox"
-                    checked={editForm.isActive}
-                    onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
-                  />
-                  Active
-                </label>
-                <button type="submit" className="btn btn-primary btn-sm">Save</button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEdit}>Cancel</button>
-              </form>
-            ) : (
-              <>
-                <div className="inventory-info">
-                  <div className="inventory-name">{inv.name}</div>
-                  <div className="inventory-key">Key: {inv.key}</div>
-                  {inv.description && <div className="inventory-desc">{inv.description}</div>}
-                  <div className="inventory-desc">Mode: {inv.rotationMode === 'rotate' ? 'Rotate ads' : 'Single ad'}</div>
-                  <div className={`inventory-status ${inv.isActive ? 'active' : 'inactive'}`}>
-                    {inv.isActive ? 'Active' : 'Inactive'}
-                  </div>
-                  <div className="inventory-snippet">
-                    <div className="inventory-snippet-label">CMS Tag</div>
-                    <code>{`<div data-inventory=\"${inv.key}\" data-width=\"100%\"></div>`}</code>
-                    <div className="inventory-snippet-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={async () => {
-                          const text = `<div data-inventory=\"${inv.key}\" data-width=\"100%\"></div>`;
-                          if (navigator.clipboard?.writeText) {
-                            await navigator.clipboard.writeText(text);
-                          }
-                        }}
+                  {editingId === inventory._id ? (
+                    <form onSubmit={handleUpdate} className="inventory-edit-form">
+                      <input
+                        type="text"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        required
+                      />
+                      <input
+                        type="text"
+                        value={editForm.key}
+                        onChange={(e) => setEditForm({ ...editForm, key: e.target.value })}
+                      />
+                      <input
+                        type="text"
+                        value={editForm.description}
+                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      />
+                      <select
+                        value={editForm.groupName}
+                        onChange={(e) => setEditForm({ ...editForm, groupName: e.target.value })}
+                        required
                       >
-                        Copy Tag
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={async () => {
-                          const text = inv.key;
-                          if (navigator.clipboard?.writeText) {
-                            await navigator.clipboard.writeText(text);
-                          }
-                        }}
+                        {groups.map((groupOption) => (
+                          <option key={groupOption._id} value={groupOption.name}>
+                            {groupOption.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={editForm.rotationMode}
+                        onChange={(e) => setEditForm({ ...editForm, rotationMode: e.target.value })}
                       >
-                        Copy Key
-                      </button>
-                    </div>
-                  </div>
+                        <option value="single">Single ad</option>
+                        <option value="rotate">Rotate ads</option>
+                      </select>
+                      <label className="inventory-toggle">
+                        <input
+                          type="checkbox"
+                          checked={editForm.isActive}
+                          onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
+                        />
+                        Active
+                      </label>
+                      <button type="submit" className="btn btn-primary btn-sm">Save</button>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEdit}>Cancel</button>
+                    </form>
+                  ) : (
+                    <>
+                      <div className="inventory-main">
+                        <label className="inventory-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selectedInventoryIds[inventory._id])}
+                            onChange={() => toggleInventorySelection(inventory._id)}
+                          />
+                        </label>
+                        <div className="inventory-info">
+                          <div className="inventory-name">{inventory.name}</div>
+                          <div className="inventory-key">Key: {inventory.key}</div>
+                          {inventory.description && <div className="inventory-desc">{inventory.description}</div>}
+                          <div className="inventory-desc">Group: {inventory.groupName}</div>
+                          <div className="inventory-desc">Mode: {inventory.rotationMode === 'rotate' ? 'Rotate ads' : 'Single ad'}</div>
+                          <div className={`inventory-status ${inventory.isActive ? 'active' : 'inactive'}`}>
+                            {inventory.isActive ? 'Active' : 'Inactive'}
+                          </div>
+                          <div className="inventory-snippet">
+                            <div className="inventory-snippet-label">CMS Tag</div>
+                            <code>{`<div data-inventory="${inventory.key}" data-width="100%"></div>`}</code>
+                            <div className="inventory-snippet-actions">
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={async () => {
+                                  const text = `<div data-inventory="${inventory.key}" data-width="100%"></div>`;
+                                  if (navigator.clipboard?.writeText) {
+                                    await navigator.clipboard.writeText(text);
+                                  }
+                                }}
+                              >
+                                Copy Tag
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="inventory-actions">
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleDuplicate(inventory)}>Duplicate</button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => startEdit(inventory)}>Edit</button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(inventory)}>Delete</button>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className="inventory-actions">
-                  <button className="btn btn-secondary btn-sm" onClick={() => handleDuplicate(inv)}>Duplicate</button>
-                  <button className="btn btn-secondary btn-sm" onClick={() => startEdit(inv)}>Edit</button>
-                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(inv)}>Delete</button>
-                </div>
-              </>
+              ))}
+              </div>
             )}
-          </div>
+          </section>
         ))}
       </div>
     </div>

@@ -1,7 +1,9 @@
+const mongoose = require('mongoose');
 const Impression = require('../models/Impression');
 const Click = require('../models/Click');
 const AdUnit = require('../models/AdUnit');
 const Campaign = require('../models/Campaign');
+const Inventory = require('../models/Inventory');
 const AdImpressionEvent = require('../models/AdImpressionEvent');
 const AdClickEvent = require('../models/AdClickEvent');
 const AdDailyStat = require('../models/AdDailyStat');
@@ -11,8 +13,36 @@ const getUtcDayStart = (dateInput = new Date()) => {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 };
 
+const getUtcNextDayStart = (dateInput = new Date()) => {
+  const dayStart = getUtcDayStart(dateInput);
+  dayStart.setUTCDate(dayStart.getUTCDate() + 1);
+  return dayStart;
+};
+
+const normalizeString = (value) => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || null;
+};
+
+const getNumericValue = (value) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+};
+
+const toObjectId = (value) => {
+  if (!value || !mongoose.Types.ObjectId.isValid(value)) {
+    return null;
+  }
+
+  return new mongoose.Types.ObjectId(value);
+};
+
 const buildDateRangeMatch = (accountId, startDate, endDate) => {
-  const match = { account: accountId };
+  const match = { account: toObjectId(accountId) || accountId };
 
   if (startDate || endDate) {
     match.statDate = {};
@@ -25,6 +55,171 @@ const buildDateRangeMatch = (accountId, startDate, endDate) => {
   }
 
   return match;
+};
+
+const buildEventDateRangeMatch = (accountId, startDate, endDate) => {
+  const match = { account: toObjectId(accountId) || accountId };
+
+  if (startDate || endDate) {
+    match.occurredAt = {};
+    if (startDate) {
+      match.occurredAt.$gte = getUtcDayStart(startDate);
+    }
+    if (endDate) {
+      match.occurredAt.$lt = getUtcNextDayStart(endDate);
+    }
+  }
+
+  return match;
+};
+
+const toDoubleExpression = (path) => ({
+  $convert: {
+    input: path,
+    to: 'double',
+    onError: 0,
+    onNull: 0
+  }
+});
+
+const buildRevenueExpression = (paths) => {
+  const pathList = Array.isArray(paths) ? paths : [paths];
+  if (pathList.length === 1) {
+    return toDoubleExpression(pathList[0]);
+  }
+
+  return {
+    $add: pathList.map((path) => toDoubleExpression(path))
+  };
+};
+
+const buildDailyRevenueExpression = () => ({
+  $cond: [
+    { $gt: [toDoubleExpression('$revenue'), 0] },
+    toDoubleExpression('$revenue'),
+    buildRevenueExpression(['$impressionRevenue', '$clickRevenue'])
+  ]
+});
+
+const getEventMeta = (body, revenue) => {
+  const bodyMeta = body && typeof body.meta === 'object' && !Array.isArray(body.meta)
+    ? { ...body.meta }
+    : {};
+
+  if (revenue > 0) {
+    bodyMeta.revenue = revenue;
+  }
+
+  return Object.keys(bodyMeta).length > 0 ? bodyMeta : undefined;
+};
+
+const buildScopedMatches = async (accountId, query = {}) => {
+  const inventoryGroup = normalizeString(query.inventoryGroup || query.groupName);
+  const campaignId = normalizeString(query.campaignId);
+  const dailyMatch = buildDateRangeMatch(accountId, query.startDate, query.endDate);
+  const eventMatch = buildEventDateRangeMatch(accountId, query.startDate, query.endDate);
+
+  if (campaignId) {
+    const campaignObjectId = toObjectId(campaignId);
+    if (!campaignObjectId) {
+      return { dailyMatch, eventMatch, noResults: true };
+    }
+
+    dailyMatch.campaign = campaignObjectId;
+    eventMatch.campaign = campaignObjectId;
+  }
+
+  if (!inventoryGroup) {
+    return { dailyMatch, eventMatch, noResults: false };
+  }
+
+  const inventories = await Inventory.find({
+    account: accountId,
+    groupName: inventoryGroup
+  }).select('_id');
+
+  if (inventories.length === 0) {
+    return { dailyMatch, eventMatch, noResults: true };
+  }
+
+  const inventoryIds = inventories.map((inventory) => inventory._id);
+  dailyMatch.inventory = { $in: inventoryIds };
+  eventMatch.inventory = { $in: inventoryIds };
+
+  return { dailyMatch, eventMatch, noResults: false };
+};
+
+const mergeRevenueDailySeries = (dailySeries, impressionRevenueSeries, clickRevenueSeries) => {
+  const revenueByDate = new Map();
+
+  const appendRevenue = (items) => {
+    items.forEach((item) => {
+      const key = new Date(item.date).toISOString();
+      const currentValue = revenueByDate.get(key) || 0;
+      revenueByDate.set(key, currentValue + getNumericValue(item.revenue));
+    });
+  };
+
+  appendRevenue(impressionRevenueSeries);
+  appendRevenue(clickRevenueSeries);
+
+  return dailySeries.map((item) => {
+    const dailyRevenue = getNumericValue(item.revenue);
+    const eventRevenue = revenueByDate.get(new Date(item.date).toISOString()) || 0;
+
+    return {
+      ...item,
+      revenue: dailyRevenue !== 0 ? dailyRevenue : eventRevenue
+    };
+  });
+};
+
+const getMergedRevenueTotal = (dailyRevenue, impressionRevenue, clickRevenue) => {
+  const normalizedDailyRevenue = getNumericValue(dailyRevenue);
+  if (normalizedDailyRevenue !== 0) {
+    return normalizedDailyRevenue;
+  }
+
+  return getNumericValue(impressionRevenue) + getNumericValue(clickRevenue);
+};
+
+const aggregateEventRevenueTotal = async (Model, eventMatch) => {
+  const [result] = await Model.aggregate([
+    { $match: eventMatch },
+    {
+      $group: {
+        _id: null,
+        revenue: { $sum: buildRevenueExpression('$meta.revenue') }
+      }
+    }
+  ]);
+
+  return getNumericValue(result?.revenue);
+};
+
+const aggregateEventRevenueDaily = async (Model, eventMatch) => {
+  return Model.aggregate([
+    { $match: eventMatch },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$occurredAt'
+          }
+        },
+        revenue: { $sum: buildRevenueExpression('$meta.revenue') }
+      }
+    },
+    { $sort: { _id: 1 } },
+    {
+      $project: {
+        _id: 0,
+        date: '$_id',
+        revenue: 1
+      }
+    }
+  ]);
 };
 
 const buildCtrProjection = (impressionsField = '$impressions', clicksField = '$clicks') => ({
@@ -53,9 +248,12 @@ const updateDailyStat = async ({
   adCode,
   occurredAt,
   impressions = 0,
-  clicks = 0
+  clicks = 0,
+  impressionRevenue = 0,
+  clickRevenue = 0
 }) => {
   const statDate = getUtcDayStart(occurredAt);
+  const totalRevenue = getNumericValue(impressionRevenue) + getNumericValue(clickRevenue);
   const updated = await AdDailyStat.findOneAndUpdate(
     {
       statDate,
@@ -65,7 +263,13 @@ const updateDailyStat = async ({
       inventory: inventory || null
     },
     {
-      $inc: { impressions, clicks },
+      $inc: {
+        impressions,
+        clicks,
+        impressionRevenue: getNumericValue(impressionRevenue),
+        clickRevenue: getNumericValue(clickRevenue),
+        revenue: totalRevenue
+      },
       $set: {
         adCode,
         lastAggregatedAt: new Date()
@@ -95,6 +299,8 @@ exports.recordImpression = async (req, res) => {
     const userAgent = req.headers['user-agent'];
     const referrer = req.headers['referer'];
     const occurredAt = new Date();
+    const impressionRevenue = getNumericValue(req.body?.revenue);
+    const eventMeta = getEventMeta(req.body, impressionRevenue);
 
     const adUnit = await AdUnit.findOne({ adCode: adUnitId });
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
@@ -117,7 +323,8 @@ exports.recordImpression = async (req, res) => {
       userIp,
       userAgent,
       referrer,
-      occurredAt
+      occurredAt,
+      meta: eventMeta
     });
 
     await Promise.all([
@@ -140,10 +347,11 @@ exports.recordImpression = async (req, res) => {
       inventory: adUnit.inventory || null,
       adCode: adUnit.adCode,
       occurredAt,
-      impressions: 1
+      impressions: 1,
+      impressionRevenue
     });
 
-    res.json({ success: true, message: 'Impression recorded' });
+    res.json({ success: true, message: 'Impression recorded', revenue: impressionRevenue });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -156,6 +364,8 @@ exports.recordClick = async (req, res) => {
     const userAgent = req.headers['user-agent'];
     const referrer = req.headers['referer'];
     const occurredAt = new Date();
+    const clickRevenue = getNumericValue(req.body?.revenue);
+    const eventMeta = getEventMeta(req.body, clickRevenue);
 
     const adUnit = await AdUnit.findOne({ adCode: adUnitId });
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
@@ -179,7 +389,8 @@ exports.recordClick = async (req, res) => {
       userIp,
       userAgent,
       referrer,
-      occurredAt
+      occurredAt,
+      meta: eventMeta
     });
 
     await Promise.all([
@@ -202,10 +413,11 @@ exports.recordClick = async (req, res) => {
       inventory: adUnit.inventory || null,
       adCode: adUnit.adCode,
       occurredAt,
-      clicks: 1
+      clicks: 1,
+      clickRevenue
     });
 
-    res.json({ success: true, message: 'Click recorded' });
+    res.json({ success: true, message: 'Click recorded', revenue: clickRevenue });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -213,31 +425,47 @@ exports.recordClick = async (req, res) => {
 
 exports.getTrackingStats = async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-    const match = buildDateRangeMatch(req.user.accountId, startDate, endDate);
-    const [totals] = await AdDailyStat.aggregate([
-      { $match: match },
-      {
-        $group: {
-          _id: null,
-          impressions: { $sum: '$impressions' },
-          clicks: { $sum: '$clicks' }
+    const { dailyMatch, eventMatch, noResults } = await buildScopedMatches(req.user.accountId, req.query);
+
+    if (noResults) {
+      return res.json({
+        impressions: 0,
+        clicks: 0,
+        ctr: 0,
+        revenue: 0
+      });
+    }
+
+    const [totals, impressionRevenue, clickRevenue] = await Promise.all([
+      AdDailyStat.aggregate([
+        { $match: dailyMatch },
+        {
+          $group: {
+            _id: null,
+            impressions: { $sum: '$impressions' },
+            clicks: { $sum: '$clicks' },
+            revenue: { $sum: buildDailyRevenueExpression() }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            impressions: 1,
+            clicks: 1,
+            ctr: buildCtrProjection('$impressions', '$clicks'),
+            revenue: 1
+          }
         }
-      },
-      {
-        $project: {
-          _id: 0,
-          impressions: 1,
-          clicks: 1,
-          ctr: buildCtrProjection('$impressions', '$clicks')
-        }
-      }
+      ]).then((results) => results[0]),
+      aggregateEventRevenueTotal(AdImpressionEvent, eventMatch),
+      aggregateEventRevenueTotal(AdClickEvent, eventMatch)
     ]);
 
     res.json({
       impressions: totals?.impressions || 0,
       clicks: totals?.clicks || 0,
-      ctr: totals?.ctr || 0
+      ctr: totals?.ctr || 0,
+      revenue: getMergedRevenueTotal(totals?.revenue, impressionRevenue, clickRevenue)
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -246,18 +474,31 @@ exports.getTrackingStats = async (req, res) => {
 
 exports.getAnalytics = async (req, res) => {
   try {
-    const { startDate, endDate, limit } = req.query;
+    const { limit } = req.query;
     const topLimit = Number(limit) > 0 ? Number(limit) : 5;
-    const match = buildDateRangeMatch(req.user.accountId, startDate, endDate);
+    const { dailyMatch, eventMatch, noResults } = await buildScopedMatches(req.user.accountId, req.query);
 
-    const [totalsResult, dailySeries, topAdUnits, topCampaigns] = await Promise.all([
+    if (noResults) {
+      return res.json({
+        impressions: 0,
+        clicks: 0,
+        ctr: 0,
+        revenue: 0,
+        daily: [],
+        topAdUnits: [],
+        topCampaigns: []
+      });
+    }
+
+    const [totalsResult, dailySeries, impressionRevenueDaily, clickRevenueDaily, impressionRevenueTotal, clickRevenueTotal, topAdUnits, topCampaigns] = await Promise.all([
       AdDailyStat.aggregate([
-        { $match: match },
+        { $match: dailyMatch },
         {
           $group: {
             _id: null,
             impressions: { $sum: '$impressions' },
-            clicks: { $sum: '$clicks' }
+            clicks: { $sum: '$clicks' },
+            revenue: { $sum: buildDailyRevenueExpression() }
           }
         },
         {
@@ -265,17 +506,19 @@ exports.getAnalytics = async (req, res) => {
             _id: 0,
             impressions: 1,
             clicks: 1,
-            ctr: buildCtrProjection('$impressions', '$clicks')
+            ctr: buildCtrProjection('$impressions', '$clicks'),
+            revenue: 1
           }
         }
       ]),
       AdDailyStat.aggregate([
-        { $match: match },
+        { $match: dailyMatch },
         {
           $group: {
             _id: '$statDate',
             impressions: { $sum: '$impressions' },
-            clicks: { $sum: '$clicks' }
+            clicks: { $sum: '$clicks' },
+            revenue: { $sum: buildDailyRevenueExpression() }
           }
         },
         { $sort: { _id: 1 } },
@@ -285,18 +528,24 @@ exports.getAnalytics = async (req, res) => {
             date: '$_id',
             impressions: 1,
             clicks: 1,
-            ctr: buildCtrProjection('$impressions', '$clicks')
+            ctr: buildCtrProjection('$impressions', '$clicks'),
+            revenue: 1
           }
         }
       ]),
+      aggregateEventRevenueDaily(AdImpressionEvent, eventMatch),
+      aggregateEventRevenueDaily(AdClickEvent, eventMatch),
+      aggregateEventRevenueTotal(AdImpressionEvent, eventMatch),
+      aggregateEventRevenueTotal(AdClickEvent, eventMatch),
       AdDailyStat.aggregate([
-        { $match: { ...match, adUnit: { $ne: null } } },
+        { $match: { ...dailyMatch, adUnit: { $ne: null } } },
         {
           $group: {
             _id: '$adUnit',
             adCode: { $first: '$adCode' },
             impressions: { $sum: '$impressions' },
-            clicks: { $sum: '$clicks' }
+            clicks: { $sum: '$clicks' },
+            revenue: { $sum: buildDailyRevenueExpression() }
           }
         },
         {
@@ -316,19 +565,21 @@ exports.getAnalytics = async (req, res) => {
             name: '$adUnit.name',
             impressions: 1,
             clicks: 1,
-            ctr: buildCtrProjection('$impressions', '$clicks')
+            ctr: buildCtrProjection('$impressions', '$clicks'),
+            revenue: 1
           }
         },
         { $sort: { impressions: -1, clicks: -1 } },
         { $limit: topLimit }
       ]),
       AdDailyStat.aggregate([
-        { $match: { ...match, campaign: { $ne: null } } },
+        { $match: { ...dailyMatch, campaign: { $ne: null } } },
         {
           $group: {
             _id: '$campaign',
             impressions: { $sum: '$impressions' },
-            clicks: { $sum: '$clicks' }
+            clicks: { $sum: '$clicks' },
+            revenue: { $sum: buildDailyRevenueExpression() }
           }
         },
         {
@@ -348,7 +599,8 @@ exports.getAnalytics = async (req, res) => {
             status: '$campaign.status',
             impressions: 1,
             clicks: 1,
-            ctr: buildCtrProjection('$impressions', '$clicks')
+            ctr: buildCtrProjection('$impressions', '$clicks'),
+            revenue: 1
           }
         },
         { $sort: { impressions: -1, clicks: -1 } },
@@ -356,13 +608,15 @@ exports.getAnalytics = async (req, res) => {
       ])
     ]);
 
-    const totals = totalsResult[0] || { impressions: 0, clicks: 0, ctr: 0 };
+    const totals = totalsResult[0] || { impressions: 0, clicks: 0, ctr: 0, revenue: 0 };
+    const mergedDailySeries = mergeRevenueDailySeries(dailySeries, impressionRevenueDaily, clickRevenueDaily);
 
     res.json({
       impressions: totals.impressions,
       clicks: totals.clicks,
       ctr: totals.ctr,
-      daily: dailySeries,
+      revenue: getMergedRevenueTotal(totals.revenue, impressionRevenueTotal, clickRevenueTotal),
+      daily: mergedDailySeries,
       topAdUnits,
       topCampaigns
     });

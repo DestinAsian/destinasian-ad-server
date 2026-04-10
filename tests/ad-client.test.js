@@ -1,7 +1,25 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createImpressionTracker } = require('../ad-client.js');
+const { createImpressionTracker, getCreativeType, renderAdCreative } = require('../ad-client.js');
+
+function createMockElement(tagName) {
+  return {
+    tagName: tagName.toUpperCase(),
+    style: {},
+    children: [],
+    attributes: {},
+    textContent: '',
+    innerHTML: '',
+    appendChild(child) {
+      this.children.push(child);
+      return child;
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    }
+  };
+}
 
 test('impression fires once when visibility reaches at least 50 percent', async () => {
   const observedTargets = [];
@@ -95,4 +113,48 @@ test('duplicate visible events do not create duplicate impressions', async () =>
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(trackedCount, 1);
   assert.equal(tracker.hasTracked(), true);
+});
+
+test('creative type selection prefers html then iframe then image', () => {
+  assert.equal(getCreativeType({ htmlCreative: '<div>Ad</div>', iframeUrl: 'https://example.com/frame', imageUrl: 'https://example.com/image.jpg' }), 'html');
+  assert.equal(getCreativeType({ iframeUrl: 'https://example.com/frame', imageUrl: 'https://example.com/image.jpg' }), 'iframe');
+  assert.equal(getCreativeType({ imageUrl: 'https://example.com/image.jpg' }), 'image');
+  assert.equal(getCreativeType({}), 'empty');
+});
+
+test('renderAdCreative renders consistent wrappers for image, html, and iframe creatives', () => {
+  global.document = {
+    createElement(tagName) {
+      return createMockElement(tagName);
+    }
+  };
+
+  const imageContainer = createMockElement('div');
+  const imageRendered = renderAdCreative(imageContainer, {
+    name: 'Image Ad',
+    imageUrl: 'https://example.com/ad.jpg'
+  });
+  assert.equal(imageRendered.creativeType, 'image');
+  assert.equal(imageContainer.children[0].tagName, 'DIV');
+  assert.equal(imageContainer.children[0].children[0].tagName, 'IMG');
+
+  const htmlContainer = createMockElement('div');
+  const htmlRendered = renderAdCreative(htmlContainer, {
+    name: 'HTML Ad',
+    htmlCreative: '<a href="https://example.com">Click</a>'
+  });
+  assert.equal(htmlRendered.creativeType, 'html');
+  assert.equal(htmlContainer.children[0].children[0].innerHTML, '<a href="https://example.com">Click</a>');
+
+  const iframeContainer = createMockElement('div');
+  const iframeRendered = renderAdCreative(iframeContainer, {
+    name: 'Iframe Ad',
+    iframeUrl: 'https://example.com/frame',
+    clickUrl: 'https://example.com/landing'
+  });
+  assert.equal(iframeRendered.creativeType, 'iframe');
+  assert.equal(iframeContainer.children[0].tagName, 'IFRAME');
+  assert.equal(iframeContainer.children[1].tagName, 'BUTTON');
+
+  delete global.document;
 });

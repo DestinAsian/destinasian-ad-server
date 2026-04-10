@@ -1,5 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { campaignAPI, adUnitAPI } from '../services/api';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { campaignAPI, adUnitAPI, inventoryGroupAPI, trackingAPI } from '../services/api';
 import '../styles/Dashboard.css';
 import CampaignChart from '../components/CampaignChart';
 import AdUnitChart from '../components/AdUnitChart';
@@ -9,11 +20,62 @@ import AccountSelector from '../components/AccountSelector';
 import Modal from '../components/Modal';
 import { useAuth } from '../contexts/AuthContext';
 
-function Dashboard() {
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
+
+const formatDateInput = (date) => {
+  const dateValue = new Date(date);
+  const year = dateValue.getFullYear();
+  const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+  const day = String(dateValue.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getDefaultDateRange = () => {
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(endDate.getDate() - 29);
+
+  return {
+    startDate: formatDateInput(startDate),
+    endDate: formatDateInput(endDate)
+  };
+};
+
+const formatNumber = (value) => {
+  return new Intl.NumberFormat('en-US').format(Number(value) || 0);
+};
+
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2
+  }).format(Number(value) || 0);
+};
+
+function Dashboard({ view = 'overview' }) {
   const { currentAccount } = useAuth();
+  const isCampaignView = view === 'campaigns';
+  const isOverviewView = !isCampaignView;
+  const defaultDateRange = useMemo(() => getDefaultDateRange(), []);
   const [campaigns, setCampaigns] = useState([]);
   const [adUnits, setAdUnits] = useState([]);
+  const [inventoryGroups, setInventoryGroups] = useState([]);
+  const [selectedGroupName, setSelectedGroupName] = useState('');
+  const [campaignSort, setCampaignSort] = useState('recent');
+  const [dateRange, setDateRange] = useState(defaultDateRange);
+  const [analytics, setAnalytics] = useState({
+    impressions: 0,
+    clicks: 0,
+    ctr: 0,
+    revenue: 0,
+    daily: [],
+    topCampaigns: [],
+    topAdUnits: []
+  });
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const selectedCampaignRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showAdUnitModal, setShowAdUnitModal] = useState(false);
@@ -23,43 +85,126 @@ function Dashboard() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
+  const fetchAdUnits = useCallback(async (campaignId) => {
+    try {
+      const params = selectedGroupName ? { groupName: selectedGroupName } : undefined;
+      const response = await adUnitAPI.getByCampaign(campaignId, params);
+      setAdUnits(response.data);
+    } catch (error) {
+      console.error('Error fetching ad units:', error);
+    }
+  }, [selectedGroupName]);
+
   const fetchCampaigns = useCallback(async () => {
     try {
+      if (!currentAccount?.id) {
+        setCampaigns([]);
+        setAdUnits([]);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
-      const response = await campaignAPI.getAll();
+      const params = selectedGroupName ? { groupName: selectedGroupName } : undefined;
+      const response = await campaignAPI.getAll(params);
       setCampaigns(response.data);
-      if (response.data.length > 0) {
-        setSelectedCampaign(response.data[0]._id);
-        fetchAdUnits(response.data[0]._id);
+
+      const nextSelectedCampaignId = response.data.some((campaign) => campaign._id === selectedCampaignRef.current)
+        ? selectedCampaignRef.current
+        : response.data[0]?._id || null;
+
+      selectedCampaignRef.current = nextSelectedCampaignId;
+      setSelectedCampaign(nextSelectedCampaignId);
+      if (nextSelectedCampaignId) {
+        fetchAdUnits(nextSelectedCampaignId);
+      } else {
+        setAdUnits([]);
       }
       setLoading(false);
     } catch (error) {
       console.error('Error fetching campaigns:', error);
       setLoading(false);
     }
-  }, []);
+  }, [currentAccount?.id, selectedGroupName, fetchAdUnits]);
 
   useEffect(() => {
     fetchCampaigns();
   }, [fetchCampaigns]);
 
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      if (!currentAccount?.id) {
+        setAnalytics({
+          impressions: 0,
+          clicks: 0,
+          ctr: 0,
+          revenue: 0,
+          daily: [],
+          topCampaigns: [],
+          topAdUnits: []
+        });
+        setAnalyticsLoading(false);
+        return;
+      }
+
+      setAnalyticsLoading(true);
+      const response = await trackingAPI.getAnalytics({
+        startDate: dateRange.startDate || undefined,
+        endDate: dateRange.endDate || undefined,
+        groupName: selectedGroupName || undefined,
+        limit: 5
+      });
+      setAnalytics({
+        impressions: response.data?.impressions || 0,
+        clicks: response.data?.clicks || 0,
+        ctr: response.data?.ctr || 0,
+        revenue: response.data?.revenue || 0,
+        daily: response.data?.daily || [],
+        topCampaigns: response.data?.topCampaigns || [],
+        topAdUnits: response.data?.topAdUnits || []
+      });
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      setAnalytics({
+        impressions: 0,
+        clicks: 0,
+        ctr: 0,
+        revenue: 0,
+        daily: [],
+        topCampaigns: [],
+        topAdUnits: []
+      });
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [currentAccount?.id, dateRange.endDate, dateRange.startDate, selectedGroupName]);
+
   useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  useEffect(() => {
+    const loadInventoryGroups = async () => {
+      try {
+        const response = await inventoryGroupAPI.getAll();
+        setInventoryGroups((response.data || []).map((group) => group.name));
+      } catch (error) {
+        console.error('Error fetching inventory groups:', error);
+      }
+    };
+
     setCampaigns([]);
     setAdUnits([]);
+    selectedCampaignRef.current = null;
     setSelectedCampaign(null);
-    fetchCampaigns();
-  }, [currentAccount?.id, fetchCampaigns]);
-
-  const fetchAdUnits = async (campaignId) => {
-    try {
-      const response = await adUnitAPI.getByCampaign(campaignId);
-      setAdUnits(response.data);
-    } catch (error) {
-      console.error('Error fetching ad units:', error);
-    }
-  };
+    setSelectedGroupName('');
+    setCampaignSort('recent');
+    setDateRange(getDefaultDateRange());
+    loadInventoryGroups();
+  }, [currentAccount?.id]);
 
   const handleCampaignSelect = (campaignId) => {
+    selectedCampaignRef.current = campaignId;
     setSelectedCampaign(campaignId);
     fetchAdUnits(campaignId);
   };
@@ -128,6 +273,7 @@ function Dashboard() {
         setSuccessMessage('Campaign deleted successfully!');
         await fetchCampaigns();
         if (selectedCampaign === campaignId) {
+          selectedCampaignRef.current = null;
           setSelectedCampaign(null);
         }
         setTimeout(() => setSuccessMessage(null), 3000);
@@ -254,16 +400,125 @@ function Dashboard() {
     }
   };
 
+  const sortedCampaigns = useMemo(() => {
+    const campaignList = [...campaigns];
+
+    switch (campaignSort) {
+      case 'name':
+        return campaignList.sort((a, b) => a.name.localeCompare(b.name));
+      case 'impressions':
+        return campaignList.sort((a, b) => (b.totalImpressions || 0) - (a.totalImpressions || 0));
+      case 'clicks':
+        return campaignList.sort((a, b) => (b.totalClicks || 0) - (a.totalClicks || 0));
+      case 'ctr':
+        return campaignList.sort((a, b) => Number(b.ctr || 0) - Number(a.ctr || 0));
+      case 'recent':
+      default:
+        return campaignList.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+  }, [campaignSort, campaigns]);
+
+  const analyticsChartData = useMemo(() => ({
+    labels: analytics.daily.map((entry) => new Date(entry.date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
+    })),
+    datasets: [
+      {
+        label: 'Impressions',
+        data: analytics.daily.map((entry) => entry.impressions || 0),
+        borderColor: '#6f98a6',
+        backgroundColor: 'rgba(111, 152, 166, 0.14)',
+        tension: 0.35,
+        fill: true,
+        pointRadius: 2,
+        pointHoverRadius: 4
+      },
+      {
+        label: 'Clicks',
+        data: analytics.daily.map((entry) => entry.clicks || 0),
+        borderColor: '#1f2b32',
+        backgroundColor: 'rgba(31, 43, 50, 0.08)',
+        tension: 0.35,
+        fill: false,
+        pointRadius: 2,
+        pointHoverRadius: 4
+      }
+    ]
+  }), [analytics.daily]);
+
+  const analyticsChartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          usePointStyle: true,
+          boxWidth: 8,
+          color: '#49545c',
+          font: {
+            family: 'Rubik'
+          }
+        }
+      },
+      tooltip: {
+        mode: 'index',
+        intersect: false
+      }
+    },
+    interaction: {
+      mode: 'index',
+      intersect: false
+    },
+    scales: {
+      x: {
+        grid: {
+          display: false
+        },
+        ticks: {
+          color: '#67757e',
+          font: {
+            family: 'Rubik'
+          }
+        }
+      },
+      y: {
+        beginAtZero: true,
+        grid: {
+          color: 'rgba(124, 170, 184, 0.12)'
+        },
+        ticks: {
+          color: '#67757e',
+          font: {
+            family: 'Rubik'
+          }
+        }
+      }
+    }
+  }), []);
+
   if (loading) return <div className="loading">Loading...</div>;
 
   return (
     <div className="dashboard">
       <header className="dashboard-header">
-        <h1>DestinAsian Ad Server Dashboard</h1>
-        <AccountSelector />
-        <button className="btn btn-primary" onClick={handleOpenCreateModal}>
-          + New Campaign
-        </button>
+        <div>
+          <h1>{isCampaignView ? 'Campaigns' : 'Dashboard'}</h1>
+          <p className="dashboard-header-copy">
+            {isCampaignView
+              ? 'Manage campaigns and ad units without leaving the main workflow.'
+              : 'Overview of delivery, engagement, and account-level performance.'}
+          </p>
+        </div>
+        <div className="dashboard-header-actions">
+          <AccountSelector />
+          {isCampaignView && (
+            <button className="btn btn-primary" onClick={handleOpenCreateModal}>
+              + New Campaign
+            </button>
+          )}
+        </div>
       </header>
 
       {successMessage && (
@@ -278,11 +533,137 @@ function Dashboard() {
         </div>
       )}
 
+      {isOverviewView && (
+      <section className="dashboard-overview">
+        <div className="dashboard-overview-header">
+          <div>
+            <h2>Overview</h2>
+            <p>Check performance, narrow the date range, and keep campaign browsing straightforward.</p>
+          </div>
+          <div className="dashboard-filter-grid">
+            <div className="dashboard-filter-field">
+              <label htmlFor="dashboard-start-date" className="account-list-label">Start Date</label>
+              <input
+                id="dashboard-start-date"
+                type="date"
+                className="dashboard-date-input"
+                value={dateRange.startDate}
+                max={dateRange.endDate || undefined}
+                onChange={(e) => setDateRange((current) => ({ ...current, startDate: e.target.value }))}
+              />
+            </div>
+            <div className="dashboard-filter-field">
+              <label htmlFor="dashboard-end-date" className="account-list-label">End Date</label>
+              <input
+                id="dashboard-end-date"
+                type="date"
+                className="dashboard-date-input"
+                value={dateRange.endDate}
+                min={dateRange.startDate || undefined}
+                onChange={(e) => setDateRange((current) => ({ ...current, endDate: e.target.value }))}
+              />
+            </div>
+            <div className="dashboard-filter-field">
+              <label htmlFor="inventory-group-filter" className="account-list-label">Inventory Group</label>
+              <select
+                id="inventory-group-filter"
+                className="account-select dashboard-filter-select"
+                value={selectedGroupName}
+                onChange={(e) => setSelectedGroupName(e.target.value)}
+              >
+                <option value="">All Groups</option>
+                {inventoryGroups.map((groupName) => (
+                  <option key={groupName} value={groupName}>
+                    {groupName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="dashboard-kpi-grid">
+          <div className="stat-card dashboard-kpi-card">
+            <h4>Impressions</h4>
+            <p className="stat-value">{analyticsLoading ? '...' : formatNumber(analytics.impressions)}</p>
+          </div>
+          <div className="stat-card dashboard-kpi-card">
+            <h4>Clicks</h4>
+            <p className="stat-value">{analyticsLoading ? '...' : formatNumber(analytics.clicks)}</p>
+          </div>
+          <div className="stat-card dashboard-kpi-card">
+            <h4>CTR</h4>
+            <p className="stat-value">{analyticsLoading ? '...' : `${Number(analytics.ctr || 0).toFixed(2)}%`}</p>
+          </div>
+          <div className="stat-card dashboard-kpi-card">
+            <h4>Revenue</h4>
+            <p className="stat-value">{analyticsLoading ? '...' : formatCurrency(analytics.revenue)}</p>
+          </div>
+        </div>
+
+        <div className="dashboard-chart-panel">
+          <div className="dashboard-chart-header">
+            <div>
+              <h3>Daily Performance</h3>
+              <p>Uses the existing analytics endpoint with your selected date range and inventory group.</p>
+            </div>
+            <div className="dashboard-chart-meta">
+              <span>{analytics.topCampaigns[0]?.name ? `Top Campaign: ${analytics.topCampaigns[0].name}` : 'No campaign data yet'}</span>
+              <span>{analytics.topAdUnits[0]?.name ? `Top Ad Unit: ${analytics.topAdUnits[0].name}` : 'No ad unit data yet'}</span>
+            </div>
+          </div>
+          <div className="dashboard-chart-canvas">
+            {analyticsLoading ? (
+              <div className="no-data">Loading analytics...</div>
+            ) : analytics.daily.length > 0 ? (
+              <Line data={analyticsChartData} options={analyticsChartOptions} />
+            ) : (
+              <div className="no-data">No analytics yet for this date range.</div>
+            )}
+          </div>
+        </div>
+      </section>
+      )}
+
+      {isCampaignView && (
       <div className="dashboard-container">
         <div className="sidebar">
-          <h2>Campaigns</h2>
+          <h2>List of Campaign</h2>
+          <div className="dashboard-sidebar-filters">
+            <div className="dashboard-filter-field">
+              <label htmlFor="campaign-group-filter" className="account-list-label">Inventory Group</label>
+              <select
+                id="campaign-group-filter"
+                className="account-select dashboard-filter-select"
+                value={selectedGroupName}
+                onChange={(e) => setSelectedGroupName(e.target.value)}
+              >
+                <option value="">All Groups</option>
+                {inventoryGroups.map((groupName) => (
+                  <option key={groupName} value={groupName}>
+                    {groupName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="dashboard-filter-field">
+              <label htmlFor="campaign-sort" className="account-list-label">Sort Campaigns</label>
+              <select
+                id="campaign-sort"
+                className="account-select dashboard-filter-select"
+                value={campaignSort}
+                onChange={(e) => setCampaignSort(e.target.value)}
+              >
+                <option value="recent">Newest First</option>
+                <option value="name">Name A-Z</option>
+                <option value="impressions">Most Impressions</option>
+                <option value="clicks">Most Clicks</option>
+                <option value="ctr">Highest CTR</option>
+              </select>
+            </div>
+          </div>
           <ul className="campaign-list">
-            {campaigns.map((campaign) => (
+            {sortedCampaigns.map((campaign) => (
               <li
                 key={campaign._id}
                 className={`campaign-item ${selectedCampaign === campaign._id ? 'active' : ''}`}
@@ -417,7 +798,9 @@ function Dashboard() {
           )}
         </div>
       </div>
+      )}
 
+      {isCampaignView && (
       <Modal
         isOpen={showCampaignModal}
         title={editingCampaign ? 'Edit Campaign' : 'Create New Campaign'}
@@ -430,7 +813,9 @@ function Dashboard() {
           onCancel={handleCloseCampaignModal}
         />
       </Modal>
+      )}
 
+      {isCampaignView && (
       <Modal
         isOpen={showAdUnitModal}
         title={editingAdUnit ? 'Edit Ad Unit' : 'Create New Ad Unit'}
@@ -445,6 +830,7 @@ function Dashboard() {
           onCancel={handleCloseAdUnitModal}
         />
       </Modal>
+      )}
     </div>
   );
 }

@@ -24,11 +24,13 @@ const trackingRoutes = require('./routes/tracking');
 const authRoutes = require('./routes/auth');
 const accountRoutes = require('./routes/accounts');
 const inventoryRoutes = require('./routes/inventories');
+const inventoryGroupRoutes = require('./routes/inventoryGroups');
 const serveRoutes = require('./routes/serve');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/inventories', inventoryRoutes);
+app.use('/api/inventory-groups', inventoryGroupRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/ad-units', adUnitRoutes);
 app.use('/api/tracking', trackingRoutes);

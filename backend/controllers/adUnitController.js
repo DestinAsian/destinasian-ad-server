@@ -5,6 +5,30 @@ const Inventory = require('../models/Inventory');
 const Impression = require('../models/Impression');
 const Click = require('../models/Click');
 
+const normalizeGroupName = (value) => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || null;
+};
+
+const resolveGroupedInventoryIds = async (userId, accountId, groupName) => {
+  const normalizedGroupName = normalizeGroupName(groupName);
+  if (!normalizedGroupName) {
+    return null;
+  }
+
+  const groupedInventories = await Inventory.find({
+    user: userId,
+    account: accountId,
+    groupName: normalizedGroupName
+  }).select('_id');
+
+  return groupedInventories.map((inventory) => inventory._id);
+};
+
 /**
  * Calculate ad unit stats from tracking data
  */
@@ -88,7 +112,18 @@ exports.createAdUnit = async (req, res) => {
 
 exports.getAllAdUnits = async (req, res) => {
   try {
-    const adUnits = await AdUnit.find({ user: req.user.id, account: req.user.accountId })
+    const filter = { user: req.user.id, account: req.user.accountId };
+    const groupedInventoryIds = await resolveGroupedInventoryIds(req.user.id, req.user.accountId, req.query.groupName);
+
+    if (groupedInventoryIds) {
+      if (groupedInventoryIds.length === 0) {
+        return res.json([]);
+      }
+
+      filter.inventory = { $in: groupedInventoryIds };
+    }
+
+    const adUnits = await AdUnit.find(filter)
       .populate('campaign')
       .populate('inventory');
     
@@ -222,7 +257,18 @@ exports.getAdUnitStats = async (req, res) => {
 
 exports.getAdUnitByCampaign = async (req, res) => {
   try {
-    const adUnits = await AdUnit.find({ user: req.user.id, account: req.user.accountId, campaign: req.params.campaignId })
+    const filter = { user: req.user.id, account: req.user.accountId, campaign: req.params.campaignId };
+    const groupedInventoryIds = await resolveGroupedInventoryIds(req.user.id, req.user.accountId, req.query.groupName);
+
+    if (groupedInventoryIds) {
+      if (groupedInventoryIds.length === 0) {
+        return res.json([]);
+      }
+
+      filter.inventory = { $in: groupedInventoryIds };
+    }
+
+    const adUnits = await AdUnit.find(filter)
       .populate('inventory');
     
     // Enrich ad units with real-time stats from tracking data

@@ -34,7 +34,7 @@ axiosInstance.interceptors.response.use(
 );
 
 export const campaignAPI = {
-  getAll: () => axiosInstance.get('/campaigns'),
+  getAll: (params) => axiosInstance.get('/campaigns', { params }),
   getById: (id) => axiosInstance.get(`/campaigns/${id}`),
   create: (data) => axiosInstance.post('/campaigns', data),
   update: (id, data) => axiosInstance.put(`/campaigns/${id}`, data),
@@ -44,25 +44,37 @@ export const campaignAPI = {
 };
 
 export const adUnitAPI = {
-  getAll: () => axiosInstance.get('/ad-units'),
+  getAll: (params) => axiosInstance.get('/ad-units', { params }),
   getById: (id) => axiosInstance.get(`/ad-units/${id}`),
   create: (data) => axiosInstance.post('/ad-units', data),
   update: (id, data) => axiosInstance.put(`/ad-units/${id}`, data),
   delete: (id) => axiosInstance.delete(`/ad-units/${id}`),
   getStats: (id) => axiosInstance.get(`/ad-units/${id}/stats`),
-  getByCampaign: (campaignId) => axiosInstance.get(`/ad-units/campaign/${campaignId}`),
+  getByCampaign: (campaignId, params) => axiosInstance.get(`/ad-units/campaign/${campaignId}`, { params }),
   updateStatus: (id, status) => axiosInstance.put(`/ad-units/${id}`, { status })
 };
 
 export const trackingAPI = {
-  getStats: (startDate, endDate) => 
-    axiosInstance.get('/tracking/stats', { 
-      params: { startDate, endDate } 
-    }),
-  getAnalytics: (startDate, endDate, limit) =>
-    axiosInstance.get('/tracking/analytics', {
-      params: { startDate, endDate, limit }
-    })
+  getStats: (startDateOrParams, endDate, inventoryGroup, campaignId) => {
+    const params = typeof startDateOrParams === 'object'
+      ? {
+          ...startDateOrParams,
+          inventoryGroup: startDateOrParams.inventoryGroup || startDateOrParams.groupName
+        }
+      : { startDate: startDateOrParams, endDate, inventoryGroup, campaignId };
+
+    return axiosInstance.get('/tracking/stats', { params });
+  },
+  getAnalytics: (startDateOrParams, endDate, limit, groupName) => {
+    const params = typeof startDateOrParams === 'object'
+      ? {
+          ...startDateOrParams,
+          inventoryGroup: startDateOrParams.inventoryGroup || startDateOrParams.groupName
+        }
+      : { startDate: startDateOrParams, endDate, limit, inventoryGroup: groupName };
+
+    return axiosInstance.get('/tracking/analytics', { params });
+  }
 };
 
 export const accountAPI = {
@@ -74,9 +86,16 @@ export const accountAPI = {
 };
 
 export const inventoryAPI = {
-  getAll: () => axiosInstance.get('/inventories'),
+  getAll: (params) => axiosInstance.get('/inventories', { params }),
   getById: (id) => axiosInstance.get(`/inventories/${id}`),
   create: (data) => axiosInstance.post('/inventories', data),
   update: (id, data) => axiosInstance.put(`/inventories/${id}`, data),
   delete: (id) => axiosInstance.delete(`/inventories/${id}`)
+};
+
+export const inventoryGroupAPI = {
+  getAll: () => axiosInstance.get('/inventory-groups'),
+  create: (data) => axiosInstance.post('/inventory-groups', data),
+  update: (id, data) => axiosInstance.put(`/inventory-groups/${id}`, data),
+  delete: (id) => axiosInstance.delete(`/inventory-groups/${id}`)
 };

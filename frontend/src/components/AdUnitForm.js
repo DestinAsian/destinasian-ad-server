@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { inventoryAPI } from '../services/api';
 
+const groupInventories = (inventories) => {
+  return inventories.reduce((groups, inventory) => {
+    const key = inventory.groupName || 'Ungrouped';
+    if (!groups[key]) {
+      groups[key] = [];
+    }
+    groups[key].push(inventory);
+    return groups;
+  }, {});
+};
+
 function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCancel }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -16,6 +27,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
   const [imageError, setImageError] = useState(null);
   const [inventories, setInventories] = useState([]);
   const [inventoryError, setInventoryError] = useState(null);
+  const groupedInventories = groupInventories(inventories);
 
   useEffect(() => {
     // Convert ISO datetime to datetime-local format (YYYY-MM-DDTHH:mm)
@@ -285,10 +297,14 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
             className={errors.inventoryId ? 'error' : ''}
           >
             <option value="">Select inventory</option>
-            {inventories.map((inv) => (
-              <option key={inv._id} value={inv._id}>
-                {inv.name} ({inv.key})
-              </option>
+            {Object.entries(groupedInventories).map(([groupName, groupItems]) => (
+              <optgroup key={groupName} label={groupName}>
+                {groupItems.map((inv) => (
+                  <option key={inv._id} value={inv._id}>
+                    {inv.name} ({inv.key})
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
           {inventoryError && <span className="error-message">{inventoryError}</span>}

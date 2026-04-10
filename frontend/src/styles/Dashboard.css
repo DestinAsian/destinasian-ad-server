@@ -1135,11 +1135,13 @@
 }
 
 .dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
   padding: 34px 34px 18px;
   background: transparent;
   box-shadow: none;
   color: var(--ink-strong);
-  align-items: flex-start;
 }
 
 .dashboard-header h1 {
@@ -1152,12 +1154,140 @@
   color: var(--ink-strong);
 }
 
+.dashboard-header-copy {
+  margin: 10px 0 0;
+  color: var(--ink-muted);
+  max-width: 640px;
+}
+
+.dashboard-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
 .dashboard-container {
   display: grid;
   grid-template-columns: 310px minmax(0, 1fr);
   gap: 26px;
   padding: 0 34px 34px;
   overflow: visible;
+}
+
+.dashboard-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0 34px 28px;
+}
+
+.dashboard-overview-header,
+.dashboard-chart-panel {
+  background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-panel) 100%);
+  border: 1px solid var(--line-soft);
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
+}
+
+.dashboard-overview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 26px 28px;
+}
+
+.dashboard-overview-header h2,
+.dashboard-chart-header h3 {
+  margin: 0 0 8px;
+  font-family: 'EB Garamond', serif;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.dashboard-overview-header h2 {
+  font-size: 2rem;
+}
+
+.dashboard-overview-header p,
+.dashboard-chart-header p,
+.dashboard-chart-meta span {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.dashboard-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.dashboard-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dashboard-sidebar-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.dashboard-date-input {
+  font-family: 'Rubik', sans-serif;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink-body);
+}
+
+.dashboard-date-input:focus {
+  outline: none;
+  border-color: rgba(124, 170, 184, 0.75);
+  box-shadow: 0 0 0 3px rgba(199, 224, 231, 0.42);
+}
+
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.dashboard-kpi-card {
+  min-height: 136px;
+}
+
+.dashboard-chart-panel {
+  padding: 24px 28px 20px;
+}
+
+.dashboard-chart-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.dashboard-chart-header h3 {
+  font-size: 1.8rem;
+}
+
+.dashboard-chart-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  text-align: right;
+  font-size: 0.84rem;
+}
+
+.dashboard-chart-canvas {
+  height: 320px;
 }
 
 .sidebar,
@@ -1195,6 +1325,15 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.dashboard-group-filter {
+  margin-bottom: 18px;
+}
+
+.dashboard-filter-select {
+  width: 100%;
+  min-width: 0;
 }
 
 .campaign-list li,
@@ -1519,14 +1658,14 @@
 }
 
 .btn-icon {
-  width: 34px;
-  height: 34px;
+  width: 24px;
+  height: 24px;
   padding: 0;
 }
 
 .btn-icon-small {
-  min-width: 28px;
-  height: 28px;
+  min-width: 16px;
+  height: 16px;
   padding: 0 8px;
 }
 
@@ -1669,7 +1808,6 @@
 }
 
 .account-selector {
-  min-width: 300px;
   margin: 0;
   padding: 16px 18px;
   background: rgba(247, 249, 248, 0.72);
@@ -1746,6 +1884,26 @@
 }
 
 @media (max-width: 1024px) {
+  .dashboard-overview {
+    padding: 0 20px 24px;
+  }
+
+  .dashboard-overview-header,
+  .dashboard-chart-header {
+    flex-direction: column;
+  }
+
+  .dashboard-filter-grid,
+  .dashboard-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .dashboard-chart-meta {
+    align-items: flex-start;
+    text-align: left;
+  }
+
   .dashboard-container {
     grid-template-columns: 1fr;
     padding: 0 20px 24px;
@@ -1757,6 +1915,11 @@
     align-items: flex-start;
   }
 
+  .dashboard-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .account-selector {
     width: 100%;
     min-width: 0;
@@ -1764,5 +1927,21 @@
 
   .alert {
     margin: 0 20px 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-filter-grid,
+  .dashboard-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-overview-header,
+  .dashboard-chart-panel {
+    padding: 20px;
+  }
+
+  .dashboard-chart-canvas {
+    height: 260px;
   }
 }
