@@ -84,7 +84,7 @@
 
 .inventory-group-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   border: 1px solid #eee;
@@ -122,8 +122,90 @@
   width: 100%;
 }
 
+.inventory-group-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.inventory-group-edit-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .inventory-edit-form {
   grid-template-columns: repeat(5, minmax(0, 1fr)) auto auto auto;
+}
+
+.inventory-group-edit-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inventory-group-picker {
+  border: 1px solid #e7e3de;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+}
+
+.inventory-group-picker-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.inventory-group-picker-header strong {
+  color: #222;
+  font-size: 14px;
+}
+
+.inventory-group-picker-header span {
+  font-size: 12px;
+  color: #666;
+}
+
+.inventory-group-picker-list {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.inventory-group-picker-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #ece8e2;
+  border-radius: 10px;
+  background: #fcfbf9;
+}
+
+.inventory-group-picker-item input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.inventory-group-picker-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inventory-group-picker-name {
+  font-weight: 600;
+  color: #222;
+}
+
+.inventory-group-picker-meta {
+  font-size: 12px;
+  color: #666;
 }
 
 .inventory-group-section-header {
@@ -178,14 +260,6 @@
   gap: 12px;
 }
 
-.inventory-select-all {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #555;
-}
-
 .inventory-item {
   background: #fff;
   border: 1px solid #eee;
@@ -197,30 +271,12 @@
   gap: 16px;
 }
 
-.inventory-item.is-selected {
-  border-color: #8ec5d6;
-  box-shadow: 0 0 0 3px rgba(142, 197, 214, 0.15);
-}
-
 .inventory-main {
   display: flex;
   align-items: flex-start;
   gap: 14px;
   flex: 1;
   min-width: 0;
-}
-
-.inventory-checkbox {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding-top: 4px;
-}
-
-.inventory-checkbox input,
-.inventory-select-all input {
-  width: 16px;
-  height: 16px;
 }
 
 .inventory-status {
@@ -275,7 +331,7 @@
 @media (max-width: 1100px) {
   .inventory-group-form,
   .inventory-form,
-  .inventory-group-edit-form,
+  .inventory-group-edit-fields,
   .inventory-edit-form {
     grid-template-columns: 1fr;
   }

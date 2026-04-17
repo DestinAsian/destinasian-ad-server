@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createImpressionTracker, getCreativeType, renderAdCreative } = require('../ad-client.js');
+const { createImpressionTracker, getCreativeType, renderAdCreative, resolveApiBase } = require('../ad-client.js');
 
 function createMockElement(tagName) {
   return {
@@ -157,4 +157,36 @@ test('renderAdCreative renders consistent wrappers for image, html, and iframe c
   assert.equal(iframeContainer.children[1].tagName, 'BUTTON');
 
   delete global.document;
+});
+
+test('resolveApiBase prefers explicit window override', () => {
+  const originalApiBase = global.AD_SERVER_API_BASE;
+  global.AD_SERVER_API_BASE = 'https://ads.destinasian.com';
+
+  assert.equal(resolveApiBase(), 'https://ads.destinasian.com/api');
+
+  delete global.AD_SERVER_API_BASE;
+  if (originalApiBase) {
+    global.AD_SERVER_API_BASE = originalApiBase;
+  }
+});
+
+test('resolveApiBase derives api origin from current ad-client script', () => {
+  const originalDocument = global.document;
+  const originalLocation = global.location;
+
+  global.document = {
+    currentScript: {
+      src: 'https://ads.destinasian.com/ad-client.js',
+      dataset: {}
+    }
+  };
+  global.location = {
+    href: 'https://test.destinasian.com/article'
+  };
+
+  assert.equal(resolveApiBase(), 'https://ads.destinasian.com/api');
+
+  global.document = originalDocument;
+  global.location = originalLocation;
 });

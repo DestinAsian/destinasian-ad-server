@@ -10,13 +10,13 @@ function Inventory() {
   const [successMessage, setSuccessMessage] = useState(null);
   const [inventorySort, setInventorySort] = useState('recent');
   const [collapsedGroups, setCollapsedGroups] = useState({});
-  const [selectedInventoryIds, setSelectedInventoryIds] = useState({});
   const [form, setForm] = useState({ name: '', key: '', description: '', groupName: '', rotationMode: 'single' });
   const [groupForm, setGroupForm] = useState({ name: '', description: '', sortOrder: '' });
   const [editingId, setEditingId] = useState(null);
   const [editingGroupId, setEditingGroupId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', key: '', description: '', groupName: '', rotationMode: 'single', isActive: true });
   const [editGroupForm, setEditGroupForm] = useState({ name: '', description: '', sortOrder: '' });
+  const [editGroupInventoryIds, setEditGroupInventoryIds] = useState([]);
 
   const loadData = async () => {
     try {
@@ -194,11 +194,17 @@ function Inventory() {
       description: group.description || '',
       sortOrder: group.sortOrder ?? ''
     });
+    setEditGroupInventoryIds(
+      inventories
+        .filter((inventory) => inventory.groupName === group.name)
+        .map((inventory) => inventory._id)
+    );
   };
 
   const cancelEditGroup = () => {
     setEditingGroupId(null);
     setEditGroupForm({ name: '', description: '', sortOrder: '' });
+    setEditGroupInventoryIds([]);
   };
 
   const handleUpdateGroup = async (e) => {
@@ -206,13 +212,35 @@ function Inventory() {
     setError(null);
 
     try {
+      const currentGroup = groups.find((group) => group._id === editingGroupId);
+      const previousGroupName = currentGroup?.name || '';
+      const nextGroupName = (editGroupForm.name || '').trim();
+      const currentGroupInventoryIds = inventories
+        .filter((inventory) => inventory.groupName === previousGroupName)
+        .map((inventory) => inventory._id);
+      const removedInventoryIds = currentGroupInventoryIds.filter((inventoryId) => !editGroupInventoryIds.includes(inventoryId));
+
+      if (removedInventoryIds.length > 0) {
+        setError(`To move inventory out of "${previousGroupName}", open the destination group and check it there first.`);
+        return;
+      }
+
       await inventoryGroupAPI.update(editingGroupId, {
-        name: editGroupForm.name,
+        name: nextGroupName,
         description: editGroupForm.description,
         sortOrder: editGroupForm.sortOrder === '' ? 0 : Number(editGroupForm.sortOrder)
       });
 
+      const inventoriesToMove = inventories.filter(
+        (inventory) => editGroupInventoryIds.includes(inventory._id) && inventory.groupName !== previousGroupName
+      );
+
+      await Promise.all(
+        inventoriesToMove.map((inventory) => inventoryAPI.update(inventory._id, { groupName: nextGroupName }))
+      );
+
       setEditingGroupId(null);
+      setEditGroupInventoryIds([]);
       setSuccessMessage('Inventory group updated');
       setTimeout(() => setSuccessMessage(null), 2500);
       await loadData();
@@ -334,30 +362,19 @@ function Inventory() {
     }
   };
 
+  const toggleEditGroupInventory = (inventoryId) => {
+    setEditGroupInventoryIds((current) => (
+      current.includes(inventoryId)
+        ? current.filter((id) => id !== inventoryId)
+        : [...current, inventoryId]
+    ));
+  };
+
   const toggleGroupCollapse = (groupId) => {
     setCollapsedGroups((current) => ({
       ...current,
       [groupId]: !current[groupId]
     }));
-  };
-
-  const toggleInventorySelection = (inventoryId) => {
-    setSelectedInventoryIds((current) => ({
-      ...current,
-      [inventoryId]: !current[inventoryId]
-    }));
-  };
-
-  const toggleGroupSelection = (groupInventories) => {
-    const allSelected = groupInventories.length > 0 && groupInventories.every((inventory) => selectedInventoryIds[inventory._id]);
-
-    setSelectedInventoryIds((current) => {
-      const nextState = { ...current };
-      groupInventories.forEach((inventory) => {
-        nextState[inventory._id] = !allSelected;
-      });
-      return nextState;
-    });
   };
 
   if (loading) return <div className="loading">Loading inventory...</div>;
@@ -421,31 +438,61 @@ function Inventory() {
         <div className="inventory-group-list">
           {groups.map((group) => {
             const inventoryCount = inventories.filter((inventory) => inventory.groupName === group.name).length;
+            const groupInventories = [...inventories]
+              .sort((a, b) => a.name.localeCompare(b.name));
 
             return (
               <div key={group._id} className="inventory-group-item">
                 {editingGroupId === group._id ? (
                   <form onSubmit={handleUpdateGroup} className="inventory-group-edit-form">
-                    <input
-                      type="text"
-                      value={editGroupForm.name}
-                      onChange={(e) => setEditGroupForm({ ...editGroupForm, name: e.target.value })}
-                      required
-                    />
-                    <input
-                      type="text"
-                      value={editGroupForm.description}
-                      onChange={(e) => setEditGroupForm({ ...editGroupForm, description: e.target.value })}
-                      placeholder="Description"
-                    />
-                    <input
-                      type="number"
-                      value={editGroupForm.sortOrder}
-                      onChange={(e) => setEditGroupForm({ ...editGroupForm, sortOrder: e.target.value })}
-                      min="0"
-                    />
-                    <button type="submit" className="btn btn-primary btn-sm">Save</button>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEditGroup}>Cancel</button>
+                    <div className="inventory-group-edit-fields">
+                      <input
+                        type="text"
+                        value={editGroupForm.name}
+                        onChange={(e) => setEditGroupForm({ ...editGroupForm, name: e.target.value })}
+                        required
+                      />
+                      <input
+                        type="text"
+                        value={editGroupForm.description}
+                        onChange={(e) => setEditGroupForm({ ...editGroupForm, description: e.target.value })}
+                        placeholder="Description"
+                      />
+                      <input
+                        type="number"
+                        value={editGroupForm.sortOrder}
+                        onChange={(e) => setEditGroupForm({ ...editGroupForm, sortOrder: e.target.value })}
+                        min="0"
+                      />
+                    </div>
+                    <div className="inventory-group-picker">
+                      <div className="inventory-group-picker-header">
+                        <strong>Choose Inventories For This Group</strong>
+                        <span>Checked inventories will belong to {editGroupForm.name || group.name}.</span>
+                        <span>To move an inventory out, open its destination group and check it there.</span>
+                      </div>
+                      <div className="inventory-group-picker-list">
+                        {groupInventories.map((inventory) => (
+                          <label key={inventory._id} className="inventory-group-picker-item">
+                            <input
+                              type="checkbox"
+                              checked={editGroupInventoryIds.includes(inventory._id)}
+                              onChange={() => toggleEditGroupInventory(inventory._id)}
+                            />
+                            <span className="inventory-group-picker-text">
+                              <span className="inventory-group-picker-name">{inventory.name}</span>
+                              <span className="inventory-group-picker-meta">
+                                {inventory.key} · Currently in {inventory.groupName}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="inventory-group-edit-actions">
+                      <button type="submit" className="btn btn-primary btn-sm">Save</button>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={cancelEditGroup}>Cancel</button>
+                    </div>
                   </form>
                 ) : (
                   <>
@@ -533,22 +580,9 @@ function Inventory() {
 
             {!collapsedGroups[group._id] && (
               <div className="inventory-list">
-                {group.inventories.length > 0 && (
-                  <label className="inventory-select-all">
-                    <input
-                      type="checkbox"
-                      checked={group.inventories.length > 0 && group.inventories.every((inventory) => selectedInventoryIds[inventory._id])}
-                      onChange={() => toggleGroupSelection(group.inventories)}
-                    />
-                    Select all in {group.name}
-                  </label>
-                )}
-              {group.inventories.length === 0 && <p className="no-data">No inventory in this group yet.</p>}
-              {group.inventories.map((inventory) => (
-                <div
-                  key={inventory._id}
-                  className={`inventory-item ${selectedInventoryIds[inventory._id] ? 'is-selected' : ''}`}
-                >
+                {group.inventories.length === 0 && <p className="no-data">No inventory in this group yet.</p>}
+                {group.inventories.map((inventory) => (
+                <div key={inventory._id} className="inventory-item">
                   {editingId === inventory._id ? (
                     <form onSubmit={handleUpdate} className="inventory-edit-form">
                       <input
@@ -599,13 +633,6 @@ function Inventory() {
                   ) : (
                     <>
                       <div className="inventory-main">
-                        <label className="inventory-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(selectedInventoryIds[inventory._id])}
-                            onChange={() => toggleInventorySelection(inventory._id)}
-                          />
-                        </label>
                         <div className="inventory-info">
                           <div className="inventory-name">{inventory.name}</div>
                           <div className="inventory-key">Key: {inventory.key}</div>

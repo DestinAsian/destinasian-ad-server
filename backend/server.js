@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -8,14 +9,22 @@ const app = express();
 // Import scheduled jobs
 const { initializeCampaignStatsJob } = require('./jobs/updateCampaignStats');
 
+const corsOriginHandler = (origin, callback) => {
+  callback(null, true);
+};
+
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true
+  origin: corsOriginHandler,
+  credentials: false
 }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+app.get('/ad-client.js', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '..', 'ad-client.js'));
+});
 
 // Routes
 const campaignRoutes = require('./routes/campaigns');
@@ -68,6 +77,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ad-server')
 
 // ❗ FIX #2 — bind to localhost only (security)
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`Ad Server backend running on port ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => {
+  console.log(`Ad Server backend running on ${HOST}:${PORT}`);
 });

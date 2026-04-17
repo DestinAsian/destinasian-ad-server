@@ -21,11 +21,73 @@
     root.AdServer = exported;
 
     if (root.document) {
-      root.document.addEventListener('DOMContentLoaded', exported.autoLoad);
+      if (root.document.readyState === 'loading') {
+        root.document.addEventListener('DOMContentLoaded', exported.autoLoad);
+      } else {
+        exported.autoLoad();
+      }
     }
   }
 })(typeof window !== 'undefined' ? window : globalThis, function(root) {
-  const API_BASE = 'http://localhost:5001/api';
+  function normalizeApiBase(value) {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const trimmed = value.trim().replace(/\/+$/, '');
+    if (!trimmed) {
+      return null;
+    }
+
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
+
+  function getCurrentScript() {
+    if (!root.document) {
+      return null;
+    }
+
+    if (root.document.currentScript) {
+      return root.document.currentScript;
+    }
+
+    if (typeof root.document.getElementsByTagName !== 'function') {
+      return null;
+    }
+
+    const scripts = Array.from(root.document.getElementsByTagName('script'));
+    return scripts.reverse().find((script) => typeof script.src === 'string' && script.src.includes('ad-client.js')) || null;
+  }
+
+  function resolveApiBase() {
+    const currentScript = getCurrentScript();
+    const datasetApiBase = normalizeApiBase(currentScript?.dataset?.apiBase);
+    if (datasetApiBase) {
+      return datasetApiBase;
+    }
+
+    const explicitApiBase = normalizeApiBase(root.AD_SERVER_API_BASE || root.AD_SERVER_BASE_URL);
+    if (explicitApiBase) {
+      return explicitApiBase;
+    }
+
+    if (currentScript?.src) {
+      try {
+        const scriptUrl = new URL(currentScript.src, root.location?.href);
+        return `${scriptUrl.origin}/api`;
+      } catch (error) {
+        console.error('[AdServer] Error resolving API base from script URL:', error);
+      }
+    }
+
+    if (root.location?.origin) {
+      return `${root.location.origin.replace(/\/+$/, '')}/api`;
+    }
+
+    return 'http://localhost:5001/api';
+  }
+
+  const API_BASE = resolveApiBase();
   const ads = {};
 
   function setContainerStyles(container, width) {
@@ -398,6 +460,7 @@
     createImpressionTracker,
     getCreativeType,
     renderAdCreative,
-    version: '1.1.0'
+    resolveApiBase,
+    version: '1.2.0'
   };
 });
