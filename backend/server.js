@@ -8,6 +8,7 @@ const app = express();
 
 // Import scheduled jobs
 const { initializeCampaignStatsJob } = require('./jobs/updateCampaignStats');
+const { initializeEndDateEnforcementJob } = require('./jobs/enforceEndDates');
 
 const corsOriginHandler = (origin, callback) => {
   callback(null, true);
@@ -33,17 +34,17 @@ const trackingRoutes = require('./routes/tracking');
 const authRoutes = require('./routes/auth');
 const accountRoutes = require('./routes/accounts');
 const inventoryRoutes = require('./routes/inventories');
-const inventoryGroupRoutes = require('./routes/inventoryGroups');
 const serveRoutes = require('./routes/serve');
+const userRoutes = require('./routes/users');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/inventories', inventoryRoutes);
-app.use('/api/inventory-groups', inventoryGroupRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/ad-units', adUnitRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/serve', serveRoutes);
+app.use('/api/users', userRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -65,17 +66,16 @@ app.get('/health', (req, res) => {
   res.json({ status: 'Ad Server is running' });
 });
 
-// ❗ FIX #1 — correct env name
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ad-server')
   .then(() => {
     console.log('MongoDB connected');
 
     // Initialize scheduled jobs after DB connection
     initializeCampaignStatsJob();
+    initializeEndDateEnforcementJob();
   })
   .catch(err => console.log('MongoDB connection error:', err));
 
-// ❗ FIX #2 — bind to localhost only (security)
 const PORT = process.env.PORT || 5001;
 const HOST = process.env.HOST || '0.0.0.0';
 app.listen(PORT, HOST, () => {

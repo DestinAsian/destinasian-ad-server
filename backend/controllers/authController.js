@@ -2,22 +2,159 @@ const User = require('../models/User');
 const Account = require('../models/Account');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
+const {
+  generateTwoFactorSecret,
+  verifyTotpToken,
+  buildQrCodeDataUrl,
+  normalizeTotpToken
+} = require('../utils/twoFactor');
 
-// Generate JWT Token
-const generateToken = (id, accountId) => {
-  return jwt.sign({ id, accountId }, process.env.JWT_SECRET || 'your-secret-key-change-in-production', {
-    expiresIn: process.env.JWT_EXPIRE || '7d'
-  });
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_EXPIRE = process.env.JWT_EXPIRE || '7d';
+const OWNER_SETUP_EXPIRE = process.env.OWNER_SETUP_TOKEN_EXPIRE || '1h';
+const TWO_FACTOR_CHALLENGE_EXPIRE = process.env.TWO_FACTOR_CHALLENGE_EXPIRE || '10m';
+
+const MAX_2FA_ATTEMPTS = Number(process.env.MAX_2FA_ATTEMPTS || 5);
+const TWO_FACTOR_LOCK_WINDOW_MS = Number(process.env.TWO_FACTOR_LOCK_WINDOW_MS || 5 * 60 * 1000);
+const twoFactorAttempts = new Map();
+
+const normalizeEmail = (email) => (typeof email === 'string' ? email.trim().toLowerCase() : '');
+const ownerRoleQuery = { role: { $in: ['owner', 'admin'] } };
+const normalizeRole = (role) => {
+  if (role === 'owner' || role === 'admin') return 'owner';
+  return 'editor';
+};
+
+const isOwnerUser = (user) => normalizeRole(user.role) === 'owner';
+
+const toSafeUser = (user) => {
+  const role = normalizeRole(user.role);
+  const twoFactorEnabled = Boolean(user.twoFactorEnabled);
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role,
+    twoFactorEnabled,
+    twoFactorSetupRequired: role === 'owner' && !twoFactorEnabled
+  };
+};
+
+const generateAccessToken = (id, accountId, tokenVersion, extraPayload = {}, expiresIn = JWT_EXPIRE) => {
+  return jwt.sign(
+    { id, accountId, tokenVersion: Number(tokenVersion || 0), ...extraPayload },
+    JWT_SECRET,
+    { expiresIn }
+  );
+};
+
+const generateOwnerSetupToken = (id, accountId, tokenVersion) => {
+  return generateAccessToken(
+    id,
+    accountId,
+    tokenVersion,
+    { setupOnly: true },
+    OWNER_SETUP_EXPIRE
+  );
+};
+
+const generateTwoFactorChallengeToken = (id, accountId, tokenVersion) => {
+  return generateAccessToken(
+    id,
+    accountId,
+    tokenVersion,
+    { purpose: '2fa_challenge' },
+    TWO_FACTOR_CHALLENGE_EXPIRE
+  );
+};
+
+const recordTwoFactorAttempt = ({ userId, success }) => {
+  const key = String(userId);
+  const now = Date.now();
+  const attempts = twoFactorAttempts.get(key) || { count: 0, resetAt: now + TWO_FACTOR_LOCK_WINDOW_MS };
+
+  if (now > attempts.resetAt) {
+    attempts.count = 0;
+    attempts.resetAt = now + TWO_FACTOR_LOCK_WINDOW_MS;
+  }
+
+  if (success) {
+    twoFactorAttempts.delete(key);
+    return { blocked: false };
+  }
+
+  attempts.count += 1;
+  twoFactorAttempts.set(key, attempts);
+
+  return {
+    blocked: attempts.count >= MAX_2FA_ATTEMPTS,
+    retryAfterMs: Math.max(0, attempts.resetAt - now)
+  };
+};
+
+const ensureTwoFactorNotLocked = (userId) => {
+  const key = String(userId);
+  const now = Date.now();
+  const attempts = twoFactorAttempts.get(key);
+  if (!attempts) return null;
+  if (now > attempts.resetAt) {
+    twoFactorAttempts.delete(key);
+    return null;
+  }
+  if (attempts.count >= MAX_2FA_ATTEMPTS) {
+    return Math.ceil((attempts.resetAt - now) / 1000);
+  }
+  return null;
+};
+
+const buildAuthResponse = ({ user, token, currentAccount, accounts, extra = {} }) => ({
+  success: true,
+  token,
+  user: toSafeUser(user),
+  currentAccount: currentAccount
+    ? { id: currentAccount._id || currentAccount.id, name: currentAccount.name }
+    : null,
+  accounts: (accounts || []).map((acc) => ({
+    id: acc._id || acc.id,
+    name: acc.name
+  })),
+  ...extra
+});
+
+const getCurrentAccount = (user, preferredAccountId) => {
+  const userAccounts = Array.isArray(user.accounts) ? user.accounts : [];
+  if (preferredAccountId) {
+    const found = userAccounts.find((acc) => String(acc._id || acc.id) === String(preferredAccountId));
+    if (found) return found;
+  }
+  return userAccounts.length > 0 ? userAccounts[0] : null;
+};
+
+// @desc    Get owner setup status
+// @route   GET /api/auth/setup-status
+// @access  Public
+exports.getSetupStatus = async (req, res) => {
+  try {
+    const ownerExists = !!(await User.exists(ownerRoleQuery));
+    res.status(200).json({ ownerExists });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to load setup status'
+    });
+  }
 };
 
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
+  const session = await mongoose.startSession();
   try {
     const { name, email, password, passwordConfirm, accountName } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
-    // Validation
     if (!name || !email || !password || !passwordConfirm) {
       return res.status(400).json({
         success: false,
@@ -32,8 +169,23 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Check if user exists
-    const userExists = await User.findOne({ email });
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters'
+      });
+    }
+
+    const ownerExists = !!(await User.exists(ownerRoleQuery));
+    const totalUsers = await User.countDocuments();
+    if (ownerExists || totalUsers > 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'Registration is closed. Please ask the owner to grant access.'
+      });
+    }
+
+    const userExists = await User.findOne({ email: normalizedEmail });
     if (userExists) {
       return res.status(400).json({
         success: false,
@@ -41,53 +193,65 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Create user
-    const user = await User.create({
-      name,
-      email,
-      password
+    let user;
+    let account;
+    await session.withTransaction(async () => {
+      const users = await User.create(
+        [{
+          name,
+          email: normalizedEmail,
+          password,
+          role: 'owner',
+          twoFactorEnabled: false
+        }],
+        { session }
+      );
+      user = users[0];
+
+      const accounts = await Account.create(
+        [{
+          name: accountName || `${name}'s Account`,
+          owner: user._id,
+          email: normalizedEmail
+        }],
+        { session }
+      );
+      account = accounts[0];
+
+      user.accounts.push(account._id);
+      await user.save({ session });
     });
 
-    // Create default account for the user
-    const account = await Account.create({
-      name: accountName || `${name}'s Account`,
-      owner: user._id,
-      email: email
-    });
-
-    // Add account to user's accounts array
-    user.accounts.push(account._id);
-    await user.save();
-
-    // Generate token with first account
-    const token = generateToken(user._id, account._id);
-
-    res.status(201).json({
-      success: true,
+    const token = generateOwnerSetupToken(user._id, account._id, user.tokenVersion);
+    res.status(201).json(buildAuthResponse({
+      user,
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      },
-      currentAccount: {
-        id: account._id,
-        name: account.name
-      },
-      accounts: [
-        {
-          id: account._id,
-          name: account.name
-        }
-      ]
-    });
+      currentAccount: account,
+      accounts: [account],
+      extra: { twoFactorSetupRequired: true }
+    }));
   } catch (error) {
-    console.error('Register error:', error);
+    if (error.code === 11000) {
+      if (error.keyPattern?.role) {
+        return res.status(403).json({
+          success: false,
+          message: 'Owner account already exists. Registration is closed.'
+        });
+      }
+      if (error.keyPattern?.email) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email already in use'
+        });
+      }
+    }
+
     res.status(500).json({
       success: false,
       message: error.message || 'Server error during registration'
     });
+  } finally {
+    await session.endSession();
   }
 };
 
@@ -97,8 +261,8 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
-    // Validation
     if (!email || !password) {
       return res.status(400).json({
         success: false,
@@ -106,8 +270,9 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check for user (need to add password field which is hidden by default)
-    const user = await User.findOne({ email }).select('+password').populate('accounts');
+    const user = await User.findOne({ email: normalizedEmail })
+      .select('+password +twoFactorSecret +twoFactorTempSecret')
+      .populate('accounts');
 
     if (!user) {
       return res.status(401).json({
@@ -116,9 +281,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check if password matches
     const isMatch = await user.matchPassword(password);
-
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -126,7 +289,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check if user is active
     if (!user.isActive) {
       return res.status(401).json({
         success: false,
@@ -134,9 +296,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Use first account as default
-    const currentAccount = user.accounts && user.accounts.length > 0 ? user.accounts[0] : null;
-    
+    const currentAccount = getCurrentAccount(user);
     if (!currentAccount) {
       return res.status(500).json({
         success: false,
@@ -144,32 +304,139 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Generate token with current account
-    const token = generateToken(user._id, currentAccount._id);
+    const role = normalizeRole(user.role);
+    if (role === 'owner') {
+      if (user.twoFactorEnabled) {
+        const lockedForSeconds = ensureTwoFactorNotLocked(user._id);
+        if (lockedForSeconds) {
+          return res.status(429).json({
+            success: false,
+            message: `Too many invalid 2FA attempts. Try again in ${lockedForSeconds} seconds.`
+          });
+        }
 
-    res.status(200).json({
-      success: true,
+        const challengeToken = generateTwoFactorChallengeToken(
+          user._id,
+          currentAccount._id,
+          user.tokenVersion
+        );
+        return res.status(200).json({
+          success: true,
+          requiresTwoFactor: true,
+          challengeToken,
+          user: toSafeUser(user),
+          currentAccount: { id: currentAccount._id, name: currentAccount.name },
+          accounts: user.accounts.map((acc) => ({ id: acc._id, name: acc.name }))
+        });
+      }
+
+      const setupToken = generateOwnerSetupToken(user._id, currentAccount._id, user.tokenVersion);
+      return res.status(200).json(buildAuthResponse({
+        user,
+        token: setupToken,
+        currentAccount,
+        accounts: user.accounts,
+        extra: { twoFactorSetupRequired: true }
+      }));
+    }
+
+    const token = generateAccessToken(user._id, currentAccount._id, user.tokenVersion);
+    res.status(200).json(buildAuthResponse({
+      user,
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      },
-      currentAccount: {
-        id: currentAccount._id,
-        name: currentAccount.name
-      },
-      accounts: user.accounts.map(acc => ({
-        id: acc._id,
-        name: acc.name
-      }))
-    });
+      currentAccount,
+      accounts: user.accounts
+    }));
   } catch (error) {
-    console.error('Login error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Server error during login'
+    });
+  }
+};
+
+// @desc    Verify login 2FA challenge
+// @route   POST /api/auth/2fa/verify-login
+// @access  Public
+exports.verifyTwoFactorLogin = async (req, res) => {
+  try {
+    const { challengeToken, token } = req.body;
+    const normalizedToken = normalizeTotpToken(token);
+    if (!challengeToken || !normalizedToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Challenge token and valid 6-digit code are required'
+      });
+    }
+
+    const decoded = jwt.verify(challengeToken, JWT_SECRET);
+    if (decoded.purpose !== '2fa_challenge') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid two-factor challenge'
+      });
+    }
+
+    const user = await User.findById(decoded.id)
+      .select('+twoFactorSecret')
+      .populate('accounts');
+    if (!user || !user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid user session'
+      });
+    }
+
+    if (!isOwnerUser(user) || !user.twoFactorEnabled || !user.twoFactorSecret) {
+      return res.status(403).json({
+        success: false,
+        message: 'Two-factor login is not available for this user.'
+      });
+    }
+
+    const valid = verifyTotpToken({
+      secret: user.twoFactorSecret,
+      token: normalizedToken
+    });
+
+    if (!valid) {
+      const attempt = recordTwoFactorAttempt({ userId: user._id, success: false });
+      if (attempt.blocked) {
+        return res.status(429).json({
+          success: false,
+          message: `Too many invalid 2FA attempts. Try again in ${Math.ceil(attempt.retryAfterMs / 1000)} seconds.`
+        });
+      }
+
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid two-factor code.'
+      });
+    }
+
+    recordTwoFactorAttempt({ userId: user._id, success: true });
+    user.twoFactorLastVerifiedAt = new Date();
+    await user.save();
+
+    const currentAccount = getCurrentAccount(user, decoded.accountId);
+    if (!currentAccount) {
+      return res.status(500).json({
+        success: false,
+        message: 'No account found for user'
+      });
+    }
+
+    const fullToken = generateAccessToken(user._id, currentAccount._id, user.tokenVersion);
+    res.status(200).json(buildAuthResponse({
+      user,
+      token: fullToken,
+      currentAccount,
+      accounts: user.accounts
+    }));
+  } catch (error) {
+    res.status(401).json({
+      success: false,
+      message: 'Invalid or expired two-factor challenge'
     });
   }
 };
@@ -180,19 +447,19 @@ exports.login = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate('accounts');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
 
+    const currentAccount = getCurrentAccount(user, req.user.accountId);
     res.status(200).json({
       success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      },
-      currentAccount: {
-        id: req.user.accountId
-      },
-      accounts: user.accounts.map(acc => ({
+      user: toSafeUser(user),
+      currentAccount: currentAccount ? { id: currentAccount._id, name: currentAccount.name } : { id: req.user.accountId },
+      accounts: user.accounts.map((acc) => ({
         id: acc._id,
         name: acc.name
       }))
@@ -205,13 +472,143 @@ exports.getMe = async (req, res) => {
   }
 };
 
+// @desc    Get 2FA status for current user
+// @route   GET /api/auth/2fa/status
+// @access  Private
+exports.getTwoFactorStatus = async (req, res) => {
+  const required = req.user.role === 'owner';
+  const enabled = Boolean(req.user.twoFactorEnabled);
+  res.status(200).json({
+    required,
+    enabled,
+    setupRequired: required && !enabled
+  });
+};
+
+// @desc    Start owner 2FA setup
+// @route   POST /api/auth/2fa/setup
+// @access  Private (Owner only)
+exports.setupTwoFactor = async (req, res) => {
+  try {
+    if (req.user.role !== 'owner') {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to perform this action.'
+      });
+    }
+
+    const user = await User.findById(req.user.id).select('+twoFactorTempSecret +twoFactorSecret');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const secret = generateTwoFactorSecret({ email: user.email });
+    user.twoFactorTempSecret = secret.base32;
+    await user.save();
+
+    const qrCodeDataUrl = await buildQrCodeDataUrl({ otpauthUrl: secret.otpauth_url });
+
+    res.status(200).json({
+      success: true,
+      otpauthUrl: secret.otpauth_url,
+      qrCodeDataUrl,
+      manualEntryKey: secret.base32
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to initialize 2FA setup'
+    });
+  }
+};
+
+// @desc    Verify owner 2FA setup token and enable
+// @route   POST /api/auth/2fa/verify-setup
+// @access  Private (Owner only)
+exports.verifyTwoFactorSetup = async (req, res) => {
+  try {
+    if (req.user.role !== 'owner') {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to perform this action.'
+      });
+    }
+
+    const normalizedToken = normalizeTotpToken(req.body?.token);
+    if (!normalizedToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid 6-digit token is required'
+      });
+    }
+
+    const user = await User.findById(req.user.id)
+      .select('+twoFactorTempSecret +twoFactorSecret')
+      .populate('accounts');
+
+    if (!user || !user.twoFactorTempSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'Two-factor setup has not been initialized.'
+      });
+    }
+
+    const valid = verifyTotpToken({
+      secret: user.twoFactorTempSecret,
+      token: normalizedToken
+    });
+
+    if (!valid) {
+      const attempt = recordTwoFactorAttempt({ userId: user._id, success: false });
+      if (attempt.blocked) {
+        return res.status(429).json({
+          success: false,
+          message: `Too many invalid 2FA attempts. Try again in ${Math.ceil(attempt.retryAfterMs / 1000)} seconds.`
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid two-factor code.'
+      });
+    }
+
+    recordTwoFactorAttempt({ userId: user._id, success: true });
+    user.twoFactorSecret = user.twoFactorTempSecret;
+    user.twoFactorTempSecret = undefined;
+    user.twoFactorEnabled = true;
+    user.twoFactorConfirmedAt = new Date();
+    user.twoFactorLastVerifiedAt = new Date();
+    user.tokenVersion = Number(user.tokenVersion || 0) + 1;
+    await user.save();
+
+    const currentAccount = getCurrentAccount(user, req.user.accountId);
+    const token = generateAccessToken(user._id, currentAccount?._id, user.tokenVersion);
+
+    res.status(200).json(buildAuthResponse({
+      user,
+      token,
+      currentAccount,
+      accounts: user.accounts,
+      extra: { message: 'Two-factor authentication enabled successfully.' }
+    }));
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify two-factor setup'
+    });
+  }
+};
+
 // @desc    Select/Switch to different account
 // @route   POST /api/auth/select-account
 // @access  Private
 exports.selectAccount = async (req, res) => {
   try {
     const { accountId } = req.body;
-
     if (!accountId) {
       return res.status(400).json({
         success: false,
@@ -219,10 +616,8 @@ exports.selectAccount = async (req, res) => {
       });
     }
 
-    // Check if user has access to this account
     const user = await User.findById(req.user.id).populate('accounts');
-    const hasAccess = user.accounts.some(acc => acc._id.toString() === accountId);
-
+    const hasAccess = user.accounts.some((acc) => acc._id.toString() === accountId);
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
@@ -230,31 +625,18 @@ exports.selectAccount = async (req, res) => {
       });
     }
 
-    const account = user.accounts.find(acc => acc._id.toString() === accountId);
+    const account = user.accounts.find((acc) => acc._id.toString() === accountId);
+    const token = isOwnerUser(user) && !user.twoFactorEnabled
+      ? generateOwnerSetupToken(user._id, accountId, user.tokenVersion)
+      : generateAccessToken(user._id, accountId, user.tokenVersion);
 
-    // Generate new token with selected account
-    const token = generateToken(user._id, accountId);
-
-    res.status(200).json({
-      success: true,
+    res.status(200).json(buildAuthResponse({
+      user,
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      },
-      currentAccount: {
-        id: account._id,
-        name: account.name
-      },
-      accounts: user.accounts.map(acc => ({
-        id: acc._id,
-        name: acc.name
-      }))
-    });
+      currentAccount: account,
+      accounts: user.accounts
+    }));
   } catch (error) {
-    console.error('Select account error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Server error'
@@ -268,7 +650,6 @@ exports.selectAccount = async (req, res) => {
 exports.createAccount = async (req, res) => {
   try {
     const { accountName } = req.body;
-
     if (!accountName) {
       return res.status(400).json({
         success: false,
@@ -277,31 +658,21 @@ exports.createAccount = async (req, res) => {
     }
 
     const user = await User.findById(req.user.id).populate('accounts');
-
-    // Create new account
     const account = await Account.create({
       name: accountName,
       owner: user._id,
       email: user.email
     });
 
-    // Add to user's accounts
     user.accounts.push(account._id);
     await user.save();
 
     res.status(201).json({
       success: true,
-      account: {
-        id: account._id,
-        name: account.name
-      },
-      accounts: user.accounts.map(acc => ({
-        id: acc._id,
-        name: acc.name
-      }))
+      account: { id: account._id, name: account.name },
+      accounts: user.accounts.map((acc) => ({ id: acc._id, name: acc.name }))
     });
   } catch (error) {
-    console.error('Create account error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Server error'
@@ -315,6 +686,7 @@ exports.createAccount = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
     if (!email) {
       return res.status(400).json({
@@ -323,9 +695,7 @@ exports.forgotPassword = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email });
-
-    // Always respond success to avoid user enumeration
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(200).json({
         success: true,
@@ -337,7 +707,7 @@ exports.forgotPassword = async (req, res) => {
     const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
 
     user.resetPasswordToken = resetTokenHash;
-    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
     await user.save();
 
     res.status(200).json({
@@ -347,7 +717,6 @@ exports.forgotPassword = async (req, res) => {
       expiresInMinutes: 10
     });
   } catch (error) {
-    console.error('Forgot password error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Server error'
@@ -384,7 +753,6 @@ exports.resetPassword = async (req, res) => {
     }
 
     const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
     const user = await User.findOne({
       resetPasswordToken: resetTokenHash,
       resetPasswordExpire: { $gt: Date.now() }
@@ -407,7 +775,6 @@ exports.resetPassword = async (req, res) => {
       message: 'Password reset successful'
     });
   } catch (error) {
-    console.error('Reset password error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Server error'

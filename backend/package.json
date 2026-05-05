@@ -7,7 +7,13 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "migrate:add-ad-events": "node migrations/20260402_add_ad_event_and_daily_stat_collections.js up",
-    "migrate:rollback:add-ad-events": "node migrations/20260402_add_ad_event_and_daily_stat_collections.js down"
+    "migrate:rollback:add-ad-events": "node migrations/20260402_add_ad_event_and_daily_stat_collections.js down",
+    "migrate:merge-inventory-entity": "node migrations/20260430_merge_inventory_group_and_backfill_adunit_inventories.js up",
+    "migrate:rollback:merge-inventory-entity": "node migrations/20260430_merge_inventory_group_and_backfill_adunit_inventories.js down",
+    "migrate:user-roles": "node migrations/20260505_enforce_single_owner_and_editor_roles.js up",
+    "migrate:rollback:user-roles": "node migrations/20260505_enforce_single_owner_and_editor_roles.js down",
+    "migrate:owner-2fa": "node migrations/20260505_add_two_factor_owner_enforcement.js up",
+    "migrate:rollback:owner-2fa": "node migrations/20260505_add_two_factor_owner_enforcement.js down"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -17,6 +23,8 @@
     "jsonwebtoken": "^9.0.0",
     "mongoose": "^7.0.0",
     "node-cron": "^4.2.1",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

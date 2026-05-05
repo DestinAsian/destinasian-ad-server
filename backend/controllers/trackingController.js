@@ -33,6 +33,21 @@ const getNumericValue = (value) => {
   return Number.isFinite(numericValue) ? numericValue : 0;
 };
 
+const resolveInventoryIdFromValue = (value) => {
+  if (!value) return null;
+  const raw = typeof value === 'object' && value !== null ? (value._id || value.id || value) : value;
+  const normalized = String(raw).trim();
+  return mongoose.Types.ObjectId.isValid(normalized) ? new mongoose.Types.ObjectId(normalized) : null;
+};
+
+const getPrimaryInventoryId = (adUnit) => {
+  if (Array.isArray(adUnit?.inventories) && adUnit.inventories.length > 0) {
+    return resolveInventoryIdFromValue(adUnit.inventories[0]);
+  }
+
+  return resolveInventoryIdFromValue(adUnit?.inventory);
+};
+
 const toObjectId = (value) => {
   if (!value || !mongoose.Types.ObjectId.isValid(value)) {
     return null;
@@ -115,6 +130,7 @@ const getEventMeta = (body, revenue) => {
 
 const buildScopedMatches = async (accountId, query = {}) => {
   const inventoryGroup = normalizeString(query.inventoryGroup || query.groupName);
+  const inventoryQuery = normalizeString(query.inventory || query.inventoryId || query.inventoryGroupId || query.inventory_group_id);
   const campaignId = normalizeString(query.campaignId);
   const dailyMatch = buildDateRangeMatch(accountId, query.startDate, query.endDate);
   const eventMatch = buildEventDateRangeMatch(accountId, query.startDate, query.endDate);
@@ -129,14 +145,32 @@ const buildScopedMatches = async (accountId, query = {}) => {
     eventMatch.campaign = campaignObjectId;
   }
 
-  if (!inventoryGroup) {
+  if (!inventoryGroup && !inventoryQuery) {
     return { dailyMatch, eventMatch, noResults: false };
   }
 
-  const inventories = await Inventory.find({
-    account: accountId,
-    groupName: inventoryGroup
-  }).select('_id');
+  const inventorySearch = { account: accountId };
+  const inventoryOr = [];
+
+  if (inventoryGroup) {
+    inventoryOr.push({ groupName: inventoryGroup });
+    inventoryOr.push({ name: inventoryGroup });
+    inventoryOr.push({ key: inventoryGroup.toLowerCase() });
+  }
+
+  if (inventoryQuery) {
+    if (mongoose.Types.ObjectId.isValid(inventoryQuery)) {
+      inventoryOr.push({ _id: new mongoose.Types.ObjectId(inventoryQuery) });
+    }
+    inventoryOr.push({ name: inventoryQuery });
+    inventoryOr.push({ key: inventoryQuery.toLowerCase() });
+  }
+
+  if (inventoryOr.length > 0) {
+    inventorySearch.$or = inventoryOr;
+  }
+
+  const inventories = await Inventory.find(inventorySearch).select('_id');
 
   if (inventories.length === 0) {
     return { dailyMatch, eventMatch, noResults: true };
@@ -318,7 +352,7 @@ exports.recordImpression = async (req, res) => {
       adUnit: adUnit._id,
       campaign: adUnit.campaign,
       account: adUnit.account,
-      inventory: adUnit.inventory || null,
+      inventory: getPrimaryInventoryId(adUnit),
       adCode: adUnit.adCode,
       userIp,
       userAgent,
@@ -344,7 +378,7 @@ exports.recordImpression = async (req, res) => {
       account: adUnit.account,
       campaign: adUnit.campaign,
       adUnit: adUnit._id,
-      inventory: adUnit.inventory || null,
+      inventory: getPrimaryInventoryId(adUnit),
       adCode: adUnit.adCode,
       occurredAt,
       impressions: 1,
@@ -383,7 +417,7 @@ exports.recordClick = async (req, res) => {
       adUnit: adUnit._id,
       campaign: adUnit.campaign,
       account: adUnit.account,
-      inventory: adUnit.inventory || null,
+      inventory: getPrimaryInventoryId(adUnit),
       adCode: adUnit.adCode,
       clickUrl: adUnit.clickUrl,
       userIp,
@@ -410,7 +444,7 @@ exports.recordClick = async (req, res) => {
       account: adUnit.account,
       campaign: adUnit.campaign,
       adUnit: adUnit._id,
-      inventory: adUnit.inventory || null,
+      inventory: getPrimaryInventoryId(adUnit),
       adCode: adUnit.adCode,
       occurredAt,
       clicks: 1,

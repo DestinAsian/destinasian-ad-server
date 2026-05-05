@@ -1,36 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { inventoryAPI } from '../services/api';
 
-const groupInventories = (inventories) => {
-  return inventories.reduce((groups, inventory) => {
-    const key = inventory.groupName || 'Ungrouped';
-    if (!groups[key]) {
-      groups[key] = [];
-    }
-    groups[key].push(inventory);
-    return groups;
-  }, {});
-};
-
 function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCancel }) {
   const [formData, setFormData] = useState({
     name: '',
-    campaignId: campaignId,
-    inventoryId: '',
+    campaignId,
+    inventoryIds: [],
     startDate: '',
     endDate: '',
     imageUrl: '',
-    clickUrl: '',
+    clickUrl: ''
   });
   const [errors, setErrors] = useState({});
   const [imagePreview, setImagePreview] = useState(null);
   const [imageError, setImageError] = useState(null);
   const [inventories, setInventories] = useState([]);
   const [inventoryError, setInventoryError] = useState(null);
-  const groupedInventories = groupInventories(inventories);
+  const [initialStartDateValue, setInitialStartDateValue] = useState("");
 
   useEffect(() => {
-    // Convert ISO datetime to datetime-local format (YYYY-MM-DDTHH:mm)
     const formatToLocalDateTime = (isoDate) => {
       if (!isoDate) return '';
       const date = new Date(isoDate);
@@ -43,29 +31,36 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
     };
 
     if (adUnit) {
+      const formattedStart = formatToLocalDateTime(adUnit.startDate);
+      const multiInventories = Array.isArray(adUnit.inventories)
+        ? adUnit.inventories.map((inventory) => inventory?._id || inventory).filter(Boolean)
+        : [];
+      const fallbackInventory = adUnit.inventory?._id || adUnit.inventory;
+
       setFormData({
         name: adUnit.name || '',
         campaignId: adUnit.campaignId || campaignId,
-        inventoryId: adUnit.inventory?._id || adUnit.inventory || '',
-        startDate: formatToLocalDateTime(adUnit.startDate),
+        inventoryIds: multiInventories.length > 0 ? multiInventories : (fallbackInventory ? [fallbackInventory] : []),
+        startDate: formattedStart,
         endDate: formatToLocalDateTime(adUnit.endDate),
         imageUrl: adUnit.imageUrl || '',
-        clickUrl: adUnit.clickUrl || '',
+        clickUrl: adUnit.clickUrl || ''
       });
+      setInitialStartDateValue(formattedStart);
       setImagePreview(adUnit.imageUrl || null);
     } else {
-      // Default ad unit dates to campaign dates
       const defaultStartDate = campaign?.startDate ? formatToLocalDateTime(campaign.startDate) : '';
       const defaultEndDate = campaign?.endDate ? formatToLocalDateTime(campaign.endDate) : '';
       setFormData({
         name: '',
-        campaignId: campaignId,
-        inventoryId: '',
+        campaignId,
+        inventoryIds: [],
         startDate: defaultStartDate,
         endDate: defaultEndDate,
         imageUrl: '',
-        clickUrl: '',
+        clickUrl: ''
       });
+      setInitialStartDateValue(defaultStartDate);
       setImagePreview(null);
     }
     setErrors({});
@@ -85,16 +80,18 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
     loadInventories();
   }, []);
 
+  const isEditingActiveAdUnit = Boolean(adUnit && adUnit.status === 'active');
+
   const validateForm = () => {
     const newErrors = {};
     const now = new Date();
-    
+
     if (!formData.name.trim()) {
       newErrors.name = 'Ad unit name is required';
     }
 
-    if (!formData.inventoryId) {
-      newErrors.inventoryId = 'Inventory is required';
+    if (!Array.isArray(formData.inventoryIds) || formData.inventoryIds.length === 0) {
+      newErrors.inventoryIds = 'At least one inventory is required';
     }
 
     if (!formData.startDate) {
@@ -105,22 +102,23 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       newErrors.endDate = 'End date and time is required';
     }
 
-    // Validate dates are not before now
     if (formData.startDate) {
       const startDateTime = new Date(formData.startDate);
-      if (startDateTime < now) {
+      if (!isEditingActiveAdUnit && startDateTime < now) {
         newErrors.startDate = 'Start date and time cannot be in the past';
+      }
+      if (isEditingActiveAdUnit && initialStartDateValue && formData.startDate !== initialStartDateValue) {
+          newErrors.startDate = 'Active ad units cannot change start date. Pause the ad unit first.';
       }
     }
 
     if (formData.endDate) {
       const endDateTime = new Date(formData.endDate);
-      if (endDateTime < now) {
+      if (!isEditingActiveAdUnit && endDateTime < now) {
         newErrors.endDate = 'End date and time cannot be in the past';
       }
     }
 
-    // Validate date range
     if (formData.startDate && formData.endDate) {
       const startDateTime = new Date(formData.startDate);
       const endDateTime = new Date(formData.endDate);
@@ -129,7 +127,6 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       }
     }
 
-    // Validate against campaign dates
     if (campaign) {
       const campaignStart = new Date(campaign.startDate);
       const campaignEnd = new Date(campaign.endDate);
@@ -137,14 +134,14 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       if (formData.startDate) {
         const startDateTime = new Date(formData.startDate);
         if (startDateTime < campaignStart) {
-          newErrors.startDate = `Start date and time cannot be before campaign start`;
+          newErrors.startDate = 'Start date and time cannot be before campaign start';
         }
       }
 
       if (formData.endDate) {
         const endDateTime = new Date(formData.endDate);
         if (endDateTime > campaignEnd) {
-          newErrors.endDate = `End date and time cannot be after campaign end`;
+          newErrors.endDate = 'End date and time cannot be after campaign end';
         }
       }
     }
@@ -156,31 +153,50 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
     if (!formData.clickUrl.trim()) {
       newErrors.clickUrl = 'Click-through URL is required';
     } else {
-      // Basic URL validation
       try {
         new URL(formData.clickUrl);
       } catch (err) {
         newErrors.clickUrl = 'Please enter a valid URL (e.g., https://example.com)';
       }
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
-    setFormData(prev => ({
+
+    setFormData((prev) => ({
       ...prev,
       [name]: value
     }));
-    
+
     if (errors[name]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
+  };
+
+  const toggleInventory = (inventoryId) => {
+    setFormData((prev) => {
+      const exists = prev.inventoryIds.includes(inventoryId);
+      return {
+        ...prev,
+        inventoryIds: exists
+          ? prev.inventoryIds.filter((id) => id !== inventoryId)
+          : [...prev.inventoryIds, inventoryId]
+      };
+    });
+
+    if (errors.inventoryIds) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.inventoryIds;
+        return next;
       });
     }
   };
@@ -191,39 +207,34 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
 
     if (!file) return;
 
-    // Validate file size (1MB = 1048576 bytes)
-    const MAX_FILE_SIZE = 1048576; // 1MB
-    if (file.size > MAX_FILE_SIZE) {
+    const maxFileSize = 1048576;
+    if (file.size > maxFileSize) {
       const fileSizeMB = (file.size / 1048576).toFixed(1);
       setImageError(`Image must be under 1MB. Your file is ${fileSizeMB}MB.`);
       e.target.value = '';
       return;
     }
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       setImageError('Please upload an image file');
       return;
     }
 
-    // Read the image to validate aspect ratio
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Check if aspect ratio is 1:1 (square)
         if (img.width === img.height) {
-          // Store as base64
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
             imageUrl: event.target.result
           }));
           setImagePreview(event.target.result);
           if (errors.imageUrl) {
-            setErrors(prev => {
-              const newErrors = { ...prev };
-              delete newErrors.imageUrl;
-              return newErrors;
+            setErrors((prev) => {
+              const next = { ...prev };
+              delete next.imageUrl;
+              return next;
             });
           }
         } else {
@@ -245,7 +256,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
   };
 
   const removeImage = () => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       imageUrl: ''
     }));
@@ -256,16 +267,21 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validateForm()) {
-      // Convert datetime-local values to ISO format for backend
+      const normalizedInventoryIds = [...new Set(formData.inventoryIds)];
       const submitData = {
         name: formData.name,
         campaign: formData.campaignId,
-        inventory: formData.inventoryId,
-        startDate: formData.startDate ? new Date(formData.startDate).toISOString() : '',
+        inventory: normalizedInventoryIds[0],
+        inventories: normalizedInventoryIds,
+        inventoryIds: normalizedInventoryIds,
         endDate: formData.endDate ? new Date(formData.endDate).toISOString() : '',
         imageUrl: formData.imageUrl,
         clickUrl: formData.clickUrl
       };
+
+      if (!isEditingActiveAdUnit || formData.startDate !== initialStartDateValue) {
+        submitData.startDate = formData.startDate ? new Date(formData.startDate).toISOString() : '';
+      }
       onSubmit(submitData);
     }
   };
@@ -286,30 +302,25 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
         {errors.name && <span className="error-message">{errors.name}</span>}
       </div>
 
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="inventoryId">Inventory *</label>
-          <select
-            id="inventoryId"
-            name="inventoryId"
-            value={formData.inventoryId}
-            onChange={handleChange}
-            className={errors.inventoryId ? 'error' : ''}
-          >
-            <option value="">Select inventory</option>
-            {Object.entries(groupedInventories).map(([groupName, groupItems]) => (
-              <optgroup key={groupName} label={groupName}>
-                {groupItems.map((inv) => (
-                  <option key={inv._id} value={inv._id}>
-                    {inv.name} ({inv.key})
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          {inventoryError && <span className="error-message">{inventoryError}</span>}
-          {errors.inventoryId && <span className="error-message">{errors.inventoryId}</span>}
+      <div className="form-group">
+        <label>Inventories *</label>
+        <div className="inventory-mapping-grid">
+          {inventories.map((inventory) => (
+            <label key={inventory._id} className={`inventory-mapping-pill ${formData.inventoryIds.includes(inventory._id) ? 'selected' : ''}`}>
+              <input
+                type="checkbox"
+                checked={formData.inventoryIds.includes(inventory._id)}
+                onChange={() => toggleInventory(inventory._id)}
+              />
+              <span>{inventory.name}</span>
+            </label>
+          ))}
         </div>
+        {inventoryError && <span className="error-message">{inventoryError}</span>}
+        {errors.inventoryIds && <span className="error-message">{errors.inventoryIds}</span>}
+      </div>
+
+      <div className="form-row">
         <div className="form-group">
           <label htmlFor="startDate">Start Date & Time *</label>
           <input

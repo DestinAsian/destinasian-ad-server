@@ -24,12 +24,34 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['admin', 'user'],
-      default: 'user'
+      enum: ['owner', 'editor'],
+      default: 'editor'
     },
     isActive: {
       type: Boolean,
       default: true
+    },
+    tokenVersion: {
+      type: Number,
+      default: 0
+    },
+    twoFactorEnabled: {
+      type: Boolean,
+      default: false
+    },
+    twoFactorSecret: {
+      type: String,
+      select: false
+    },
+    twoFactorTempSecret: {
+      type: String,
+      select: false
+    },
+    twoFactorConfirmedAt: {
+      type: Date
+    },
+    twoFactorLastVerifiedAt: {
+      type: Date
     },
     accounts: [
       {
@@ -46,6 +68,14 @@ const userSchema = new mongoose.Schema(
     }
   },
   { timestamps: true }
+);
+
+userSchema.index(
+  { role: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { role: 'owner' }
+  }
 );
 
 // Hash password before saving

@@ -39,6 +39,8 @@ export const campaignAPI = {
   create: (data) => axiosInstance.post('/campaigns', data),
   update: (id, data) => axiosInstance.put(`/campaigns/${id}`, data),
   delete: (id) => axiosInstance.delete(`/campaigns/${id}`),
+  getAdUnitInventories: (id) => axiosInstance.get(`/campaigns/${id}/ad-unit-inventories`),
+  updateAdUnitInventories: (id, mappings) => axiosInstance.put(`/campaigns/${id}/ad-unit-inventories`, { mappings }),
   getStats: (id) => axiosInstance.get(`/campaigns/${id}/stats`),
   updateStatus: (id, status) => axiosInstance.put(`/campaigns/${id}`, { status })
 };
@@ -55,23 +57,23 @@ export const adUnitAPI = {
 };
 
 export const trackingAPI = {
-  getStats: (startDateOrParams, endDate, inventoryGroup, campaignId) => {
+  getStats: (startDateOrParams, endDate, inventoryFilter, campaignId) => {
     const params = typeof startDateOrParams === 'object'
       ? {
           ...startDateOrParams,
           inventoryGroup: startDateOrParams.inventoryGroup || startDateOrParams.groupName
         }
-      : { startDate: startDateOrParams, endDate, inventoryGroup, campaignId };
+      : { startDate: startDateOrParams, endDate, inventory: inventoryFilter, campaignId };
 
     return axiosInstance.get('/tracking/stats', { params });
   },
-  getAnalytics: (startDateOrParams, endDate, limit, groupName) => {
+  getAnalytics: (startDateOrParams, endDate, limit, inventoryFilter) => {
     const params = typeof startDateOrParams === 'object'
       ? {
           ...startDateOrParams,
           inventoryGroup: startDateOrParams.inventoryGroup || startDateOrParams.groupName
         }
-      : { startDate: startDateOrParams, endDate, limit, inventoryGroup: groupName };
+      : { startDate: startDateOrParams, endDate, limit, inventory: inventoryFilter };
 
     return axiosInstance.get('/tracking/analytics', { params });
   }
@@ -93,9 +95,15 @@ export const inventoryAPI = {
   delete: (id) => axiosInstance.delete(`/inventories/${id}`)
 };
 
-export const inventoryGroupAPI = {
-  getAll: () => axiosInstance.get('/inventory-groups'),
-  create: (data) => axiosInstance.post('/inventory-groups', data),
-  update: (id, data) => axiosInstance.put(`/inventory-groups/${id}`, data),
-  delete: (id) => axiosInstance.delete(`/inventory-groups/${id}`)
+export const userAPI = {
+  getAll: () => axiosInstance.get('/users'),
+  create: (data) => axiosInstance.post('/users', data),
+  getMe: () => axiosInstance.get('/users/me'),
+  updateMe: (data) => axiosInstance.patch('/users/me', data),
+  updateMyPassword: (data) => axiosInstance.patch('/users/me/password', data),
+  reassignOwner: (data) => axiosInstance.post('/users/reassign-owner', data),
+  update: (id, data) => axiosInstance.patch(`/users/${id}`, data),
+  updatePassword: (id, data) => axiosInstance.patch(`/users/${id}/password`, data),
+  updateStatus: (id, data) => axiosInstance.patch(`/users/${id}/status`, data),
+  delete: (id, data) => axiosInstance.delete(`/users/${id}`, data ? { data } : undefined)
 };

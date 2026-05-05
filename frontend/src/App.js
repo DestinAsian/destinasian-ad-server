@@ -7,9 +7,11 @@ import AccountManagement from "./pages/AccountManagement";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Inventory from "./pages/Inventory";
+import Users from "./pages/Users";
+import TwoFactorSetup from "./pages/TwoFactorSetup";
 
 function App() {
-  const { isAuthenticated, loading, user, logout } = useAuth();
+  const { isAuthenticated, loading, ownerExists, user, logout } = useAuth();
   const [currentPage, setCurrentPage] = useState("login");
   const [resetToken, setResetToken] = useState("");
 
@@ -36,13 +38,12 @@ function App() {
   }
 
   if (!isAuthenticated) {
-    const authPage = ["signup", "forgot", "reset"].includes(currentPage)
-      ? currentPage
-      : "login";
+    const availableAuthPages = ownerExists ? ["forgot", "reset"] : ["signup", "forgot", "reset"];
+    const authPage = availableAuthPages.includes(currentPage) ? currentPage : "login";
     return (
       <>
-        {authPage === "login" && <Login onNavigate={setCurrentPage} />}
-        {authPage === "signup" && <Signup onNavigate={setCurrentPage} />}
+        {authPage === "login" && <Login onNavigate={setCurrentPage} canRegister={!ownerExists} />}
+        {authPage === "signup" && <Signup onNavigate={setCurrentPage} ownerExists={ownerExists} />}
         {authPage === "forgot" && (
           <ForgotPassword
             onNavigate={setCurrentPage}
@@ -60,6 +61,13 @@ function App() {
         )}
       </>
     );
+  }
+
+  const ownerNeedsTwoFactorSetup =
+    user?.role === "owner" && user?.twoFactorSetupRequired;
+
+  if (ownerNeedsTwoFactorSetup) {
+    return <TwoFactorSetup />;
   }
 
   return (
@@ -97,6 +105,12 @@ function App() {
           >
             Inventory
           </button>
+          <button
+            onClick={() => setCurrentPage("users")}
+            className={`app-nav-button ${currentPage === "users" ? "is-active" : ""}`}
+          >
+            Users
+          </button>
           <button onClick={logout} className="app-logout-button">
             Logout
           </button>
@@ -106,6 +120,7 @@ function App() {
       {currentPage === "campaigns" && <Dashboard view="campaigns" />}
       {currentPage === "accounts" && <AccountManagement />}
       {currentPage === "inventory" && <Inventory />}
+      {currentPage === "users" && <Users />}
     </div>
   );
 }

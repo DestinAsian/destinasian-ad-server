@@ -30,6 +30,10 @@ const adUnitSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Inventory'
     },
+    inventories: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Inventory'
+    }],
     startDate: {
       type: Date,
       required: true
@@ -89,7 +93,16 @@ adUnitSchema.pre('validate', function(next) {
     this.invalidate('imageUrl', 'At least one creative is required');
   }
 
+  if (Array.isArray(this.inventories) && this.inventories.length > 0) {
+    this.inventory = this.inventories[0];
+  } else if (this.inventory) {
+    this.inventories = [this.inventory];
+  }
+
   next();
 });
+
+adUnitSchema.index({ account: 1, inventories: 1 });
+adUnitSchema.index({ account: 1, inventory: 1 });
 
 module.exports = mongoose.model('AdUnit', adUnitSchema);

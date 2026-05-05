@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import '../styles/Auth.css';
 
-function Signup({ onNavigate }) {
+function Signup({ onNavigate, ownerExists = false }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,6 +15,11 @@ function Signup({ onNavigate }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (ownerExists) {
+      setError('Owner setup is already complete. Ask the owner to grant editor access.');
+      return;
+    }
 
     // Validation
     if (password !== passwordConfirm) {
@@ -43,6 +48,11 @@ function Signup({ onNavigate }) {
     <div className="auth-container">
       <div className="auth-card">
         <h2>Create Account</h2>
+        {ownerExists && (
+          <div className="error-message">
+            Owner setup is already complete. Ask the owner to grant editor access.
+          </div>
+        )}
         {error && <div className="error-message">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -53,6 +63,7 @@ function Signup({ onNavigate }) {
               onChange={(e) => setName(e.target.value)}
               required
               disabled={loading}
+              readOnly={ownerExists}
             />
           </div>
           <div className="form-group">
@@ -63,6 +74,7 @@ function Signup({ onNavigate }) {
               onChange={(e) => setAccountName(e.target.value)}
               placeholder={name || 'Your account name'}
               disabled={loading}
+              readOnly={ownerExists}
             />
           </div>
           <div className="form-group">
@@ -73,6 +85,7 @@ function Signup({ onNavigate }) {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={loading}
+              readOnly={ownerExists}
             />
           </div>
           <div className="form-group">
@@ -84,6 +97,7 @@ function Signup({ onNavigate }) {
               required
               disabled={loading}
               minLength="6"
+              readOnly={ownerExists}
             />
           </div>
           <div className="form-group">
@@ -95,9 +109,10 @@ function Signup({ onNavigate }) {
               required
               disabled={loading}
               minLength="6"
+              readOnly={ownerExists}
             />
           </div>
-          <button type="submit" className="btn-primary" disabled={loading}>
+          <button type="submit" className="btn-primary" disabled={loading || ownerExists}>
             {loading ? 'Creating Account...' : 'Sign Up'}
           </button>
         </form>

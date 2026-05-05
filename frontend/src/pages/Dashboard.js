@@ -10,7 +10,7 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { campaignAPI, adUnitAPI, inventoryGroupAPI, trackingAPI } from '../services/api';
+import { campaignAPI, adUnitAPI, inventoryAPI, trackingAPI } from '../services/api';
 import '../styles/Dashboard.css';
 import CampaignChart from '../components/CampaignChart';
 import AdUnitChart from '../components/AdUnitChart';
@@ -60,8 +60,8 @@ function Dashboard({ view = 'overview' }) {
   const defaultDateRange = useMemo(() => getDefaultDateRange(), []);
   const [campaigns, setCampaigns] = useState([]);
   const [adUnits, setAdUnits] = useState([]);
-  const [inventoryGroups, setInventoryGroups] = useState([]);
-  const [selectedGroupName, setSelectedGroupName] = useState('');
+  const [inventories, setInventories] = useState([]);
+  const [selectedInventoryId, setSelectedInventoryId] = useState('');
   const [campaignSort, setCampaignSort] = useState('recent');
   const [dateRange, setDateRange] = useState(defaultDateRange);
   const [analytics, setAnalytics] = useState({
@@ -87,13 +87,13 @@ function Dashboard({ view = 'overview' }) {
 
   const fetchAdUnits = useCallback(async (campaignId) => {
     try {
-      const params = selectedGroupName ? { groupName: selectedGroupName } : undefined;
+      const params = selectedInventoryId ? { inventoryId: selectedInventoryId } : undefined;
       const response = await adUnitAPI.getByCampaign(campaignId, params);
       setAdUnits(response.data);
     } catch (error) {
       console.error('Error fetching ad units:', error);
     }
-  }, [selectedGroupName]);
+  }, [selectedInventoryId]);
 
   const fetchCampaigns = useCallback(async () => {
     try {
@@ -105,7 +105,7 @@ function Dashboard({ view = 'overview' }) {
       }
 
       setLoading(true);
-      const params = selectedGroupName ? { groupName: selectedGroupName } : undefined;
+      const params = selectedInventoryId ? { inventoryId: selectedInventoryId } : undefined;
       const response = await campaignAPI.getAll(params);
       setCampaigns(response.data);
 
@@ -125,7 +125,7 @@ function Dashboard({ view = 'overview' }) {
       console.error('Error fetching campaigns:', error);
       setLoading(false);
     }
-  }, [currentAccount?.id, selectedGroupName, fetchAdUnits]);
+  }, [currentAccount?.id, selectedInventoryId, fetchAdUnits]);
 
   useEffect(() => {
     fetchCampaigns();
@@ -151,7 +151,7 @@ function Dashboard({ view = 'overview' }) {
       const response = await trackingAPI.getAnalytics({
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
-        groupName: selectedGroupName || undefined,
+        inventoryId: selectedInventoryId || undefined,
         limit: 5
       });
       setAnalytics({
@@ -177,19 +177,19 @@ function Dashboard({ view = 'overview' }) {
     } finally {
       setAnalyticsLoading(false);
     }
-  }, [currentAccount?.id, dateRange.endDate, dateRange.startDate, selectedGroupName]);
+  }, [currentAccount?.id, dateRange.endDate, dateRange.startDate, selectedInventoryId]);
 
   useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics]);
 
   useEffect(() => {
-    const loadInventoryGroups = async () => {
+    const loadInventories = async () => {
       try {
-        const response = await inventoryGroupAPI.getAll();
-        setInventoryGroups((response.data || []).map((group) => group.name));
+        const response = await inventoryAPI.getAll();
+        setInventories(response.data || []);
       } catch (error) {
-        console.error('Error fetching inventory groups:', error);
+        console.error('Error fetching inventories:', error);
       }
     };
 
@@ -197,10 +197,10 @@ function Dashboard({ view = 'overview' }) {
     setAdUnits([]);
     selectedCampaignRef.current = null;
     setSelectedCampaign(null);
-    setSelectedGroupName('');
+    setSelectedInventoryId('');
     setCampaignSort('recent');
     setDateRange(getDefaultDateRange());
-    loadInventoryGroups();
+    loadInventories();
   }, [currentAccount?.id]);
 
   const handleCampaignSelect = (campaignId) => {
@@ -382,6 +382,9 @@ function Dashboard({ view = 'overview' }) {
         name: adUnit.name,
         campaign: adUnit.campaign?._id || adUnit.campaign || selectedCampaign,
         inventory: adUnit.inventory?._id || adUnit.inventory,
+        inventories: Array.isArray(adUnit.inventories)
+          ? adUnit.inventories.map((inventory) => inventory?._id || inventory).filter(Boolean)
+          : undefined,
         startDate: adUnit.startDate,
         endDate: adUnit.endDate,
         imageUrl: adUnit.imageUrl,
@@ -564,17 +567,17 @@ function Dashboard({ view = 'overview' }) {
               />
             </div>
             <div className="dashboard-filter-field">
-              <label htmlFor="inventory-group-filter" className="account-list-label">Inventory Group</label>
+              <label htmlFor="inventory-filter" className="account-list-label">Inventory</label>
               <select
-                id="inventory-group-filter"
+                id="inventory-filter"
                 className="account-select dashboard-filter-select"
-                value={selectedGroupName}
-                onChange={(e) => setSelectedGroupName(e.target.value)}
+                value={selectedInventoryId}
+                onChange={(e) => setSelectedInventoryId(e.target.value)}
               >
-                <option value="">All Groups</option>
-                {inventoryGroups.map((groupName) => (
-                  <option key={groupName} value={groupName}>
-                    {groupName}
+                <option value="">All Inventories</option>
+                {inventories.map((inventory) => (
+                  <option key={inventory._id} value={inventory._id}>
+                    {inventory.name}
                   </option>
                 ))}
               </select>
@@ -605,7 +608,7 @@ function Dashboard({ view = 'overview' }) {
           <div className="dashboard-chart-header">
             <div>
               <h3>Daily Performance</h3>
-              <p>Uses the existing analytics endpoint with your selected date range and inventory group.</p>
+              <p>Uses the existing analytics endpoint with your selected date range and inventory selection.</p>
             </div>
             <div className="dashboard-chart-meta">
               <span>{analytics.topCampaigns[0]?.name ? `Top Campaign: ${analytics.topCampaigns[0].name}` : 'No campaign data yet'}</span>
@@ -631,17 +634,17 @@ function Dashboard({ view = 'overview' }) {
           <h2>List of Campaign</h2>
           <div className="dashboard-sidebar-filters">
             <div className="dashboard-filter-field">
-              <label htmlFor="campaign-group-filter" className="account-list-label">Inventory Group</label>
+              <label htmlFor="campaign-inventory-filter" className="account-list-label">Inventory</label>
               <select
-                id="campaign-group-filter"
+                id="campaign-inventory-filter"
                 className="account-select dashboard-filter-select"
-                value={selectedGroupName}
-                onChange={(e) => setSelectedGroupName(e.target.value)}
+                value={selectedInventoryId}
+                onChange={(e) => setSelectedInventoryId(e.target.value)}
               >
-                <option value="">All Groups</option>
-                {inventoryGroups.map((groupName) => (
-                  <option key={groupName} value={groupName}>
-                    {groupName}
+                <option value="">All Inventories</option>
+                {inventories.map((inventory) => (
+                  <option key={inventory._id} value={inventory._id}>
+                    {inventory.name}
                   </option>
                 ))}
               </select>

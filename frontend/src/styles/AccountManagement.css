@@ -162,7 +162,7 @@
   display: block;
   font-size: 20px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ink-muted);
 }
 
 .account-card-footer {

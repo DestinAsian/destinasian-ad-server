@@ -284,6 +284,12 @@
   margin-bottom: 6px;
 }
 
+.ad-unit-cms-description {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 6px;
+}
+
 .ad-unit-cms-code {
   display: block;
   font-size: 12px;
@@ -652,6 +658,58 @@
   padding: 12px;
   font-size: 14px;
   font-weight: 500;
+}
+
+.campaign-mapping-section {
+  border: 1px solid #e6e9f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafbfd;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.campaign-mapping-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.campaign-mapping-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2f3a40;
+}
+
+.inventory-mapping-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inventory-mapping-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #d9dee8;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  color: #44515a;
+  cursor: pointer;
+}
+
+.inventory-mapping-pill.selected {
+  border-color: #6f98a6;
+  background: rgba(111, 152, 166, 0.12);
+  color: #23343e;
+}
+
+.inventory-mapping-pill input {
+  width: 14px;
+  height: 14px;
 }
 
 /* Ad Unit CRUD Styles */
@@ -1492,7 +1550,7 @@
 }
 
 .ad-unit-image {
-  aspect-ratio: 16 / 11;
+  aspect-ratio: 11 / 11;
   background: linear-gradient(180deg, #f2f3ef 0%, #e9ece7 100%);
   border-bottom: 1px solid var(--line-soft);
 }
@@ -1520,6 +1578,7 @@
 .ad-unit-details small,
 .stat-item span,
 .ad-unit-cms-label,
+.ad-unit-cms-description,
 .no-data,
 .no-campaigns,
 .no-selection,

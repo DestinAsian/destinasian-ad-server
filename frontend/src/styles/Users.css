@@ -1,0 +1,165 @@
+.users-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.users-header h2 {
+  margin: 0 0 6px;
+  color: var(--ink-strong);
+}
+
+.users-header p {
+  margin: 0 0 18px;
+  color: var(--ink-muted);
+}
+
+.users-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.users-card h3 {
+  margin: 0 0 14px;
+  color: var(--ink-strong);
+}
+
+.users-note {
+  margin: 0 0 12px;
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+
+.users-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.users-form-grid input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: #fff;
+}
+
+.users-form-grid input:focus {
+  outline: none;
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 2px rgba(140, 184, 193, 0.2);
+}
+
+.password-grid {
+  margin-top: 8px;
+}
+
+.users-table-wrap {
+  overflow-x: auto;
+}
+
+.users-owner-action-token {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.users-owner-action-token label {
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.users-owner-action-token input {
+  max-width: 180px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line-soft);
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 820px;
+}
+
+.users-table th,
+.users-table td {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+
+.users-table th {
+  color: var(--ink-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.users-table input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line-soft);
+}
+
+.users-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.role-pill,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.role-owner {
+  background: #e6efe8;
+  color: #355444;
+}
+
+.role-editor {
+  background: #eef5ff;
+  color: #1e3c72;
+}
+
+.status-pill.active {
+  background: #e6efe8;
+  color: #355444;
+}
+
+.status-pill.disabled {
+  background: #f6e4df;
+  color: #8a4d44;
+}
+
+.users-reset-box {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.users-reset-box h4 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: var(--ink-strong);
+}
+
+@media (max-width: 768px) {
+  .users-page {
+    padding: 16px;
+  }
+}
