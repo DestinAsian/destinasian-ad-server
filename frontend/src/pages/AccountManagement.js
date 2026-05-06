@@ -392,9 +392,9 @@ function AccountManagement() {
           ) : (
             <>
               <p className="share-modal-label">Select users</p>
-              <div className="share-checkbox-list" role="group" aria-label="Share account users">
+              <div className="selectable-checkbox-list share-checkbox-list" role="group" aria-label="Share account users">
                 {availableShareUsers.map((candidate) => (
-                  <label key={candidate.id} className="share-checkbox-item">
+                  <label key={candidate.id} className="selectable-checkbox-item share-checkbox-item">
                     <input
                       type="checkbox"
                       value={candidate.id}

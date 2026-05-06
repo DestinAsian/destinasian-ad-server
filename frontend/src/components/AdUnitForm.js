@@ -16,6 +16,8 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
   const [imageError, setImageError] = useState(null);
   const [inventories, setInventories] = useState([]);
   const [inventoryError, setInventoryError] = useState(null);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [isInventoriesExpanded, setIsInventoriesExpanded] = useState(false);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
 
   useEffect(() => {
@@ -63,6 +65,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       setInitialStartDateValue(defaultStartDate);
       setImagePreview(null);
     }
+    setIsInventoriesExpanded(false);
     setErrors({});
     setImageError(null);
   }, [adUnit, campaignId, campaign]);
@@ -70,11 +73,14 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
   useEffect(() => {
     const loadInventories = async () => {
       try {
+        setInventoryLoading(true);
         const response = await inventoryAPI.getAll();
         setInventories(response.data || []);
         setInventoryError(null);
       } catch (err) {
         setInventoryError('Failed to load inventories');
+      } finally {
+        setInventoryLoading(false);
       }
     };
     loadInventories();
@@ -201,6 +207,11 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
     }
   };
 
+  const selectedInventoriesCount = Array.isArray(formData.inventoryIds) ? formData.inventoryIds.length : 0;
+  const inventorySummaryLabel = selectedInventoriesCount > 0
+    ? `${selectedInventoriesCount} ${selectedInventoriesCount === 1 ? 'inventory' : 'inventories'} selected`
+    : 'No inventories selected';
+
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     setImageError(null);
@@ -303,18 +314,65 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       </div>
 
       <div className="form-group">
-        <label>Inventories *</label>
-        <div className="inventory-mapping-grid">
-          {inventories.map((inventory) => (
-            <label key={inventory._id} className={`inventory-mapping-pill ${formData.inventoryIds.includes(inventory._id) ? 'selected' : ''}`}>
-              <input
-                type="checkbox"
-                checked={formData.inventoryIds.includes(inventory._id)}
-                onChange={() => toggleInventory(inventory._id)}
-              />
-              <span>{inventory.name}</span>
-            </label>
-          ))}
+        <div className={`inventory-selector-panel ${isInventoriesExpanded ? 'is-expanded' : ''}`}>
+          <button
+            type="button"
+            className="inventory-selector-toggle"
+            onClick={() => setIsInventoriesExpanded((prev) => !prev)}
+            aria-expanded={isInventoriesExpanded}
+            aria-controls="adunit-inventory-selector-body"
+          >
+            <span className="inventory-selector-title-wrap">
+              <span className="inventory-selector-title">Inventories *</span>
+              <span className="inventory-selector-summary">{inventorySummaryLabel}</span>
+            </span>
+            <span className="inventory-selector-icon" aria-hidden="true">
+              {isInventoriesExpanded ? '▾' : '▸'}
+            </span>
+          </button>
+
+          {isInventoriesExpanded && (
+            <div id="adunit-inventory-selector-body" className="inventory-selector-body">
+              {inventoryLoading ? (
+                <p className="inventory-selection-state">Loading inventories...</p>
+              ) : inventories.length === 0 ? (
+                <p className="inventory-selection-state">No inventories available.</p>
+              ) : (
+                <div className="selectable-checkbox-list inventory-checkbox-list" role="group" aria-label="Select inventories">
+                  {inventories.map((inventory) => {
+                    const inventoryId = String(inventory._id);
+                    const isSelected = formData.inventoryIds.includes(inventoryId);
+                    const checkboxId = `adunit-inventory-${inventoryId}`;
+                    const metaItems = [];
+                    if (inventory.key) metaItems.push(`Key: ${inventory.key}`);
+                    if (inventory.isActive !== undefined) metaItems.push(inventory.isActive ? 'Active' : 'Inactive');
+
+                    return (
+                      <label
+                        key={inventoryId}
+                        htmlFor={checkboxId}
+                        className={`selectable-checkbox-item inventory-checkbox-item ${isSelected ? 'selected' : ''}`}
+                      >
+                        <input
+                          id={checkboxId}
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleInventory(inventoryId)}
+                          disabled={submitting}
+                        />
+                        <span className="inventory-checkbox-content">
+                          <span className="inventory-checkbox-title">{inventory.name}</span>
+                          {metaItems.length > 0 && (
+                            <span className="inventory-checkbox-meta">{metaItems.join(' • ')}</span>
+                          )}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {inventoryError && <span className="error-message">{inventoryError}</span>}
         {errors.inventoryIds && <span className="error-message">{errors.inventoryIds}</span>}

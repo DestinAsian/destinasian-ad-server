@@ -356,6 +356,7 @@
   color: #1f2937;
 }
 
+.selectable-checkbox-list,
 .share-checkbox-list {
   border: 1px solid #d1d5db;
   border-radius: 8px;
@@ -366,6 +367,7 @@
   gap: 6px;
 }
 
+.selectable-checkbox-item,
 .share-checkbox-item {
   display: flex;
   align-items: center;
@@ -375,6 +377,7 @@
   padding: 4px 2px;
 }
 
+.selectable-checkbox-item input[type="checkbox"],
 .share-checkbox-item input[type="checkbox"] {
   width: 14px;
   height: 14px;

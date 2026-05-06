@@ -161,7 +161,9 @@
   padding: 20px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 .ad-unit-card:hover {
@@ -461,8 +463,9 @@
 
 .campaign-item {
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 0 !important;
   margin-bottom: 8px !important;
 }
@@ -495,7 +498,8 @@
 .campaign-actions {
   display: flex;
   gap: 4px;
-  padding-right: 8px;
+  padding: 0 18px 16px;
+  width: 100%;
 }
 
 .no-campaigns {
@@ -710,6 +714,126 @@
 .inventory-mapping-pill input {
   width: 14px;
   height: 14px;
+}
+
+.selectable-checkbox-list {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  background: #fff;
+}
+
+.selectable-checkbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: #1f2937;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.selectable-checkbox-item:hover {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+.selectable-checkbox-item.selected {
+  background: rgba(111, 152, 166, 0.12);
+  border-color: #6f98a6;
+}
+
+.selectable-checkbox-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+}
+
+.inventory-checkbox-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inventory-checkbox-title {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.inventory-checkbox-meta {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.inventory-selection-state {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.inventory-selector-panel {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.inventory-selector-toggle {
+  width: 100%;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inventory-selector-toggle:hover {
+  background: #f9fafb;
+}
+
+.inventory-selector-toggle:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.12);
+  border-radius: 8px;
+}
+
+.inventory-selector-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inventory-selector-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.inventory-selector-summary {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.inventory-selector-icon {
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.inventory-selector-body {
+  border-top: 1px solid #e5e7eb;
+  padding: 10px;
 }
 
 /* Ad Unit CRUD Styles */
@@ -1204,7 +1328,7 @@
 
 .dashboard-header h1 {
   margin: 0;
-  font-family: 'EB Garamond', serif;
+  font-family: "EB Garamond", serif;
   font-size: 2.35rem;
   font-weight: 600;
   line-height: 1;
@@ -1243,7 +1367,11 @@
 
 .dashboard-overview-header,
 .dashboard-chart-panel {
-  background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-panel) 100%);
+  background: linear-gradient(
+    180deg,
+    var(--bg-elevated) 0%,
+    var(--bg-panel) 100%
+  );
   border: 1px solid var(--line-soft);
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
@@ -1260,7 +1388,7 @@
 .dashboard-overview-header h2,
 .dashboard-chart-header h3 {
   margin: 0 0 8px;
-  font-family: 'EB Garamond', serif;
+  font-family: "EB Garamond", serif;
   font-weight: 600;
   color: var(--ink-strong);
 }
@@ -1296,7 +1424,7 @@
 }
 
 .dashboard-date-input {
-  font-family: 'Rubik', sans-serif;
+  font-family: "Rubik", sans-serif;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   padding: 12px 14px;
@@ -1352,7 +1480,11 @@
 .campaign-stats,
 .ad-unit-card,
 .modal-content {
-  background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-panel) 100%);
+  background: linear-gradient(
+    180deg,
+    var(--bg-elevated) 0%,
+    var(--bg-panel) 100%
+  );
   border: 1px solid var(--line-soft);
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
@@ -1368,7 +1500,7 @@
 .campaign-stats h2,
 .ad-units-section h3,
 .modal-header h2 {
-  font-family: 'EB Garamond', serif;
+  font-family: "EB Garamond", serif;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--ink-strong);
@@ -1400,7 +1532,11 @@
   border: 1px solid var(--line-soft);
   border-radius: 16px;
   background: rgba(250, 250, 247, 0.82);
-  transition: border-color 0.22s ease, background-color 0.22s ease, transform 0.22s ease, box-shadow 0.22s ease;
+  transition:
+    border-color 0.22s ease,
+    background-color 0.22s ease,
+    transform 0.22s ease,
+    box-shadow 0.22s ease;
 }
 
 .campaign-list li:hover,
@@ -1413,7 +1549,11 @@
 
 .campaign-list li.active,
 .campaign-item.active {
-  background: linear-gradient(180deg, rgba(223, 236, 240, 0.88) 0%, rgba(244, 248, 249, 0.96) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(223, 236, 240, 0.88) 0%,
+    rgba(244, 248, 249, 0.96) 100%
+  );
   color: var(--ink-strong);
   border-color: rgba(124, 170, 184, 0.65);
 }
@@ -1421,6 +1561,7 @@
 .campaign-info {
   padding: 16px 18px;
   border-radius: 16px;
+  width: 100%;
 }
 
 .campaign-info:hover,
@@ -1483,7 +1624,11 @@
   padding: 24px 22px;
   text-align: left;
   color: var(--ink-strong);
-  background: linear-gradient(180deg, rgba(245, 248, 248, 0.98) 0%, rgba(236, 244, 246, 0.98) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(245, 248, 248, 0.98) 0%,
+    rgba(236, 244, 246, 0.98) 100%
+  );
   border: 1px solid rgba(124, 170, 184, 0.28);
   border-radius: 18px;
   box-shadow: none;
@@ -1491,7 +1636,7 @@
 
 .stat-card h4 {
   margin: 0 0 10px;
-  font-family: 'Rubik', sans-serif;
+  font-family: "Rubik", sans-serif;
   font-size: 0.78rem;
   font-weight: 500;
   letter-spacing: 0.12em;
@@ -1501,7 +1646,7 @@
 }
 
 .stat-value {
-  font-family: 'EB Garamond', serif;
+  font-family: "EB Garamond", serif;
   font-size: 2.4rem;
   font-weight: 600;
   line-height: 1;
@@ -1566,7 +1711,7 @@
 
 .ad-unit-info h4 {
   margin-bottom: 0;
-  font-family: 'EB Garamond', serif;
+  font-family: "EB Garamond", serif;
   font-size: 1.6rem;
   font-weight: 600;
   line-height: 1.1;
@@ -1588,7 +1733,7 @@
 
 .ad-code,
 .ad-unit-cms-code {
-  font-family: 'Rubik', sans-serif;
+  font-family: "Rubik", sans-serif;
   font-size: 0.78rem;
 }
 
@@ -1672,7 +1817,7 @@
 .ad-unit-form select,
 .ad-unit-form input,
 .create-account-form input {
-  font-family: 'Rubik', sans-serif;
+  font-family: "Rubik", sans-serif;
 }
 
 .btn {
