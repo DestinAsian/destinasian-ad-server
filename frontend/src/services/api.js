@@ -81,10 +81,15 @@ export const trackingAPI = {
 
 export const accountAPI = {
   getAll: () => axiosInstance.get('/accounts'),
+  create: (data) => axiosInstance.post('/accounts', data),
   getById: (id) => axiosInstance.get(`/accounts/${id}`),
   update: (id, data) => axiosInstance.put(`/accounts/${id}`, data),
   delete: (id) => axiosInstance.delete(`/accounts/${id}`),
-  getStats: (id) => axiosInstance.get(`/accounts/${id}/stats`)
+  getStats: (id) => axiosInstance.get(`/accounts/${id}/stats`),
+  share: (id, data) => axiosInstance.post(`/accounts/${id}/share`, data),
+  syncShare: (id, data) => axiosInstance.put(`/accounts/${id}/share`, data),
+  updateShare: (id, userId, data) => axiosInstance.patch(`/accounts/${id}/share/${userId}`, data),
+  removeShare: (id, userId) => axiosInstance.delete(`/accounts/${id}/share/${userId}`)
 };
 
 export const inventoryAPI = {

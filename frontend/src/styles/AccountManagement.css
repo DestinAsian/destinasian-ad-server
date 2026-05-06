@@ -10,6 +10,37 @@
   margin-bottom: 20px;
 }
 
+.account-page-header p {
+  margin: -8px 0 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.account-create-card {
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.account-create-card h3 {
+  margin: 0 0 10px;
+  color: #1e3c72;
+}
+
+.account-create-form {
+  display: flex;
+  gap: 10px;
+}
+
+.account-create-form input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+}
+
 .accounts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
@@ -146,6 +177,10 @@
   border-top: 1px solid #e0e0e0;
 }
 
+.account-stats-secondary .stat-value {
+  font-size: 16px;
+}
+
 .stat {
   flex: 1;
   text-align: center;
@@ -170,6 +205,7 @@
   border-top: 1px solid #e0e0e0;
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .btn {
@@ -228,6 +264,133 @@
 .no-accounts p {
   color: #666;
   font-size: 16px;
+}
+
+.share-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #d1d5db;
+}
+
+.share-section h4,
+.share-panel h4 {
+  margin: 0 0 8px;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.share-empty {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.share-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.share-row .share-email {
+  font-size: 13px;
+  color: #374151;
+  overflow-wrap: anywhere;
+}
+
+.share-level {
+  font-size: 12px;
+  color: #1f2937;
+  text-transform: lowercase;
+  background: #eef2f7;
+  border-radius: 999px;
+  text-align: center;
+  padding: 4px 6px;
+}
+
+.share-row select,
+.share-form select,
+.share-form input {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.share-panel {
+  padding: 12px 15px 15px;
+  border-top: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.share-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 88px;
+  gap: 8px;
+  align-items: center;
+}
+
+.share-modal-account-name {
+  margin-top: 0;
+  margin-bottom: 14px;
+  color: #111827;
+  font-size: 14px;
+}
+
+.share-modal-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+
+.share-user-select {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.share-checkbox-list {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.share-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #1f2937;
+  padding: 4px 2px;
+}
+
+.share-checkbox-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+}
+
+.share-modal-helper {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.share-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .alert {
@@ -291,5 +454,14 @@
   .btn-save,
   .btn-cancel-edit {
     width: 100%;
+  }
+
+  .account-create-form {
+    flex-direction: column;
+  }
+
+  .share-row,
+  .share-form {
+    grid-template-columns: 1fr;
   }
 }

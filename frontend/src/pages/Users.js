@@ -7,8 +7,7 @@ const emptyCreateForm = {
   name: '',
   email: '',
   password: '',
-  passwordConfirm: '',
-  accountName: ''
+  passwordConfirm: ''
 };
 
 function Users() {
@@ -223,7 +222,7 @@ function Users() {
     <div className="users-page">
       <header className="users-header">
         <h2>Users</h2>
-        <p>{isOwner ? 'Manage editor access and user accounts.' : 'View users and update your own profile.'}</p>
+        <p>{isOwner ? 'Manage editor access and user permissions.' : 'View users and update your own profile.'}</p>
       </header>
 
       {successMessage && <div className="alert alert-success">{successMessage}</div>}
@@ -299,12 +298,6 @@ function Users() {
               onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))}
               placeholder="Email"
               required
-            />
-            <input
-              type="text"
-              value={createForm.accountName}
-              onChange={(e) => setCreateForm((prev) => ({ ...prev, accountName: e.target.value }))}
-              placeholder="Account name (optional)"
             />
             <input
               type="password"

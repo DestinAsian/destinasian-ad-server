@@ -13,7 +13,11 @@
     "migrate:user-roles": "node migrations/20260505_enforce_single_owner_and_editor_roles.js up",
     "migrate:rollback:user-roles": "node migrations/20260505_enforce_single_owner_and_editor_roles.js down",
     "migrate:owner-2fa": "node migrations/20260505_add_two_factor_owner_enforcement.js up",
-    "migrate:rollback:owner-2fa": "node migrations/20260505_add_two_factor_owner_enforcement.js down"
+    "migrate:rollback:owner-2fa": "node migrations/20260505_add_two_factor_owner_enforcement.js down",
+    "migrate:account-sharing": "node migrations/20260506_add_account_sharing_fields_and_indexes.js up",
+    "migrate:rollback:account-sharing": "node migrations/20260506_add_account_sharing_fields_and_indexes.js down",
+    "migrate:cleanup-editor-accounts": "node migrations/20260506_cleanup_auto_created_editor_accounts.js up",
+    "migrate:rollback:cleanup-editor-accounts": "node migrations/20260506_cleanup_auto_created_editor_accounts.js down"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

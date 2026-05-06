@@ -84,7 +84,6 @@ exports.createInventory = async (req, res) => {
 exports.getAllInventories = async (req, res) => {
   try {
     const filter = {
-      user: req.user.id,
       account: req.user.accountId
     };
 
@@ -100,7 +99,7 @@ exports.getInventory = async (req, res) => {
     const inventory = await Inventory.findById(req.params.id);
     if (!inventory) return res.status(404).json({ error: 'Inventory not found' });
 
-    if (inventory.user.toString() !== req.user.id || inventory.account.toString() !== req.user.accountId) {
+    if (inventory.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to access this inventory' });
     }
 
@@ -116,7 +115,7 @@ exports.updateInventory = async (req, res) => {
     const inventory = await Inventory.findById(req.params.id);
     if (!inventory) return res.status(404).json({ error: 'Inventory not found' });
 
-    if (inventory.user.toString() !== req.user.id || inventory.account.toString() !== req.user.accountId) {
+    if (inventory.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to update this inventory' });
     }
 
@@ -172,7 +171,7 @@ exports.deleteInventory = async (req, res) => {
     const inventory = await Inventory.findById(req.params.id);
     if (!inventory) return res.status(404).json({ error: 'Inventory not found' });
 
-    if (inventory.user.toString() !== req.user.id || inventory.account.toString() !== req.user.accountId) {
+    if (inventory.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to delete this inventory' });
     }
 

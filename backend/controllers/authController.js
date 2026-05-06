@@ -122,13 +122,27 @@ const buildAuthResponse = ({ user, token, currentAccount, accounts, extra = {} }
   ...extra
 });
 
-const getCurrentAccount = (user, preferredAccountId) => {
-  const userAccounts = Array.isArray(user.accounts) ? user.accounts : [];
+const getAccessibleAccountsForUser = async (userId, role) => {
+  const normalizedRole = normalizeRole(role);
+  const accessQuery = normalizedRole === 'owner'
+    ? { owner: userId }
+    : { 'sharedUsers.user': userId };
+
+  return Account.find({
+    isActive: true,
+    ...accessQuery
+  })
+    .select('_id name')
+    .sort({ updatedAt: -1 });
+};
+
+const getCurrentAccount = (userAccounts, preferredAccountId) => {
+  const normalizedAccounts = Array.isArray(userAccounts) ? userAccounts : [];
   if (preferredAccountId) {
-    const found = userAccounts.find((acc) => String(acc._id || acc.id) === String(preferredAccountId));
+    const found = normalizedAccounts.find((acc) => String(acc._id || acc.id) === String(preferredAccountId));
     if (found) return found;
   }
-  return userAccounts.length > 0 ? userAccounts[0] : null;
+  return normalizedAccounts.length > 0 ? normalizedAccounts[0] : null;
 };
 
 // @desc    Get owner setup status
@@ -271,8 +285,7 @@ exports.login = async (req, res) => {
     }
 
     const user = await User.findOne({ email: normalizedEmail })
-      .select('+password +twoFactorSecret +twoFactorTempSecret')
-      .populate('accounts');
+      .select('+password +twoFactorSecret +twoFactorTempSecret');
 
     if (!user) {
       return res.status(401).json({
@@ -296,7 +309,8 @@ exports.login = async (req, res) => {
       });
     }
 
-    const currentAccount = getCurrentAccount(user);
+    const accessibleAccounts = await getAccessibleAccountsForUser(user._id, user.role);
+    const currentAccount = getCurrentAccount(accessibleAccounts);
     if (!currentAccount) {
       return res.status(500).json({
         success: false,
@@ -326,7 +340,7 @@ exports.login = async (req, res) => {
           challengeToken,
           user: toSafeUser(user),
           currentAccount: { id: currentAccount._id, name: currentAccount.name },
-          accounts: user.accounts.map((acc) => ({ id: acc._id, name: acc.name }))
+          accounts: accessibleAccounts.map((acc) => ({ id: acc._id, name: acc.name }))
         });
       }
 
@@ -335,7 +349,7 @@ exports.login = async (req, res) => {
         user,
         token: setupToken,
         currentAccount,
-        accounts: user.accounts,
+        accounts: accessibleAccounts,
         extra: { twoFactorSetupRequired: true }
       }));
     }
@@ -345,7 +359,7 @@ exports.login = async (req, res) => {
       user,
       token,
       currentAccount,
-      accounts: user.accounts
+      accounts: accessibleAccounts
     }));
   } catch (error) {
     res.status(500).json({
@@ -377,9 +391,7 @@ exports.verifyTwoFactorLogin = async (req, res) => {
       });
     }
 
-    const user = await User.findById(decoded.id)
-      .select('+twoFactorSecret')
-      .populate('accounts');
+    const user = await User.findById(decoded.id).select('+twoFactorSecret');
     if (!user || !user.isActive) {
       return res.status(401).json({
         success: false,
@@ -418,7 +430,8 @@ exports.verifyTwoFactorLogin = async (req, res) => {
     user.twoFactorLastVerifiedAt = new Date();
     await user.save();
 
-    const currentAccount = getCurrentAccount(user, decoded.accountId);
+    const accessibleAccounts = await getAccessibleAccountsForUser(user._id, user.role);
+    const currentAccount = getCurrentAccount(accessibleAccounts, decoded.accountId);
     if (!currentAccount) {
       return res.status(500).json({
         success: false,
@@ -431,7 +444,7 @@ exports.verifyTwoFactorLogin = async (req, res) => {
       user,
       token: fullToken,
       currentAccount,
-      accounts: user.accounts
+      accounts: accessibleAccounts
     }));
   } catch (error) {
     res.status(401).json({
@@ -446,7 +459,7 @@ exports.verifyTwoFactorLogin = async (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).populate('accounts');
+    const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -454,12 +467,13 @@ exports.getMe = async (req, res) => {
       });
     }
 
-    const currentAccount = getCurrentAccount(user, req.user.accountId);
+    const accessibleAccounts = await getAccessibleAccountsForUser(user._id, user.role);
+    const currentAccount = getCurrentAccount(accessibleAccounts, req.user.accountId);
     res.status(200).json({
       success: true,
       user: toSafeUser(user),
       currentAccount: currentAccount ? { id: currentAccount._id, name: currentAccount.name } : { id: req.user.accountId },
-      accounts: user.accounts.map((acc) => ({
+      accounts: accessibleAccounts.map((acc) => ({
         id: acc._id,
         name: acc.name
       }))
@@ -546,8 +560,7 @@ exports.verifyTwoFactorSetup = async (req, res) => {
     }
 
     const user = await User.findById(req.user.id)
-      .select('+twoFactorTempSecret +twoFactorSecret')
-      .populate('accounts');
+      .select('+twoFactorTempSecret +twoFactorSecret');
 
     if (!user || !user.twoFactorTempSecret) {
       return res.status(400).json({
@@ -585,14 +598,15 @@ exports.verifyTwoFactorSetup = async (req, res) => {
     user.tokenVersion = Number(user.tokenVersion || 0) + 1;
     await user.save();
 
-    const currentAccount = getCurrentAccount(user, req.user.accountId);
+    const accessibleAccounts = await getAccessibleAccountsForUser(user._id, user.role);
+    const currentAccount = getCurrentAccount(accessibleAccounts, req.user.accountId);
     const token = generateAccessToken(user._id, currentAccount?._id, user.tokenVersion);
 
     res.status(200).json(buildAuthResponse({
       user,
       token,
       currentAccount,
-      accounts: user.accounts,
+      accounts: accessibleAccounts,
       extra: { message: 'Two-factor authentication enabled successfully.' }
     }));
   } catch (error) {
@@ -616,8 +630,9 @@ exports.selectAccount = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user.id).populate('accounts');
-    const hasAccess = user.accounts.some((acc) => acc._id.toString() === accountId);
+    const user = await User.findById(req.user.id);
+    const accessibleAccounts = await getAccessibleAccountsForUser(user._id, user.role);
+    const hasAccess = accessibleAccounts.some((acc) => acc._id.toString() === accountId);
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
@@ -625,7 +640,7 @@ exports.selectAccount = async (req, res) => {
       });
     }
 
-    const account = user.accounts.find((acc) => acc._id.toString() === accountId);
+    const account = accessibleAccounts.find((acc) => acc._id.toString() === accountId);
     const token = isOwnerUser(user) && !user.twoFactorEnabled
       ? generateOwnerSetupToken(user._id, accountId, user.tokenVersion)
       : generateAccessToken(user._id, accountId, user.tokenVersion);
@@ -634,7 +649,7 @@ exports.selectAccount = async (req, res) => {
       user,
       token,
       currentAccount: account,
-      accounts: user.accounts
+      accounts: accessibleAccounts
     }));
   } catch (error) {
     res.status(500).json({
@@ -657,22 +672,57 @@ exports.createAccount = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user.id).populate('accounts');
-    const account = await Account.create({
-      name: accountName,
+    const user = await User.findById(req.user.id);
+    if (normalizeRole(user.role) !== 'owner') {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to create accounts.'
+      });
+    }
+
+    const trimmedName = String(accountName).trim();
+    if (!trimmedName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide accountName'
+      });
+    }
+
+    const duplicate = await Account.findOne({
       owner: user._id,
-      email: user.email
+      name: trimmedName,
+      isActive: true
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        success: false,
+        message: 'Account name already exists.'
+      });
+    }
+
+    const account = await Account.create({
+      name: trimmedName,
+      owner: user._id,
+      email: normalizeEmail(user.email)
     });
 
     user.accounts.push(account._id);
     await user.save();
 
+    const accessibleAccounts = await getAccessibleAccountsForUser(user._id, user.role);
+
     res.status(201).json({
       success: true,
       account: { id: account._id, name: account.name },
-      accounts: user.accounts.map((acc) => ({ id: acc._id, name: acc.name }))
+      accounts: accessibleAccounts.map((acc) => ({ id: acc._id, name: acc.name }))
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'Account name already exists.'
+      });
+    }
     res.status(500).json({
       success: false,
       message: error.message || 'Server error'

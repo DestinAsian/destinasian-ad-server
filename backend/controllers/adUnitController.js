@@ -84,7 +84,7 @@ const normalizeInventoryInputList = (payload = {}) => {
   };
 };
 
-const resolveInventoryDocs = async ({ userId, accountId, payload = {} }) => {
+const resolveInventoryDocs = async ({ accountId, payload = {} }) => {
   const { idList, aliasList } = normalizeInventoryInputList(payload);
   if (idList.length === 0 && aliasList.length === 0) {
     return [];
@@ -92,7 +92,6 @@ const resolveInventoryDocs = async ({ userId, accountId, payload = {} }) => {
 
   const aliasKeyList = aliasList.map((value) => value.toLowerCase());
   const match = {
-    user: userId,
     account: accountId
   };
 
@@ -159,7 +158,7 @@ const resolveInventoryDocs = async ({ userId, accountId, payload = {} }) => {
   return resolved;
 };
 
-const resolveInventoryFilterIds = async ({ userId, accountId, query = {} }) => {
+const resolveInventoryFilterIds = async ({ accountId, query = {} }) => {
   const payload = {
     inventoryIds: query.inventoryIds,
     inventories: query.inventories,
@@ -174,7 +173,7 @@ const resolveInventoryFilterIds = async ({ userId, accountId, query = {} }) => {
     return null;
   }
 
-  const inventories = await resolveInventoryDocs({ userId, accountId, payload });
+  const inventories = await resolveInventoryDocs({ accountId, payload });
   return inventories.map((inventory) => inventory._id);
 };
 
@@ -286,12 +285,11 @@ exports.createAdUnit = async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    if (campaignDoc.user.toString() !== req.user.id || campaignDoc.account.toString() !== req.user.accountId) {
+    if (campaignDoc.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to use this campaign' });
     }
 
     const inventoryDocs = await resolveInventoryDocs({
-      userId: req.user.id,
       accountId: req.user.accountId,
       payload: req.body
     });
@@ -337,9 +335,8 @@ exports.createAdUnit = async (req, res) => {
 
 exports.getAllAdUnits = async (req, res) => {
   try {
-    const filter = { user: req.user.id, account: req.user.accountId };
+    const filter = { account: req.user.accountId };
     const inventoryFilterIds = await resolveInventoryFilterIds({
-      userId: req.user.id,
       accountId: req.user.accountId,
       query: req.query
     });
@@ -387,7 +384,7 @@ exports.getAdUnit = async (req, res) => {
       .populate('inventories');
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
 
-    if (adUnit.user.toString() !== req.user.id || adUnit.account.toString() !== req.user.accountId) {
+    if (adUnit.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to access this ad unit' });
     }
 
@@ -410,7 +407,7 @@ exports.updateAdUnit = async (req, res) => {
     const adUnit = await AdUnit.findById(req.params.id);
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
 
-    if (adUnit.user.toString() !== req.user.id || adUnit.account.toString() !== req.user.accountId) {
+    if (adUnit.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to update this ad unit' });
     }
 
@@ -432,7 +429,6 @@ exports.updateAdUnit = async (req, res) => {
 
     if (hasInventoryInput) {
       const inventoryDocs = await resolveInventoryDocs({
-        userId: req.user.id,
         accountId: req.user.accountId,
         payload: req.body
       });
@@ -470,7 +466,7 @@ exports.deleteAdUnit = async (req, res) => {
     const adUnit = await AdUnit.findById(req.params.id);
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
 
-    if (adUnit.user.toString() !== req.user.id || adUnit.account.toString() !== req.user.accountId) {
+    if (adUnit.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to delete this ad unit' });
     }
 
@@ -489,7 +485,7 @@ exports.getAdUnitStats = async (req, res) => {
     const adUnit = await AdUnit.findById(req.params.id);
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
 
-    if (adUnit.user.toString() !== req.user.id || adUnit.account.toString() !== req.user.accountId) {
+    if (adUnit.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to access this ad unit' });
     }
 
@@ -511,13 +507,11 @@ exports.getAdUnitStats = async (req, res) => {
 exports.getAdUnitByCampaign = async (req, res) => {
   try {
     const filter = {
-      user: req.user.id,
       account: req.user.accountId,
       campaign: req.params.campaignId
     };
 
     const inventoryFilterIds = await resolveInventoryFilterIds({
-      userId: req.user.id,
       accountId: req.user.accountId,
       query: req.query
     });

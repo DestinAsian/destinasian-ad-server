@@ -54,7 +54,7 @@ const formatCurrency = (value) => {
 };
 
 function Dashboard({ view = 'overview' }) {
-  const { currentAccount } = useAuth();
+  const { currentAccount, user, accounts } = useAuth();
   const isCampaignView = view === 'campaigns';
   const isOverviewView = !isCampaignView;
   const defaultDateRange = useMemo(() => getDefaultDateRange(), []);
@@ -502,6 +502,21 @@ function Dashboard({ view = 'overview' }) {
   }), []);
 
   if (loading) return <div className="loading">Loading...</div>;
+
+  if (user?.role === 'editor' && (!Array.isArray(accounts) || accounts.length === 0 || !currentAccount?.id)) {
+    return (
+      <div className="dashboard">
+        <header className="dashboard-header">
+          <div>
+            <h1>{isCampaignView ? 'Campaigns' : 'Dashboard'}</h1>
+          </div>
+        </header>
+        <div className="no-selection">
+          <p>No account has been shared with you yet. Please contact the account owner.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard">

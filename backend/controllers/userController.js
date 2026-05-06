@@ -54,7 +54,7 @@ exports.getUsers = async (req, res) => {
 
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, password, passwordConfirm, accountName } = req.body;
+    const { name, email, password, passwordConfirm } = req.body;
     const normalizedEmail = normalizeEmail(email);
 
     if (!name || !normalizedEmail || !password || !passwordConfirm) {
@@ -93,15 +93,6 @@ exports.createUser = async (req, res) => {
       role: 'editor',
       isActive: true
     });
-
-    const account = await Account.create({
-      name: accountName || `${name}'s Account`,
-      owner: user._id,
-      email: normalizedEmail
-    });
-
-    user.accounts.push(account._id);
-    await user.save();
 
     const withAccounts = await User.findById(user._id).populate('accounts', '_id name');
 

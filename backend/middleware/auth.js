@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Account = require('../models/Account');
 const { verifyTotpToken, normalizeTotpToken } = require('../utils/twoFactor');
 
 const normalizeRole = (role) => {
@@ -200,4 +201,35 @@ exports.allowOwnerOrSelf = (idParam = 'id') => {
       message: 'You do not have permission to perform this action.'
     });
   };
+};
+
+exports.requireAccountAccess = async (req, res, next) => {
+  try {
+    if (!req.user?.accountId) {
+      return res.status(403).json({
+        success: false,
+        message: 'No account has been selected.'
+      });
+    }
+
+    const accountFilter = req.user.role === 'owner'
+      ? { _id: req.user.accountId, owner: req.user.id, isActive: true }
+      : { _id: req.user.accountId, 'sharedUsers.user': req.user.id, isActive: true };
+
+    const account = await Account.findOne(accountFilter).select('_id name owner');
+    if (!account) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to access this account.'
+      });
+    }
+
+    req.currentAccount = account;
+    next();
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to verify account access.'
+    });
+  }
 };

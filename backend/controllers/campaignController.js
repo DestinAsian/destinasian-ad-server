@@ -40,7 +40,7 @@ const parseDateInput = (value) => {
   return { provided: true, value: parsed, error: null };
 };
 
-const resolveInventoryFilterIds = async ({ userId, accountId, query = {} }) => {
+const resolveInventoryFilterIds = async ({ accountId, query = {} }) => {
   const inventoryTokens = [];
   const pushToken = (value) => {
     const normalized = normalizeString(value);
@@ -70,7 +70,6 @@ const resolveInventoryFilterIds = async ({ userId, accountId, query = {} }) => {
   });
 
   const inventories = await Inventory.find({
-    user: userId,
     account: accountId,
     $or: orConditions
   }).select('_id');
@@ -148,13 +147,12 @@ const validateCampaignUpdateDates = ({ payload = {}, campaign }) => {
   return { valid: true, startDate: effectiveStart, endDate: effectiveEnd };
 };
 
-const applyAdUnitInventoryMappings = async ({ userId, accountId, campaignId, mappings }) => {
+const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings }) => {
   if (!Array.isArray(mappings)) {
     return;
   }
 
   const adUnits = await AdUnit.find({
-    user: userId,
     account: accountId,
     campaign: campaignId
   }).select('_id name');
@@ -190,7 +188,6 @@ const applyAdUnitInventoryMappings = async ({ userId, accountId, campaignId, map
     }
 
     const inventories = await Inventory.find({
-      user: userId,
       account: accountId,
       _id: { $in: normalizedInventoryObjectIds }
     }).select('_id');
@@ -249,9 +246,8 @@ exports.createCampaign = async (req, res) => {
 
 exports.getAllCampaigns = async (req, res) => {
   try {
-    const filter = { user: req.user.id, account: req.user.accountId };
+    const filter = { account: req.user.accountId };
     const inventoryFilterIds = await resolveInventoryFilterIds({
-      userId: req.user.id,
       accountId: req.user.accountId,
       query: req.query
     });
@@ -262,7 +258,6 @@ exports.getAllCampaigns = async (req, res) => {
       }
 
       const groupedAdUnits = await AdUnit.find({
-        user: req.user.id,
         account: req.user.accountId,
         $or: [
           { inventory: { $in: inventoryFilterIds } },
@@ -310,7 +305,7 @@ exports.getCampaign = async (req, res) => {
     });
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    if (campaign.user.toString() !== req.user.id || campaign.account.toString() !== req.user.accountId) {
+    if (campaign.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to access this campaign' });
     }
 
@@ -333,7 +328,7 @@ exports.updateCampaign = async (req, res) => {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    if (campaign.user.toString() !== req.user.id || campaign.account.toString() !== req.user.accountId) {
+    if (campaign.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to update this campaign' });
     }
 
@@ -355,7 +350,6 @@ exports.updateCampaign = async (req, res) => {
 
     if (Array.isArray(req.body.adUnitInventoryMappings)) {
       await applyAdUnitInventoryMappings({
-        userId: req.user.id,
         accountId: req.user.accountId,
         campaignId: updatedCampaign._id,
         mappings: req.body.adUnitInventoryMappings
@@ -386,7 +380,7 @@ exports.deleteCampaign = async (req, res) => {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    if (campaign.user.toString() !== req.user.id || campaign.account.toString() !== req.user.accountId) {
+    if (campaign.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to delete this campaign' });
     }
 
@@ -402,7 +396,7 @@ exports.getCampaignStats = async (req, res) => {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    if (campaign.user.toString() !== req.user.id || campaign.account.toString() !== req.user.accountId) {
+    if (campaign.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to access this campaign' });
     }
 
@@ -426,12 +420,11 @@ exports.getCampaignAdUnitInventories = async (req, res) => {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    if (campaign.user.toString() !== req.user.id || campaign.account.toString() !== req.user.accountId) {
+    if (campaign.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to access this campaign' });
     }
 
     const adUnits = await AdUnit.find({
-      user: req.user.id,
       account: req.user.accountId,
       campaign: campaign._id
     }).populate('inventories').populate('inventory');
@@ -454,13 +447,12 @@ exports.updateCampaignAdUnitInventories = async (req, res) => {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    if (campaign.user.toString() !== req.user.id || campaign.account.toString() !== req.user.accountId) {
+    if (campaign.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to update this campaign' });
     }
 
     const mappings = Array.isArray(req.body.mappings) ? req.body.mappings : [];
     await applyAdUnitInventoryMappings({
-      userId: req.user.id,
       accountId: req.user.accountId,
       campaignId: campaign._id,
       mappings
@@ -471,7 +463,6 @@ exports.updateCampaignAdUnitInventories = async (req, res) => {
     }
 
     const adUnits = await AdUnit.find({
-      user: req.user.id,
       account: req.user.accountId,
       campaign: campaign._id
     }).populate('inventories').populate('inventory');
