@@ -32,18 +32,27 @@ jobs:
         run: |
           ssh-add -L || true
 
-      - name: Debug SSH login
+      - name: Debug PM2 context
         run: |
-          ssh -v -o BatchMode=yes -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "echo connected"
+          ssh -o BatchMode=yes -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+          "whoami && echo \$HOME && pm2 list || true"
 
       - name: Deploy main to production
         if: github.ref_name == 'main'
         run: |
-          ssh -o BatchMode=yes -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "/srv/apps/scripts/deploy-adserver.sh main /srv/apps/production/destinasian-ad-server"
+          ssh -o BatchMode=yes -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" <<'EOF'
+            whoami
+            echo "$HOME"
+            /srv/apps/scripts/deploy-adserver.sh main /srv/apps/production/destinasian-ad-server
+            pm2 list
+          EOF
 
       - name: Deploy test to staging
         if: github.ref_name == 'test'
         run: |
-          ssh -o BatchMode=yes -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "/srv/apps/scripts/deploy-adserver.sh test /srv/apps/staging/destinasian-ad-server"
+          ssh -o BatchMode=yes -p "${{ secrets.VPS_PORT }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" <<'EOF'
+            whoami
+            echo "$HOME"
+            /srv/apps/scripts/deploy-adserver.sh test /srv/apps/staging/destinasian-ad-server
+            pm2 list
+          EOF
