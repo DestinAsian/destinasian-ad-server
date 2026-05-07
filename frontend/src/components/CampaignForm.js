@@ -73,7 +73,7 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
         setInventoryMappings(nextMappingState);
         setMappingError(null);
       } catch (error) {
-        setMappingError('Failed to load inventory assignment data.');
+        setMappingError('Failed to load ad channel assignment data.');
       }
     };
 
@@ -119,7 +119,7 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
         return assigned.length === 0;
       });
       if (unassigned.length > 0) {
-        newErrors.adUnitInventoryMappings = 'Active campaigns cannot save ad units without inventory assignments.';
+        newErrors.adUnitInventoryMappings = 'Active campaigns cannot save ad units without ad channel assignments.';
       }
     }
 
@@ -246,7 +246,7 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
 
       {campaign && (
         <div className="form-group">
-          <label>Ad Unit Inventory Assignments</label>
+          <label>Ad Unit Ad Channel Assignments</label>
           <div className="campaign-mapping-section">
             {mappingError && <span className="error-message">{mappingError}</span>}
             {!mappingError && mappingRows.length === 0 && (

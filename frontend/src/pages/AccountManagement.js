@@ -193,7 +193,7 @@ function AccountManagement() {
       <header className="account-page-header">
         <div>
           <h2>My Accounts</h2>
-          <p>Manage account access, sharing, and account-level campaign and inventory overview.</p>
+          <p>Manage account access, sharing, and account-level campaign and ad channel overview.</p>
         </div>
       </header>
 
@@ -288,7 +288,7 @@ function AccountManagement() {
                     <span className="stat-value">{summary.activeCampaignCount || 0}</span>
                   </div>
                   <div className="stat">
-                    <span className="stat-label">Inventories</span>
+                    <span className="stat-label">Ad Channels</span>
                     <span className="stat-value">{summary.inventoryCount || 0}</span>
                   </div>
                   <div className="stat">

@@ -12,7 +12,6 @@ import {
 } from 'chart.js';
 import { campaignAPI, adUnitAPI, inventoryAPI, trackingAPI } from '../services/api';
 import '../styles/Dashboard.css';
-import CampaignChart from '../components/CampaignChart';
 import AdUnitChart from '../components/AdUnitChart';
 import CampaignForm from '../components/CampaignForm';
 import AdUnitForm from '../components/AdUnitForm';
@@ -53,14 +52,27 @@ const formatCurrency = (value) => {
   }).format(Number(value) || 0);
 };
 
-function Dashboard({ view = 'overview' }) {
+const CAMPAIGN_PAGE_SIZE = 5;
+
+function Dashboard({ view = 'overview', searchQuery = '' }) {
   const { currentAccount, user, accounts } = useAuth();
   const isCampaignView = view === 'campaigns';
   const isOverviewView = !isCampaignView;
+  const normalizedSearchQuery = (searchQuery || '').trim();
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(normalizedSearchQuery);
   const defaultDateRange = useMemo(() => getDefaultDateRange(), []);
   const [campaigns, setCampaigns] = useState([]);
-  const [adUnits, setAdUnits] = useState([]);
+  const [campaignPage, setCampaignPage] = useState(1);
+  const [campaignHasMore, setCampaignHasMore] = useState(true);
+  const [campaignsLoadingMore, setCampaignsLoadingMore] = useState(false);
   const [inventories, setInventories] = useState([]);
+  const [overviewCampaignOptions, setOverviewCampaignOptions] = useState([]);
+  const [selectedOverviewCampaignId, setSelectedOverviewCampaignId] = useState('');
+  const [selectedOverviewAdChannelId, setSelectedOverviewAdChannelId] = useState('');
+  const [campaignFilterSearch, setCampaignFilterSearch] = useState('');
+  const [adChannelFilterSearch, setAdChannelFilterSearch] = useState('');
+  const [isCampaignFilterOpen, setIsCampaignFilterOpen] = useState(false);
+  const [isAdChannelFilterOpen, setIsAdChannelFilterOpen] = useState(false);
   const [selectedInventoryId, setSelectedInventoryId] = useState('');
   const [campaignSort, setCampaignSort] = useState('recent');
   const [dateRange, setDateRange] = useState(defaultDateRange);
@@ -76,7 +88,10 @@ function Dashboard({ view = 'overview' }) {
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const selectedCampaignRef = useRef(null);
-  const [loading, setLoading] = useState(true);
+  const loadMoreRef = useRef(null);
+  const campaignFilterRef = useRef(null);
+  const adChannelFilterRef = useRef(null);
+  const [loading, setLoading] = useState(isCampaignView);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showAdUnitModal, setShowAdUnitModal] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState(null);
@@ -84,52 +99,121 @@ function Dashboard({ view = 'overview' }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const hasMountedCampaignSortRef = useRef(false);
 
-  const fetchAdUnits = useCallback(async (campaignId) => {
-    try {
-      const params = selectedInventoryId ? { inventoryId: selectedInventoryId } : undefined;
-      const response = await adUnitAPI.getByCampaign(campaignId, params);
-      setAdUnits(response.data);
-    } catch (error) {
-      console.error('Error fetching ad units:', error);
-    }
-  }, [selectedInventoryId]);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(normalizedSearchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [normalizedSearchQuery]);
 
-  const fetchCampaigns = useCallback(async () => {
+  const fetchCampaigns = useCallback(async ({ page = 1, reset = false } = {}) => {
     try {
       if (!currentAccount?.id) {
         setCampaigns([]);
-        setAdUnits([]);
+        setCampaignHasMore(false);
+        setCampaignPage(1);
         setLoading(false);
         return;
       }
 
-      setLoading(true);
-      const params = selectedInventoryId ? { inventoryId: selectedInventoryId } : undefined;
-      const response = await campaignAPI.getAll(params);
-      setCampaigns(response.data);
+      if (reset) {
+        setLoading(true);
+      } else {
+        setCampaignsLoadingMore(true);
+      }
 
-      const nextSelectedCampaignId = response.data.some((campaign) => campaign._id === selectedCampaignRef.current)
+      const params = {
+        page,
+        limit: CAMPAIGN_PAGE_SIZE
+      };
+      if (selectedInventoryId) params.inventoryId = selectedInventoryId;
+      if (debouncedSearchQuery) params.search = debouncedSearchQuery;
+
+      const response = await campaignAPI.getAll(params);
+      const campaignRows = Array.isArray(response.data?.data)
+        ? response.data.data
+        : (Array.isArray(response.data) ? response.data : []);
+      const hasMore = typeof response.data?.pagination?.hasMore === 'boolean'
+        ? response.data.pagination.hasMore
+        : campaignRows.length >= CAMPAIGN_PAGE_SIZE;
+
+      let dedupedRows = [];
+      setCampaigns((prev) => {
+        const source = reset ? campaignRows : [...prev, ...campaignRows];
+        dedupedRows = Array.from(
+          new Map(source.map((campaign) => [campaign._id, campaign])).values()
+        );
+        return dedupedRows;
+      });
+      setCampaignHasMore(Boolean(hasMore));
+      setCampaignPage(page);
+
+      const nextSelectedCampaignId = dedupedRows.some((campaign) => campaign._id === selectedCampaignRef.current)
         ? selectedCampaignRef.current
-        : response.data[0]?._id || null;
+        : dedupedRows[0]?._id || null;
 
       selectedCampaignRef.current = nextSelectedCampaignId;
       setSelectedCampaign(nextSelectedCampaignId);
-      if (nextSelectedCampaignId) {
-        fetchAdUnits(nextSelectedCampaignId);
-      } else {
-        setAdUnits([]);
-      }
-      setLoading(false);
     } catch (error) {
       console.error('Error fetching campaigns:', error);
+    } finally {
       setLoading(false);
+      setCampaignsLoadingMore(false);
     }
-  }, [currentAccount?.id, selectedInventoryId, fetchAdUnits]);
+  }, [currentAccount?.id, selectedInventoryId, debouncedSearchQuery]);
 
   useEffect(() => {
-    fetchCampaigns();
-  }, [fetchCampaigns]);
+    if (!isCampaignView) {
+      setLoading(false);
+      return;
+    }
+
+    fetchCampaigns({ page: 1, reset: true });
+  }, [fetchCampaigns, isCampaignView]);
+
+  useEffect(() => {
+    if (!isCampaignView) {
+      return;
+    }
+    if (!hasMountedCampaignSortRef.current) {
+      hasMountedCampaignSortRef.current = true;
+      return;
+    }
+    fetchCampaigns({ page: 1, reset: true });
+  }, [campaignSort, isCampaignView, fetchCampaigns]);
+
+  const loadMoreCampaigns = useCallback(() => {
+    if (loading || campaignsLoadingMore || !campaignHasMore || !isCampaignView) {
+      return;
+    }
+
+    fetchCampaigns({ page: campaignPage + 1, reset: false });
+  }, [loading, campaignsLoadingMore, campaignHasMore, isCampaignView, fetchCampaigns, campaignPage]);
+
+  useEffect(() => {
+    if (!isCampaignView || !campaignHasMore) {
+      return undefined;
+    }
+
+    const target = loadMoreRef.current;
+    if (!target) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            loadMoreCampaigns();
+          }
+        });
+      },
+      { rootMargin: '240px 0px 240px 0px' }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [isCampaignView, campaignHasMore, loadMoreCampaigns, campaigns.length]);
 
   const fetchAnalytics = useCallback(async () => {
     try {
@@ -151,7 +235,8 @@ function Dashboard({ view = 'overview' }) {
       const response = await trackingAPI.getAnalytics({
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
-        inventoryId: selectedInventoryId || undefined,
+        inventoryId: selectedOverviewAdChannelId || undefined,
+        campaignId: selectedOverviewCampaignId || undefined,
         limit: 5
       });
       setAnalytics({
@@ -177,7 +262,7 @@ function Dashboard({ view = 'overview' }) {
     } finally {
       setAnalyticsLoading(false);
     }
-  }, [currentAccount?.id, dateRange.endDate, dateRange.startDate, selectedInventoryId]);
+  }, [currentAccount?.id, dateRange.endDate, dateRange.startDate, selectedOverviewAdChannelId, selectedOverviewCampaignId]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -194,20 +279,114 @@ function Dashboard({ view = 'overview' }) {
     };
 
     setCampaigns([]);
-    setAdUnits([]);
+    setCampaignPage(1);
+    setCampaignHasMore(true);
+    setCampaignsLoadingMore(false);
     selectedCampaignRef.current = null;
     setSelectedCampaign(null);
+    setOverviewCampaignOptions([]);
+    setSelectedOverviewCampaignId('');
+    setSelectedOverviewAdChannelId('');
+    setCampaignFilterSearch('');
+    setAdChannelFilterSearch('');
+    setIsCampaignFilterOpen(false);
+    setIsAdChannelFilterOpen(false);
     setSelectedInventoryId('');
     setCampaignSort('recent');
     setDateRange(getDefaultDateRange());
     loadInventories();
   }, [currentAccount?.id]);
 
-  const handleCampaignSelect = (campaignId) => {
-    selectedCampaignRef.current = campaignId;
-    setSelectedCampaign(campaignId);
-    fetchAdUnits(campaignId);
-  };
+  useEffect(() => {
+    const loadOverviewCampaignOptions = async () => {
+      try {
+        const response = await campaignAPI.getAll();
+        const rows = Array.isArray(response.data?.data)
+          ? response.data.data
+          : (Array.isArray(response.data) ? response.data : []);
+        setOverviewCampaignOptions(rows);
+      } catch (loadError) {
+        setOverviewCampaignOptions([]);
+      }
+    };
+
+    if (!currentAccount?.id) {
+      setOverviewCampaignOptions([]);
+      setSelectedOverviewCampaignId('');
+      setSelectedOverviewAdChannelId('');
+      setCampaignFilterSearch('');
+      setAdChannelFilterSearch('');
+      return;
+    }
+
+    loadOverviewCampaignOptions();
+  }, [currentAccount?.id]);
+
+  const sortedOverviewCampaignOptions = useMemo(() => (
+    [...overviewCampaignOptions].sort((a, b) =>
+      (a?.name || a?._id || '').localeCompare(b?.name || b?._id || '', undefined, { sensitivity: 'base' })
+    )
+  ), [overviewCampaignOptions]);
+
+  const sortedAdChannelOptions = useMemo(() => (
+    [...inventories].sort((a, b) =>
+      (a?.name || a?._id || '').localeCompare(b?.name || b?._id || '', undefined, { sensitivity: 'base' })
+    )
+  ), [inventories]);
+
+  const filteredCampaignOptions = useMemo(() => {
+    const searchValue = campaignFilterSearch.trim().toLowerCase();
+    if (!searchValue) return sortedOverviewCampaignOptions;
+    return sortedOverviewCampaignOptions.filter((campaign) =>
+      (campaign?.name || campaign?._id || '').toLowerCase().includes(searchValue)
+    );
+  }, [campaignFilterSearch, sortedOverviewCampaignOptions]);
+
+  const filteredAdChannelOptions = useMemo(() => {
+    const searchValue = adChannelFilterSearch.trim().toLowerCase();
+    if (!searchValue) return sortedAdChannelOptions;
+    return sortedAdChannelOptions.filter((adChannel) =>
+      (adChannel?.name || adChannel?._id || '').toLowerCase().includes(searchValue)
+    );
+  }, [adChannelFilterSearch, sortedAdChannelOptions]);
+
+  const selectedOverviewCampaign = useMemo(
+    () => sortedOverviewCampaignOptions.find((campaign) => campaign._id === selectedOverviewCampaignId) || null,
+    [selectedOverviewCampaignId, sortedOverviewCampaignOptions]
+  );
+
+  const selectedOverviewAdChannel = useMemo(
+    () => sortedAdChannelOptions.find((adChannel) => adChannel._id === selectedOverviewAdChannelId) || null,
+    [selectedOverviewAdChannelId, sortedAdChannelOptions]
+  );
+
+  useEffect(() => {
+    if (!selectedOverviewCampaignId) return;
+    const exists = sortedOverviewCampaignOptions.some((campaign) => campaign._id === selectedOverviewCampaignId);
+    if (!exists) {
+      setSelectedOverviewCampaignId('');
+      setCampaignFilterSearch('');
+    }
+  }, [selectedOverviewCampaignId, sortedOverviewCampaignOptions]);
+
+  useEffect(() => {
+    if (!selectedOverviewAdChannelId) return;
+    const exists = sortedAdChannelOptions.some((adChannel) => adChannel._id === selectedOverviewAdChannelId);
+    if (!exists) {
+      setSelectedOverviewAdChannelId('');
+      setAdChannelFilterSearch('');
+    }
+  }, [selectedOverviewAdChannelId, sortedAdChannelOptions]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!campaignFilterRef.current?.contains(event.target)) setIsCampaignFilterOpen(false);
+      if (!adChannelFilterRef.current?.contains(event.target)) setIsAdChannelFilterOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleOpenCreateModal = () => {
     setEditingCampaign(null);
@@ -227,13 +406,22 @@ function Dashboard({ view = 'overview' }) {
     setError(null);
   };
 
-  const handleOpenCreateAdUnitModal = () => {
+  const handleOpenCreateAdUnitModal = (campaignId = null) => {
+    if (campaignId) {
+      selectedCampaignRef.current = campaignId;
+      setSelectedCampaign(campaignId);
+    }
     setEditingAdUnit(null);
     setShowAdUnitModal(true);
     setError(null);
   };
 
-  const handleOpenEditAdUnitModal = (adUnit) => {
+  const handleOpenEditAdUnitModal = (adUnit, campaignId = null) => {
+    const resolvedCampaignId = campaignId || adUnit?.campaign?._id || adUnit?.campaign || null;
+    if (resolvedCampaignId) {
+      selectedCampaignRef.current = resolvedCampaignId;
+      setSelectedCampaign(resolvedCampaignId);
+    }
     setEditingAdUnit(adUnit);
     setShowAdUnitModal(true);
     setError(null);
@@ -257,7 +445,7 @@ function Dashboard({ view = 'overview' }) {
         setSuccessMessage('Campaign created successfully!');
       }
       handleCloseCampaignModal();
-      await fetchCampaigns();
+      await fetchCampaigns({ page: 1, reset: true });
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to save campaign');
@@ -271,7 +459,7 @@ function Dashboard({ view = 'overview' }) {
       try {
         await campaignAPI.delete(campaignId);
         setSuccessMessage('Campaign deleted successfully!');
-        await fetchCampaigns();
+        await fetchCampaigns({ page: 1, reset: true });
         if (selectedCampaign === campaignId) {
           selectedCampaignRef.current = null;
           setSelectedCampaign(null);
@@ -295,8 +483,8 @@ function Dashboard({ view = 'overview' }) {
         setSuccessMessage('Ad unit created successfully!');
       }
       handleCloseAdUnitModal();
-      if (selectedCampaign) {
-        await fetchAdUnits(selectedCampaign);
+      if (isCampaignView) {
+        await fetchCampaigns({ page: 1, reset: true });
       }
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -311,8 +499,8 @@ function Dashboard({ view = 'overview' }) {
       try {
         await adUnitAPI.delete(adUnitId);
         setSuccessMessage('Ad unit deleted successfully!');
-        if (selectedCampaign) {
-          await fetchAdUnits(selectedCampaign);
+        if (isCampaignView) {
+          await fetchCampaigns({ page: 1, reset: true });
         }
         setTimeout(() => setSuccessMessage(null), 3000);
       } catch (err) {
@@ -326,7 +514,7 @@ function Dashboard({ view = 'overview' }) {
       const newStatus = currentStatus === 'active' ? 'paused' : 'active';
       await campaignAPI.updateStatus(campaignId, newStatus);
       setSuccessMessage(`Campaign ${newStatus === 'active' ? 'activated' : 'paused'} successfully!`);
-      await fetchCampaigns();
+      await fetchCampaigns({ page: 1, reset: true });
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update campaign status');
@@ -338,8 +526,8 @@ function Dashboard({ view = 'overview' }) {
       const newStatus = currentStatus === 'active' ? 'paused' : 'active';
       await adUnitAPI.updateStatus(adUnitId, newStatus);
       setSuccessMessage(`Ad unit ${newStatus === 'active' ? 'activated' : 'paused'} successfully!`);
-      if (selectedCampaign) {
-        await fetchAdUnits(selectedCampaign);
+      if (isCampaignView) {
+        await fetchCampaigns({ page: 1, reset: true });
       }
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -369,7 +557,7 @@ function Dashboard({ view = 'overview' }) {
         endDate: campaign.endDate
       });
       setSuccessMessage('Campaign duplicated successfully!');
-      await fetchCampaigns();
+      await fetchCampaigns({ page: 1, reset: true });
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to duplicate campaign');
@@ -394,8 +582,8 @@ function Dashboard({ view = 'overview' }) {
         width: adUnit.width
       });
       setSuccessMessage('Ad unit duplicated successfully!');
-      if (selectedCampaign) {
-        await fetchAdUnits(selectedCampaign);
+      if (isCampaignView) {
+        await fetchCampaigns({ page: 1, reset: true });
       }
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -581,21 +769,129 @@ function Dashboard({ view = 'overview' }) {
                 onChange={(e) => setDateRange((current) => ({ ...current, endDate: e.target.value }))}
               />
             </div>
-            <div className="dashboard-filter-field">
-              <label htmlFor="inventory-filter" className="account-list-label">Inventory</label>
-              <select
-                id="inventory-filter"
-                className="account-select dashboard-filter-select"
-                value={selectedInventoryId}
-                onChange={(e) => setSelectedInventoryId(e.target.value)}
-              >
-                <option value="">All Inventories</option>
-                {inventories.map((inventory) => (
-                  <option key={inventory._id} value={inventory._id}>
-                    {inventory.name}
-                  </option>
-                ))}
-              </select>
+            <div className="dashboard-filter-field dashboard-filter-field-wide" ref={campaignFilterRef}>
+              <label htmlFor="dashboard-campaign-filter" className="account-list-label">Campaign</label>
+              <div className="dashboard-filter-combobox">
+                <input
+                  id="dashboard-campaign-filter"
+                  type="text"
+                  className="account-select dashboard-filter-select dashboard-filter-input"
+                  placeholder="All Campaigns"
+                  value={campaignFilterSearch}
+                  onFocus={() => setIsCampaignFilterOpen(true)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setCampaignFilterSearch(nextValue);
+                    setIsCampaignFilterOpen(true);
+                    if (!nextValue.trim()) {
+                      setSelectedOverviewCampaignId('');
+                      return;
+                    }
+                    const selectedLabel = selectedOverviewCampaign?.name || selectedOverviewCampaign?._id || '';
+                    if (selectedOverviewCampaignId && nextValue !== selectedLabel) {
+                      setSelectedOverviewCampaignId('');
+                    }
+                  }}
+                />
+                {isCampaignFilterOpen && (
+                  <div className="dashboard-filter-options" role="listbox" aria-label="Campaign filter options">
+                    <button
+                      type="button"
+                      className={`dashboard-filter-option${!selectedOverviewCampaignId ? ' selected' : ''}`}
+                      onClick={() => {
+                        setSelectedOverviewCampaignId('');
+                        setCampaignFilterSearch('');
+                        setIsCampaignFilterOpen(false);
+                      }}
+                    >
+                      All Campaigns
+                    </button>
+                    {filteredCampaignOptions.length > 0 ? (
+                      filteredCampaignOptions.map((campaign) => (
+                        <button
+                          type="button"
+                          key={campaign._id}
+                          className={`dashboard-filter-option${selectedOverviewCampaignId === campaign._id ? ' selected' : ''}`}
+                          onClick={() => {
+                            setSelectedOverviewCampaignId(campaign._id);
+                            setCampaignFilterSearch(campaign.name || campaign._id);
+                            setIsCampaignFilterOpen(false);
+                          }}
+                        >
+                          {campaign.name || campaign._id}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="dashboard-filter-option-empty">No campaigns found.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <small className="dashboard-filter-helper">
+                {selectedOverviewCampaign ? `Filtering by ${selectedOverviewCampaign.name || selectedOverviewCampaign._id}` : 'Showing all campaigns'}
+              </small>
+            </div>
+            <div className="dashboard-filter-field dashboard-filter-field-wide" ref={adChannelFilterRef}>
+              <label htmlFor="dashboard-ad-channel-filter" className="account-list-label">Ad Channel</label>
+              <div className="dashboard-filter-combobox">
+                <input
+                  id="dashboard-ad-channel-filter"
+                  type="text"
+                  className="account-select dashboard-filter-select dashboard-filter-input"
+                  placeholder="All Ad Channels"
+                  value={adChannelFilterSearch}
+                  onFocus={() => setIsAdChannelFilterOpen(true)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setAdChannelFilterSearch(nextValue);
+                    setIsAdChannelFilterOpen(true);
+                    if (!nextValue.trim()) {
+                      setSelectedOverviewAdChannelId('');
+                      return;
+                    }
+                    const selectedLabel = selectedOverviewAdChannel?.name || selectedOverviewAdChannel?._id || '';
+                    if (selectedOverviewAdChannelId && nextValue !== selectedLabel) {
+                      setSelectedOverviewAdChannelId('');
+                    }
+                  }}
+                />
+                {isAdChannelFilterOpen && (
+                  <div className="dashboard-filter-options" role="listbox" aria-label="Ad Channel filter options">
+                    <button
+                      type="button"
+                      className={`dashboard-filter-option${!selectedOverviewAdChannelId ? ' selected' : ''}`}
+                      onClick={() => {
+                        setSelectedOverviewAdChannelId('');
+                        setAdChannelFilterSearch('');
+                        setIsAdChannelFilterOpen(false);
+                      }}
+                    >
+                      All Ad Channels
+                    </button>
+                    {filteredAdChannelOptions.length > 0 ? (
+                      filteredAdChannelOptions.map((adChannel) => (
+                        <button
+                          type="button"
+                          key={adChannel._id}
+                          className={`dashboard-filter-option${selectedOverviewAdChannelId === adChannel._id ? ' selected' : ''}`}
+                          onClick={() => {
+                            setSelectedOverviewAdChannelId(adChannel._id);
+                            setAdChannelFilterSearch(adChannel.name || adChannel._id);
+                            setIsAdChannelFilterOpen(false);
+                          }}
+                        >
+                          {adChannel.name || adChannel._id}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="dashboard-filter-option-empty">No ad channels found.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <small className="dashboard-filter-helper">
+                {selectedOverviewAdChannel ? `Filtering by ${selectedOverviewAdChannel.name || selectedOverviewAdChannel._id}` : 'Showing all ad channels'}
+              </small>
             </div>
           </div>
         </div>
@@ -623,7 +919,7 @@ function Dashboard({ view = 'overview' }) {
           <div className="dashboard-chart-header">
             <div>
               <h3>Daily Performance</h3>
-              <p>Uses the existing analytics endpoint with your selected date range and inventory selection.</p>
+              <p>Uses the existing analytics endpoint with your selected date range and ad channel selection.</p>
             </div>
             <div className="dashboard-chart-meta">
               <span>{analytics.topCampaigns[0]?.name ? `Top Campaign: ${analytics.topCampaigns[0].name}` : 'No campaign data yet'}</span>
@@ -640,180 +936,220 @@ function Dashboard({ view = 'overview' }) {
             )}
           </div>
         </div>
+
       </section>
       )}
 
       {isCampaignView && (
-      <div className="dashboard-container">
-        <div className="sidebar">
-          <h2>List of Campaign</h2>
-          <div className="dashboard-sidebar-filters">
-            <div className="dashboard-filter-field">
-              <label htmlFor="campaign-inventory-filter" className="account-list-label">Inventory</label>
-              <select
-                id="campaign-inventory-filter"
-                className="account-select dashboard-filter-select"
-                value={selectedInventoryId}
-                onChange={(e) => setSelectedInventoryId(e.target.value)}
-              >
-                <option value="">All Inventories</option>
-                {inventories.map((inventory) => (
-                  <option key={inventory._id} value={inventory._id}>
-                    {inventory.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="dashboard-filter-field">
-              <label htmlFor="campaign-sort" className="account-list-label">Sort Campaigns</label>
-              <select
-                id="campaign-sort"
-                className="account-select dashboard-filter-select"
-                value={campaignSort}
-                onChange={(e) => setCampaignSort(e.target.value)}
-              >
-                <option value="recent">Newest First</option>
-                <option value="name">Name A-Z</option>
-                <option value="impressions">Most Impressions</option>
-                <option value="clicks">Most Clicks</option>
-                <option value="ctr">Highest CTR</option>
-              </select>
+      <div className="main-content campaigns-main-content">
+        <div className="campaigns-page">
+          <div className="campaigns-section-panel">
+            <h2>List of Campaign</h2>
+            <div className="dashboard-sidebar-filters campaigns-top-filters">
+              <div className="dashboard-filter-field">
+                <label htmlFor="campaign-inventory-filter" className="account-list-label">Ad Channel</label>
+                <select
+                  id="campaign-inventory-filter"
+                  className="account-select dashboard-filter-select"
+                  value={selectedInventoryId}
+                  onChange={(e) => setSelectedInventoryId(e.target.value)}
+                >
+                  <option value="">All Ad Channels</option>
+                  {inventories.map((inventory) => (
+                    <option key={inventory._id} value={inventory._id}>
+                      {inventory.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="dashboard-filter-field">
+                <label htmlFor="campaign-sort" className="account-list-label">Sort Campaigns</label>
+                <select
+                  id="campaign-sort"
+                  className="account-select dashboard-filter-select"
+                  value={campaignSort}
+                  onChange={(e) => setCampaignSort(e.target.value)}
+                >
+                  <option value="recent">Newest First</option>
+                  <option value="name">Name A-Z</option>
+                  <option value="impressions">Most Impressions</option>
+                  <option value="clicks">Most Clicks</option>
+                  <option value="ctr">Highest CTR</option>
+                </select>
+              </div>
             </div>
           </div>
-          <ul className="campaign-list">
-            {sortedCampaigns.map((campaign) => (
-              <li
-                key={campaign._id}
-                className={`campaign-item ${selectedCampaign === campaign._id ? 'active' : ''}`}
-              >
-                <div 
-                  className="campaign-info"
-                  onClick={() => handleCampaignSelect(campaign._id)}
-                >
-                  <strong>{campaign.name}</strong>
-                  <small>{campaign.status}</small>
-                </div>
-                <div className="campaign-actions">
-                  <button
-                    className={`btn-icon btn-status ${campaign.status}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleCampaignStatus(campaign._id, campaign.status);
-                    }}
-                    title={campaign.status === 'active' ? 'Pause' : 'Activate'}
-                    aria-label={campaign.status === 'active' ? 'Pause campaign' : 'Activate campaign'}
-                  >
-                    {campaign.status === 'active' ? '⏸' : '▶'}
-                  </button>
-                  <button
-                    className="btn-icon btn-edit"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDuplicateCampaign(campaign);
-                    }}
-                    title="Duplicate"
-                    aria-label="Duplicate campaign"
-                  >
-                    📄
-                  </button>
-                  <button
-                    className="btn-icon btn-edit"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenEditModal(campaign);
-                    }}
-                    title="Edit"
-                    aria-label="Edit campaign"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    className="btn-icon btn-delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteCampaign(campaign._id);
-                    }}
-                    title="Delete"
-                    aria-label="Delete campaign"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {campaigns.length === 0 && (
-            <p className="no-campaigns">No campaigns yet. Create one to get started!</p>
-          )}
-        </div>
 
-        <div className="main-content">
-          {selectedCampaign && (
-            <>
-              <CampaignChart campaignId={selectedCampaign} />
-              
-              <div className="ad-units-section">
-                <div className="ad-units-header">
-                  <h3>Ad Units in Campaign</h3>
-                  <button 
-                    className="btn btn-primary btn-sm"
-                    onClick={handleOpenCreateAdUnitModal}
+          <div className="campaigns-section-panel">
+            <div className="campaign-list campaigns-main-list">
+              {sortedCampaigns.map((campaign) => {
+                const normalizedSearchToken = normalizedSearchQuery.toLowerCase();
+                const campaignMatchesSearch = normalizedSearchToken
+                  ? [campaign.name, campaign.description, campaign.status]
+                    .filter(Boolean)
+                    .some((value) => String(value).toLowerCase().includes(normalizedSearchToken))
+                  : false;
+                const campaignAdUnits = Array.isArray(campaign.adUnits) ? campaign.adUnits : [];
+                const matchingAdUnits = normalizedSearchToken
+                  ? campaignAdUnits.filter((adUnit) => {
+                    const searchableFields = [
+                      adUnit?.name,
+                      adUnit?.description,
+                      adUnit?.adCode,
+                      adUnit?.status
+                    ];
+                    return searchableFields
+                      .filter(Boolean)
+                      .some((value) => String(value).toLowerCase().includes(normalizedSearchToken));
+                  })
+                  : campaignAdUnits;
+
+                const visibleAdUnits = (!normalizedSearchToken || campaignMatchesSearch)
+                  ? campaignAdUnits
+                  : matchingAdUnits;
+
+                return (
+                  <div
+                    key={campaign._id}
+                    className={`campaign-item campaign-item-expanded ${selectedCampaign === campaign._id ? 'active' : ''}`}
                   >
-                    + New Ad Unit
-                  </button>
-                </div>
-                <div className="ad-units-grid">
-                  {adUnits.map((adUnit) => (
-                    <div key={adUnit._id} className="ad-unit-card">
-                      <AdUnitChart adUnit={adUnit} />
-                      <div className="ad-unit-actions">
-                        <button
-                          className={`btn-icon btn-status ${adUnit.status}`}
-                          onClick={() => handleToggleAdUnitStatus(adUnit._id, adUnit.status)}
-                          title={adUnit.status === 'active' ? 'Pause' : 'Activate'}
-                          aria-label={adUnit.status === 'active' ? 'Pause ad unit' : 'Activate ad unit'}
-                        >
-                          {adUnit.status === 'active' ? '⏸' : '▶'}
-                        </button>
-                        <button
-                          className="btn-icon btn-edit"
-                          onClick={() => handleDuplicateAdUnit(adUnit)}
-                          title="Duplicate"
-                          aria-label="Duplicate ad unit"
-                        >
-                          📄
-                        </button>
-                        <button
-                          className="btn-icon btn-edit"
-                          onClick={() => handleOpenEditAdUnitModal(adUnit)}
-                          title="Edit"
-                          aria-label="Edit ad unit"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          className="btn-icon btn-delete"
-                          onClick={() => handleDeleteAdUnit(adUnit._id)}
-                          title="Delete"
-                          aria-label="Delete ad unit"
-                        >
-                          🗑️
-                        </button>
+                    <div className="campaign-stats">
+                      <div className="ad-units-header">
+                        <h2>{campaign.name}</h2>
+                        <div className="campaign-actions">
+                          <button
+                            className={`btn-icon btn-status ${campaign.status}`}
+                            onClick={() => handleToggleCampaignStatus(campaign._id, campaign.status)}
+                            title={campaign.status === 'active' ? 'Pause' : 'Activate'}
+                            aria-label={campaign.status === 'active' ? 'Pause campaign' : 'Activate campaign'}
+                          >
+                            {campaign.status === 'active' ? '⏸' : '▶'}
+                          </button>
+                          <button
+                            className="btn-icon btn-edit"
+                            onClick={() => handleDuplicateCampaign(campaign)}
+                            title="Duplicate"
+                            aria-label="Duplicate campaign"
+                          >
+                            📄
+                          </button>
+                          <button
+                            className="btn-icon btn-edit"
+                            onClick={() => handleOpenEditModal(campaign)}
+                            title="Edit"
+                            aria-label="Edit campaign"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            className="btn-icon btn-delete"
+                            onClick={() => handleDeleteCampaign(campaign._id)}
+                            title="Delete"
+                            aria-label="Delete campaign"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                      <div className="campaign-schedule">
+                        <p>
+                          {new Date(campaign.startDate).toLocaleDateString()} - {new Date(campaign.endDate).toLocaleDateString()} | {campaign.status}
+                        </p>
+                      </div>
+                      <div className="stats-grid">
+                        <div className="stat-card">
+                          <h4>Impressions</h4>
+                          <p className="stat-value">{formatNumber(campaign.totalImpressions)}</p>
+                        </div>
+                        <div className="stat-card">
+                          <h4>Clicks</h4>
+                          <p className="stat-value">{formatNumber(campaign.totalClicks)}</p>
+                        </div>
+                        <div className="stat-card">
+                          <h4>CTR</h4>
+                          <p className="stat-value">{Number(campaign.ctr || 0).toFixed(2)}%</p>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-                {adUnits.length === 0 && (
-                  <p className="no-data">No ad units in this campaign. <button className="link-btn" onClick={handleOpenCreateAdUnitModal}>Create one</button></p>
-                )}
-              </div>
-            </>
-          )}
-          {!selectedCampaign && campaigns.length > 0 && (
-            <div className="no-selection">
-              <p>Select a campaign from the left to view details</p>
+
+                    <div className="ad-units-section">
+                      <div className="ad-units-header">
+                        <h3>Ad Units</h3>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleOpenCreateAdUnitModal(campaign._id)}
+                        >
+                          + New Ad Unit
+                        </button>
+                      </div>
+                      <div className="ad-units-grid">
+                        {visibleAdUnits.map((adUnit) => (
+                          <div key={adUnit._id} className="ad-unit-card">
+                            <AdUnitChart adUnit={adUnit} />
+                            <div className="ad-unit-actions">
+                              <button
+                                className={`btn-icon btn-status ${adUnit.status}`}
+                                onClick={() => handleToggleAdUnitStatus(adUnit._id, adUnit.status)}
+                                title={adUnit.status === 'active' ? 'Pause' : 'Activate'}
+                                aria-label={adUnit.status === 'active' ? 'Pause ad unit' : 'Activate ad unit'}
+                              >
+                                {adUnit.status === 'active' ? '⏸' : '▶'}
+                              </button>
+                              <button
+                                className="btn-icon btn-edit"
+                                onClick={() => handleDuplicateAdUnit(adUnit)}
+                                title="Duplicate"
+                                aria-label="Duplicate ad unit"
+                              >
+                                📄
+                              </button>
+                              <button
+                                className="btn-icon btn-edit"
+                                onClick={() => handleOpenEditAdUnitModal(adUnit, campaign._id)}
+                                title="Edit"
+                                aria-label="Edit ad unit"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                className="btn-icon btn-delete"
+                                onClick={() => handleDeleteAdUnit(adUnit._id)}
+                                title="Delete"
+                                aria-label="Delete ad unit"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {visibleAdUnits.length === 0 && (
+                        <p className="no-data">
+                          {normalizedSearchQuery
+                            ? 'No ad units match your search.'
+                            : <>No ad units in this campaign. <button className="link-btn" onClick={() => handleOpenCreateAdUnitModal(campaign._id)}>Create one</button></>}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          )}
+
+            {campaignHasMore && (
+              <div ref={loadMoreRef} className="campaign-list-loader">
+                {campaignsLoadingMore ? 'Loading more campaigns...' : 'Scroll to load more'}
+              </div>
+            )}
+            {!campaignHasMore && campaigns.length > 0 && (
+              <div className="campaign-list-loader">No more campaigns</div>
+            )}
+            {sortedCampaigns.length === 0 && (
+              <p className="no-campaigns">
+                {normalizedSearchQuery ? 'No campaigns found.' : 'No campaigns yet. Create one to get started!'}
+              </p>
+            )}
+          </div>
         </div>
       </div>
       )}

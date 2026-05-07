@@ -38,7 +38,7 @@ function AdUnitChart({ adUnit }) {
         <h4>{adUnit.name}</h4>
         <p className="ad-code">Code: {adUnit.adCode}</p>
         {adUnit.inventory && (
-          <p className="ad-code">Inventory: {adUnit.inventory.name}</p>
+          <p className="ad-code">Ad Channel: {adUnit.inventory.name}</p>
         )}
         <div className="ad-unit-schedule">
           <small>

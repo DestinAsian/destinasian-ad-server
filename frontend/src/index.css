@@ -72,6 +72,7 @@ textarea {
   background: rgba(251, 250, 247, 0.92);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(200, 216, 220, 0.7);
+  flex-wrap: wrap;
 }
 
 .app-title {
@@ -103,6 +104,29 @@ textarea {
   gap: 12px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.app-search-wrap {
+  margin-left: auto;
+  min-width: 280px;
+  max-width: 420px;
+  width: 100%;
+}
+
+.app-search-input {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 253, 249, 0.9);
+  padding: 0 16px;
+  color: var(--ink-body);
+}
+
+.app-search-input:focus {
+  outline: none;
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px rgba(140, 184, 193, 0.18);
 }
 
 .app-greeting {
@@ -155,5 +179,27 @@ textarea {
   .app-toolbar {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .app-search-wrap {
+    margin-left: 0;
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-topbar {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .app-title-main {
+    font-size: 34px;
+    letter-spacing: -1px;
+  }
+
+  .app-title-sub {
+    font-size: 16px;
   }
 }

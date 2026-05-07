@@ -40,6 +40,16 @@ const parseDateInput = (value) => {
   return { provided: true, value: parsed, error: null };
 };
 
+const parsePositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return fallback;
+};
+
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const resolveInventoryFilterIds = async ({ accountId, query = {} }) => {
   const inventoryTokens = [];
   const pushToken = (value) => {
@@ -247,14 +257,37 @@ exports.createCampaign = async (req, res) => {
 exports.getAllCampaigns = async (req, res) => {
   try {
     const filter = { account: req.user.accountId };
+    const searchTerm = normalizeString(req.query.search);
+    const pageProvided = req.query.page !== undefined;
+    const limitProvided = req.query.limit !== undefined;
+    const page = parsePositiveInt(req.query.page, 1);
+    const limit = Math.min(parsePositiveInt(req.query.limit, 20), 100);
+
+    const sendEmptyCampaigns = () => {
+      if (pageProvided || limitProvided) {
+        return res.json({
+          data: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            hasMore: false
+          }
+        });
+      }
+      return res.json([]);
+    };
+
     const inventoryFilterIds = await resolveInventoryFilterIds({
       accountId: req.user.accountId,
       query: req.query
     });
 
+    let inventoryFilteredCampaignIds = null;
+
     if (inventoryFilterIds) {
       if (inventoryFilterIds.length === 0) {
-        return res.json([]);
+        return sendEmptyCampaigns();
       }
 
       const groupedAdUnits = await AdUnit.find({
@@ -265,31 +298,124 @@ exports.getAllCampaigns = async (req, res) => {
         ]
       }).select('campaign');
 
-      const campaignIds = [...new Set(groupedAdUnits.map((adUnit) => adUnit.campaign?.toString()).filter(Boolean))];
-      if (campaignIds.length === 0) {
-        return res.json([]);
+      inventoryFilteredCampaignIds = [...new Set(groupedAdUnits.map((adUnit) => adUnit.campaign?.toString()).filter(Boolean))];
+      if (inventoryFilteredCampaignIds.length === 0) {
+        return sendEmptyCampaigns();
       }
-
-      filter._id = { $in: campaignIds };
     }
 
-    const campaigns = await Campaign.find(filter).populate({
+    if (searchTerm) {
+      const searchRegex = new RegExp(escapeRegex(searchTerm), 'i');
+      const campaignMatches = await Campaign.find({
+        account: req.user.accountId,
+        $or: [
+          { name: searchRegex },
+          { description: searchRegex },
+          { status: searchRegex }
+        ]
+      }).select('_id');
+
+      const adUnitMatches = await AdUnit.find({
+        account: req.user.accountId,
+        $or: [
+          { name: searchRegex },
+          { description: searchRegex },
+          { adCode: searchRegex },
+          { status: searchRegex }
+        ]
+      }).select('campaign');
+
+      const searchCampaignIdSet = new Set(campaignMatches.map((campaign) => campaign._id.toString()));
+      adUnitMatches.forEach((adUnit) => {
+        if (adUnit.campaign) {
+          searchCampaignIdSet.add(adUnit.campaign.toString());
+        }
+      });
+
+      if (searchCampaignIdSet.size === 0) {
+        return sendEmptyCampaigns();
+      }
+
+      const searchCampaignIds = [...searchCampaignIdSet];
+      if (inventoryFilteredCampaignIds) {
+        const inventorySet = new Set(inventoryFilteredCampaignIds);
+        const intersection = searchCampaignIds.filter((campaignId) => inventorySet.has(campaignId));
+        if (intersection.length === 0) {
+          return sendEmptyCampaigns();
+        }
+        filter._id = { $in: intersection };
+      } else {
+        filter._id = { $in: searchCampaignIds };
+      }
+    } else if (inventoryFilteredCampaignIds) {
+      filter._id = { $in: inventoryFilteredCampaignIds };
+    }
+
+    if (searchTerm && !filter._id) {
+      return sendEmptyCampaigns();
+    }
+
+    const total = (pageProvided || limitProvided)
+      ? await Campaign.countDocuments(filter)
+      : null;
+
+    let campaignQuery = Campaign.find(filter).populate({
       path: 'adUnits',
       populate: [{ path: 'inventory' }, { path: 'inventories' }]
     });
+
+    if (pageProvided || limitProvided) {
+      campaignQuery = campaignQuery
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit);
+    }
+
+    const campaigns = await campaignQuery;
+    const campaignIds = campaigns.map((campaignDoc) => campaignDoc._id);
+    const campaignAdUnits = campaignIds.length > 0
+      ? await AdUnit.find({
+        account: req.user.accountId,
+        campaign: { $in: campaignIds }
+      })
+        .populate('inventory')
+        .populate('inventories')
+      : [];
+
+    const adUnitsByCampaignId = campaignAdUnits.reduce((acc, adUnitDoc) => {
+      const campaignId = adUnitDoc.campaign?.toString();
+      if (!campaignId) return acc;
+      if (!acc.has(campaignId)) acc.set(campaignId, []);
+      acc.get(campaignId).push(adUnitDoc.toObject());
+      return acc;
+    }, new Map());
 
     const enrichedCampaigns = await Promise.all(
       campaigns.map(async (campaign) => {
         const stats = await calculateCampaignStats(campaign._id);
         const campaignObj = campaign.toObject();
+        const mappedAdUnits = adUnitsByCampaignId.get(campaign._id.toString());
         return {
           ...campaignObj,
+          adUnits: Array.isArray(mappedAdUnits) ? mappedAdUnits : (campaignObj.adUnits || []),
           totalImpressions: stats.totalImpressions,
           totalClicks: stats.totalClicks,
           ctr: stats.ctr
         };
       })
     );
+
+    if (pageProvided || limitProvided) {
+      return res.json({
+        data: enrichedCampaigns,
+        pagination: {
+          page,
+          limit,
+          total: total || 0,
+          hasMore: page * limit < (total || 0)
+        }
+      });
+    }
 
     res.json(enrichedCampaigns);
   } catch (error) {

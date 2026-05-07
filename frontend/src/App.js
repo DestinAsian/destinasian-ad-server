@@ -14,6 +14,7 @@ function App() {
   const { isAuthenticated, loading, ownerExists, user, logout } = useAuth();
   const [currentPage, setCurrentPage] = useState("login");
   const [resetToken, setResetToken] = useState("");
+  const [headerSearch, setHeaderSearch] = useState("");
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -38,12 +39,20 @@ function App() {
   }
 
   if (!isAuthenticated) {
-    const availableAuthPages = ownerExists ? ["forgot", "reset"] : ["signup", "forgot", "reset"];
-    const authPage = availableAuthPages.includes(currentPage) ? currentPage : "login";
+    const availableAuthPages = ownerExists
+      ? ["forgot", "reset"]
+      : ["signup", "forgot", "reset"];
+    const authPage = availableAuthPages.includes(currentPage)
+      ? currentPage
+      : "login";
     return (
       <>
-        {authPage === "login" && <Login onNavigate={setCurrentPage} canRegister={!ownerExists} />}
-        {authPage === "signup" && <Signup onNavigate={setCurrentPage} ownerExists={ownerExists} />}
+        {authPage === "login" && (
+          <Login onNavigate={setCurrentPage} canRegister={!ownerExists} />
+        )}
+        {authPage === "signup" && (
+          <Signup onNavigate={setCurrentPage} ownerExists={ownerExists} />
+        )}
         {authPage === "forgot" && (
           <ForgotPassword
             onNavigate={setCurrentPage}
@@ -66,6 +75,13 @@ function App() {
   const ownerNeedsTwoFactorSetup =
     user?.role === "owner" && user?.twoFactorSetupRequired;
 
+  const topbarSearchPlaceholder = "Search campaigns, ad channels, ad units...";
+
+  const handleNavigate = (page) => {
+    setHeaderSearch("");
+    setCurrentPage(page);
+  };
+
   if (ownerNeedsTwoFactorSetup) {
     return <TwoFactorSetup />;
   }
@@ -77,49 +93,67 @@ function App() {
           <span className="app-title-main">DestinAsian</span>
           <span className="app-title-sub">Ad Server Dashboard</span>
         </h1>
+        {(currentPage === "dashboard" ||
+          currentPage === "campaigns" ||
+          currentPage === "inventory") && (
+          <div className="app-search-wrap">
+            <input
+              type="search"
+              className="app-search-input"
+              value={headerSearch}
+              onChange={(e) => setHeaderSearch(e.target.value)}
+              placeholder={topbarSearchPlaceholder}
+              aria-label="Global search"
+            />
+          </div>
+        )}
         <div className="app-toolbar">
-          <span className="app-greeting">
-            Welcome, <strong>{user?.name}</strong>
-          </span>
           <button
-            onClick={() => setCurrentPage("dashboard")}
+            onClick={() => handleNavigate("dashboard")}
             className={`app-nav-button ${currentPage === "dashboard" ? "is-active" : ""}`}
           >
             Dashboard
           </button>
           <button
-            onClick={() => setCurrentPage("campaigns")}
+            onClick={() => handleNavigate("campaigns")}
             className={`app-nav-button ${currentPage === "campaigns" ? "is-active" : ""}`}
           >
             Campaigns
           </button>
           <button
-            onClick={() => setCurrentPage("accounts")}
-            className={`app-nav-button ${currentPage === "accounts" ? "is-active" : ""}`}
-          >
-            My Accounts
-          </button>
-          <button
-            onClick={() => setCurrentPage("inventory")}
+            onClick={() => handleNavigate("inventory")}
             className={`app-nav-button ${currentPage === "inventory" ? "is-active" : ""}`}
           >
-            Inventory
+            Ad Channels
           </button>
           <button
-            onClick={() => setCurrentPage("users")}
+            onClick={() => handleNavigate("users")}
             className={`app-nav-button ${currentPage === "users" ? "is-active" : ""}`}
           >
             Users
           </button>
+          <button
+            onClick={() => handleNavigate("accounts")}
+            className={`app-nav-button ${currentPage === "accounts" ? "is-active" : ""}`}
+          >
+            My Accounts
+          </button>
           <button onClick={logout} className="app-logout-button">
             Logout
           </button>
+          <span className="app-greeting">
+            Welcome, <strong>{user?.name}</strong>
+          </span>
         </div>
       </div>
-      {currentPage === "dashboard" && <Dashboard view="overview" />}
-      {currentPage === "campaigns" && <Dashboard view="campaigns" />}
+      {currentPage === "dashboard" && (
+        <Dashboard view="overview" searchQuery={headerSearch} />
+      )}
+      {currentPage === "campaigns" && (
+        <Dashboard view="campaigns" searchQuery={headerSearch} />
+      )}
       {currentPage === "accounts" && <AccountManagement />}
-      {currentPage === "inventory" && <Inventory />}
+      {currentPage === "inventory" && <Inventory searchQuery={headerSearch} />}
       {currentPage === "users" && <Users />}
     </div>
   );

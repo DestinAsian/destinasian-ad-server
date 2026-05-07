@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const Inventory = require('../models/Inventory');
 const AdUnit = require('../models/AdUnit');
+const Campaign = require('../models/Campaign');
 
 const slugifyKey = (value) => {
   return String(value || '')
@@ -45,6 +47,91 @@ const normalizeInventoryPayload = (payload = {}) => {
   return normalized;
 };
 
+const toObjectId = (value) => {
+  const normalized = String(value || '').trim();
+  if (!mongoose.Types.ObjectId.isValid(normalized)) {
+    return null;
+  }
+  return new mongoose.Types.ObjectId(normalized);
+};
+
+const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) => {
+  const inventoryObjectId = toObjectId(inventoryId);
+  if (!inventoryObjectId) {
+    const error = new Error('Invalid inventory id');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalizedSelectedIds = [...new Set((Array.isArray(adUnitIds) ? adUnitIds : [])
+    .map((id) => String(id || '').trim())
+    .filter(Boolean))];
+
+  const selectedObjectIds = normalizedSelectedIds.map((id) => toObjectId(id));
+  if (selectedObjectIds.some((id) => !id)) {
+    const error = new Error('One or more ad unit ids are invalid');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const selectedAdUnits = selectedObjectIds.length > 0
+    ? await AdUnit.find({
+        _id: { $in: selectedObjectIds },
+        account: accountId
+      }).select('_id inventory inventories')
+    : [];
+
+  if (selectedAdUnits.length !== selectedObjectIds.length) {
+    const error = new Error('One or more ad units are invalid for this account');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const selectedIdSet = new Set(selectedAdUnits.map((adUnit) => String(adUnit._id)));
+
+  const linkedAdUnits = await AdUnit.find({
+    account: accountId,
+    $or: [
+      { inventory: inventoryObjectId },
+      { inventories: inventoryObjectId }
+    ]
+  }).select('_id inventory inventories');
+
+  for (const adUnit of linkedAdUnits) {
+    const adUnitId = String(adUnit._id);
+    if (selectedIdSet.has(adUnitId)) {
+      continue;
+    }
+
+    const remainingInventories = (Array.isArray(adUnit.inventories) ? adUnit.inventories : [])
+      .map((entry) => String(entry))
+      .filter((entry) => entry !== String(inventoryObjectId))
+      .map((entry) => new mongoose.Types.ObjectId(entry));
+
+    adUnit.inventories = remainingInventories;
+    adUnit.inventory = remainingInventories[0] || null;
+    await adUnit.save();
+  }
+
+  for (const adUnit of selectedAdUnits) {
+    const existingInventoryIds = (Array.isArray(adUnit.inventories) ? adUnit.inventories : [])
+      .map((entry) => String(entry));
+
+    if (!existingInventoryIds.includes(String(inventoryObjectId))) {
+      adUnit.inventories = [
+        ...((Array.isArray(adUnit.inventories) ? adUnit.inventories : [])),
+        inventoryObjectId
+      ];
+    }
+
+    if (!adUnit.inventory) {
+      adUnit.inventory = inventoryObjectId;
+    }
+
+    await adUnit.save();
+  }
+};
+
 exports.createInventory = async (req, res) => {
   try {
     const normalized = normalizeInventoryPayload(req.body);
@@ -72,6 +159,14 @@ exports.createInventory = async (req, res) => {
       rotationMode: 'rotate'
     });
 
+    if (Array.isArray(req.body.adUnitIds)) {
+      await syncInventoryAdUnits({
+        inventoryId: inventory._id,
+        accountId: req.user.accountId,
+        adUnitIds: req.body.adUnitIds
+      });
+    }
+
     res.status(201).json(inventory);
   } catch (error) {
     if (error.code === 11000) {
@@ -87,8 +182,43 @@ exports.getAllInventories = async (req, res) => {
       account: req.user.accountId
     };
 
+    const runningAdsOnly = String(req.query.runningAdsOnly || '').toLowerCase() === 'true';
     const inventories = await Inventory.find(filter).sort({ createdAt: -1 });
-    res.json(inventories);
+
+    if (!runningAdsOnly) {
+      return res.json(inventories);
+    }
+
+    const activeCampaignIds = await Campaign.find({
+      account: req.user.accountId,
+      status: 'active'
+    }).select('_id');
+
+    if (activeCampaignIds.length === 0) {
+      return res.json([]);
+    }
+
+    const activeAdUnits = await AdUnit.find({
+      account: req.user.accountId,
+      status: 'active',
+      campaign: { $in: activeCampaignIds.map((campaignDoc) => campaignDoc._id) }
+    }).select('_id inventory inventories');
+
+    const runningInventoryIdSet = new Set();
+    activeAdUnits.forEach((adUnit) => {
+      if (adUnit.inventory) {
+        runningInventoryIdSet.add(String(adUnit.inventory));
+      }
+      if (Array.isArray(adUnit.inventories)) {
+        adUnit.inventories.forEach((entry) => {
+          runningInventoryIdSet.add(String(entry));
+        });
+      }
+    });
+
+    return res.json(
+      inventories.filter((inventory) => runningInventoryIdSet.has(String(inventory._id)))
+    );
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -157,6 +287,15 @@ exports.updateInventory = async (req, res) => {
     if (req.body.rotationMode !== undefined) inventory.rotationMode = 'rotate';
 
     await inventory.save();
+
+    if (Array.isArray(req.body.adUnitIds)) {
+      await syncInventoryAdUnits({
+        inventoryId: inventory._id,
+        accountId: req.user.accountId,
+        adUnitIds: req.body.adUnitIds
+      });
+    }
+
     res.json(inventory);
   } catch (error) {
     if (error.code === 11000) {

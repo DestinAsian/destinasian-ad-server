@@ -168,6 +168,57 @@
   width: 100%;
 }
 
+.inventory-form-adunits {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inventory-form-adunits-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
+}
+
+.inventory-adunit-list {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  background: #fff;
+}
+
+.selectable-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #1f2937;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.selectable-checkbox-item:hover {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+.selectable-checkbox-item.selected {
+  background: rgba(111, 152, 166, 0.12);
+  border-color: #6f98a6;
+}
+
+.selectable-checkbox-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+}
+
 @media (max-width: 1100px) {
   .inventory-form,
   .inventory-edit-form {
@@ -186,5 +237,19 @@
 
   .inventory-main {
     width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .inventory-page {
+    padding: 16px;
+  }
+
+  .inventory-header {
+    flex-direction: column;
+  }
+
+  .inventory-card {
+    padding: 16px;
   }
 }

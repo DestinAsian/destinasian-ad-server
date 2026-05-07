@@ -78,7 +78,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
         setInventories(response.data || []);
         setInventoryError(null);
       } catch (err) {
-        setInventoryError('Failed to load inventories');
+        setInventoryError('Failed to load ad channels');
       } finally {
         setInventoryLoading(false);
       }
@@ -97,7 +97,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
     }
 
     if (!Array.isArray(formData.inventoryIds) || formData.inventoryIds.length === 0) {
-      newErrors.inventoryIds = 'At least one inventory is required';
+      newErrors.inventoryIds = 'At least one ad channel is required';
     }
 
     if (!formData.startDate) {
@@ -209,8 +209,8 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
 
   const selectedInventoriesCount = Array.isArray(formData.inventoryIds) ? formData.inventoryIds.length : 0;
   const inventorySummaryLabel = selectedInventoriesCount > 0
-    ? `${selectedInventoriesCount} ${selectedInventoriesCount === 1 ? 'inventory' : 'inventories'} selected`
-    : 'No inventories selected';
+    ? `${selectedInventoriesCount} ${selectedInventoriesCount === 1 ? 'ad channel' : 'ad channels'} selected`
+    : 'No ad channels selected';
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -323,7 +323,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
             aria-controls="adunit-inventory-selector-body"
           >
             <span className="inventory-selector-title-wrap">
-              <span className="inventory-selector-title">Inventories *</span>
+              <span className="inventory-selector-title">Ad Channels *</span>
               <span className="inventory-selector-summary">{inventorySummaryLabel}</span>
             </span>
             <span className="inventory-selector-icon" aria-hidden="true">
@@ -334,11 +334,11 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
           {isInventoriesExpanded && (
             <div id="adunit-inventory-selector-body" className="inventory-selector-body">
               {inventoryLoading ? (
-                <p className="inventory-selection-state">Loading inventories...</p>
+                <p className="inventory-selection-state">Loading ad channels...</p>
               ) : inventories.length === 0 ? (
-                <p className="inventory-selection-state">No inventories available.</p>
+                <p className="inventory-selection-state">No ad channels available.</p>
               ) : (
-                <div className="selectable-checkbox-list inventory-checkbox-list" role="group" aria-label="Select inventories">
+                <div className="selectable-checkbox-list inventory-checkbox-list" role="group" aria-label="Select ad channels">
                   {inventories.map((inventory) => {
                     const inventoryId = String(inventory._id);
                     const isSelected = formData.inventoryIds.includes(inventoryId);

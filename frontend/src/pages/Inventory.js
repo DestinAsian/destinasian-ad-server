@@ -1,16 +1,31 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { inventoryAPI } from "../services/api";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { adUnitAPI, inventoryAPI } from "../services/api";
 import "../styles/Inventory.css";
 
-function Inventory() {
+const isAdUnitLinkedToChannel = (adUnit, channelId) => {
+  const targetId = String(channelId || "");
+  if (!targetId) return false;
+
+  const inventoryIds = Array.isArray(adUnit?.inventories)
+    ? adUnit.inventories.map((entry) => String(entry?._id || entry))
+    : [];
+  const primaryInventoryId = adUnit?.inventory ? String(adUnit.inventory?._id || adUnit.inventory) : null;
+
+  return inventoryIds.includes(targetId) || primaryInventoryId === targetId;
+};
+
+function Inventory({ searchQuery = "" }) {
   const [inventories, setInventories] = useState([]);
+  const [adUnits, setAdUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [runningAdsOnly, setRunningAdsOnly] = useState(false);
   const [form, setForm] = useState({
     name: "",
     key: "",
     description: "",
+    adUnitIds: [],
   });
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({
@@ -18,31 +33,45 @@ function Inventory() {
     key: "",
     description: "",
     isActive: true,
+    adUnitIds: [],
   });
   const cmsScriptTag = `<script src="https://YOUR-AD-SERVER.DOMAIN/ad-client.js"></script>`;
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      const response = await inventoryAPI.getAll();
-      const inventoryList = response.data || [];
+      const [inventoryResponse, adUnitResponse] = await Promise.all([
+        inventoryAPI.getAll({ runningAdsOnly }),
+        adUnitAPI.getAll(),
+      ]);
+      const inventoryList = inventoryResponse.data || [];
+      const adUnitList = adUnitResponse.data || [];
       const uniqueInventories = Array.from(
         new Map(inventoryList.map((item) => [item._id, item])).values(),
       );
+      const uniqueAdUnits = Array.from(
+        new Map(adUnitList.map((item) => [item._id, item])).values(),
+      );
       setInventories(uniqueInventories);
+      setAdUnits(uniqueAdUnits);
       setLoading(false);
     } catch (err) {
-      setError("Failed to load inventory data");
+      setError("Failed to load ad channel data");
       setLoading(false);
     }
-  };
+  }, [runningAdsOnly]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const sortedInventories = useMemo(() => {
+    const normalizedSearch = String(searchQuery || "").trim().toLowerCase();
     return [...inventories]
       .map((inventory, index) => ({ inventory, index }))
+      .filter(({ inventory }) => {
+        if (!normalizedSearch) return true;
+        return (inventory?.name || "").toLowerCase().includes(normalizedSearch);
+      })
       .sort((a, b) => {
         const nameA = (a.inventory?.name || "").toLowerCase();
         const nameB = (b.inventory?.name || "").toLowerCase();
@@ -51,7 +80,7 @@ function Inventory() {
         return a.index - b.index;
       })
       .map(({ inventory }) => inventory);
-  }, [inventories]);
+  }, [inventories, searchQuery]);
 
   const showCopiedFeedback = () => {
     setSuccessMessage("Copied to the clipboard");
@@ -141,18 +170,20 @@ function Inventory() {
         name: form.name,
         key: form.key,
         description: form.description,
+        adUnitIds: form.adUnitIds,
       });
 
       setForm({
         name: "",
         key: "",
         description: "",
+        adUnitIds: [],
       });
-      setSuccessMessage("Inventory created");
+      setSuccessMessage("Ad Channel created");
       setTimeout(() => setSuccessMessage(null), 2500);
       await loadData();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to create inventory");
+      setError(err.response?.data?.error || "Failed to create ad channel");
     }
   };
 
@@ -163,6 +194,9 @@ function Inventory() {
       key: inventory.key || "",
       description: inventory.description || "",
       isActive: inventory.isActive !== false,
+      adUnitIds: adUnits
+        .filter((adUnit) => isAdUnitLinkedToChannel(adUnit, inventory._id))
+        .map((adUnit) => String(adUnit._id)),
     });
   };
 
@@ -173,6 +207,7 @@ function Inventory() {
       key: "",
       description: "",
       isActive: true,
+      adUnitIds: [],
     });
   };
 
@@ -183,25 +218,25 @@ function Inventory() {
     try {
       await inventoryAPI.update(editingId, editForm);
       setEditingId(null);
-      setSuccessMessage("Inventory updated");
+      setSuccessMessage("Ad Channel updated");
       setTimeout(() => setSuccessMessage(null), 2500);
       await loadData();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to update inventory");
+      setError(err.response?.data?.error || "Failed to update ad channel");
     }
   };
 
   const handleDelete = async (inventory) => {
-    if (!window.confirm(`Delete inventory "${inventory.name}"?`)) return;
+    if (!window.confirm(`Delete ad channel "${inventory.name}"?`)) return;
     setError(null);
 
     try {
       await inventoryAPI.delete(inventory._id);
-      setSuccessMessage("Inventory deleted");
+      setSuccessMessage("Ad Channel deleted");
       setTimeout(() => setSuccessMessage(null), 2500);
       await loadData();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to delete inventory");
+      setError(err.response?.data?.error || "Failed to delete ad channel");
     }
   };
 
@@ -220,22 +255,36 @@ function Inventory() {
         description: inventory.description || "",
       });
 
-      setSuccessMessage("Inventory duplicated");
+      setSuccessMessage("Ad Channel duplicated");
       setTimeout(() => setSuccessMessage(null), 2500);
       await loadData();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to duplicate inventory");
+      setError(err.response?.data?.error || "Failed to duplicate ad channel");
     }
   };
 
-  if (loading) return <div className="loading">Loading inventory...</div>;
+  const createAdUnitSelection = useMemo(() => new Set(form.adUnitIds.map((id) => String(id))), [form.adUnitIds]);
+  const editAdUnitSelection = useMemo(() => new Set(editForm.adUnitIds.map((id) => String(id))), [editForm.adUnitIds]);
+
+  if (loading) return <div className="loading">Loading ad channels...</div>;
 
   return (
     <div className="inventory-page">
       <header className="inventory-header">
         <div>
-          <h2>Inventory</h2>
-          <p>Create and manage ad placement inventories.</p>
+          <h2>Ad Channels</h2>
+          <p>Create and manage ad placement channels.</p>
+        </div>
+        <div className="inventory-toolbar">
+          <label htmlFor="running-ads-only">Show only running ads</label>
+          <select
+            id="running-ads-only"
+            value={runningAdsOnly ? "yes" : "no"}
+            onChange={(e) => setRunningAdsOnly(e.target.value === "yes")}
+          >
+            <option value="no">All Ad Channels</option>
+            <option value="yes">Running Ads</option>
+          </select>
         </div>
       </header>
 
@@ -270,7 +319,7 @@ function Inventory() {
         </div>
       </div>
       <div className="inventory-card">
-        <h3>Create Inventory</h3>
+        <h3>Create Ad Channel</h3>
         <form onSubmit={handleCreate} className="inventory-form">
           <input
             type="text"
@@ -291,6 +340,36 @@ function Inventory() {
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
+          <div className="inventory-form-adunits">
+            <div className="inventory-form-adunits-label">Ad Units</div>
+            {adUnits.length === 0 ? (
+              <p className="no-data">No ad units available.</p>
+            ) : (
+              <div className="selectable-checkbox-list inventory-adunit-list">
+                {adUnits.map((adUnit) => {
+                  const adUnitId = String(adUnit._id);
+                  const checked = createAdUnitSelection.has(adUnitId);
+                  return (
+                    <label key={adUnitId} className={`selectable-checkbox-item ${checked ? "selected" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setForm((prev) => {
+                            const set = new Set(prev.adUnitIds.map((id) => String(id)));
+                            if (set.has(adUnitId)) set.delete(adUnitId);
+                            else set.add(adUnitId);
+                            return { ...prev, adUnitIds: [...set] };
+                          });
+                        }}
+                      />
+                      <span>{adUnit.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <button type="submit" className="btn btn-primary">
             Create
           </button>
@@ -298,10 +377,14 @@ function Inventory() {
       </div>
 
       <section className="inventory-card">
-        <h3>Inventories</h3>
+        <h3>Ad Channels</h3>
         <div className="inventory-list">
           {sortedInventories.length === 0 && (
-            <p className="no-data">No inventory yet.</p>
+            <p className="no-data">
+              {runningAdsOnly
+                ? "No Ad Channels with running ads found."
+                : "No ad channels yet."}
+            </p>
           )}
           {sortedInventories.map((inventory) => (
             <div key={inventory._id} className="inventory-item">
@@ -339,6 +422,36 @@ function Inventory() {
                     />
                     Active
                   </label>
+                  <div className="inventory-form-adunits inventory-form-adunits-inline">
+                    <div className="inventory-form-adunits-label">Ad Units</div>
+                    {adUnits.length === 0 ? (
+                      <p className="no-data">No ad units available.</p>
+                    ) : (
+                      <div className="selectable-checkbox-list inventory-adunit-list">
+                        {adUnits.map((adUnit) => {
+                          const adUnitId = String(adUnit._id);
+                          const checked = editAdUnitSelection.has(adUnitId);
+                          return (
+                            <label key={adUnitId} className={`selectable-checkbox-item ${checked ? "selected" : ""}`}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  setEditForm((prev) => {
+                                    const set = new Set(prev.adUnitIds.map((id) => String(id)));
+                                    if (set.has(adUnitId)) set.delete(adUnitId);
+                                    else set.add(adUnitId);
+                                    return { ...prev, adUnitIds: [...set] };
+                                  });
+                                }}
+                              />
+                              <span>{adUnit.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                   <button type="submit" className="btn btn-primary btn-sm">
                     Save
                   </button>
@@ -382,6 +495,9 @@ function Inventory() {
                             Copy Tag
                           </button>
                         </div>
+                      </div>
+                      <div className="inventory-snippet-label">
+                        Linked Ad Units: {adUnits.filter((adUnit) => isAdUnitLinkedToChannel(adUnit, inventory._id)).length}
                       </div>
                     </div>
                   </div>
