@@ -28,6 +28,8 @@ const normalizeString = (value) => {
   return trimmed || null;
 };
 
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const getNumericValue = (value) => {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : 0;
@@ -132,6 +134,7 @@ const buildScopedMatches = async (accountId, query = {}) => {
   const inventoryGroup = normalizeString(query.inventoryGroup || query.groupName);
   const inventoryQuery = normalizeString(query.inventory || query.inventoryId || query.inventoryGroupId || query.inventory_group_id);
   const campaignId = normalizeString(query.campaignId);
+  const searchTerm = normalizeString(query.search);
   const dailyMatch = buildDateRangeMatch(accountId, query.startDate, query.endDate);
   const eventMatch = buildEventDateRangeMatch(accountId, query.startDate, query.endDate);
 
@@ -146,39 +149,98 @@ const buildScopedMatches = async (accountId, query = {}) => {
   }
 
   if (!inventoryGroup && !inventoryQuery) {
+    if (!searchTerm) {
+      return { dailyMatch, eventMatch, noResults: false };
+    }
+  } else {
+    const inventorySearch = { account: accountId };
+    const inventoryOr = [];
+
+    if (inventoryGroup) {
+      inventoryOr.push({ groupName: inventoryGroup });
+      inventoryOr.push({ name: inventoryGroup });
+      inventoryOr.push({ key: inventoryGroup.toLowerCase() });
+    }
+
+    if (inventoryQuery) {
+      if (mongoose.Types.ObjectId.isValid(inventoryQuery)) {
+        inventoryOr.push({ _id: new mongoose.Types.ObjectId(inventoryQuery) });
+      }
+      inventoryOr.push({ name: inventoryQuery });
+      inventoryOr.push({ key: inventoryQuery.toLowerCase() });
+    }
+
+    if (inventoryOr.length > 0) {
+      inventorySearch.$or = inventoryOr;
+    }
+
+    const inventories = await Inventory.find(inventorySearch).select('_id');
+
+    if (inventories.length === 0) {
+      return { dailyMatch, eventMatch, noResults: true };
+    }
+
+    const inventoryIds = inventories.map((inventory) => inventory._id);
+    dailyMatch.inventory = { $in: inventoryIds };
+    eventMatch.inventory = { $in: inventoryIds };
+  }
+
+  if (!searchTerm) {
     return { dailyMatch, eventMatch, noResults: false };
   }
 
-  const inventorySearch = { account: accountId };
-  const inventoryOr = [];
+  const searchRegex = new RegExp(escapeRegex(searchTerm), 'i');
+  const [campaignMatches, adUnitMatches, inventoryMatches] = await Promise.all([
+    Campaign.find({
+      account: accountId,
+      name: searchRegex
+    }).select('_id'),
+    AdUnit.find({
+      account: accountId,
+      $or: [
+        { name: searchRegex },
+        { description: searchRegex },
+        { adCode: searchRegex }
+      ]
+    }).select('_id'),
+    Inventory.find({
+      account: accountId,
+      $or: [
+        { name: searchRegex },
+        { key: searchRegex },
+        { groupName: searchRegex }
+      ]
+    }).select('_id')
+  ]);
 
-  if (inventoryGroup) {
-    inventoryOr.push({ groupName: inventoryGroup });
-    inventoryOr.push({ name: inventoryGroup });
-    inventoryOr.push({ key: inventoryGroup.toLowerCase() });
+  const searchCampaignIds = campaignMatches.map((campaign) => campaign._id);
+  const searchAdUnitIds = adUnitMatches.map((adUnit) => adUnit._id);
+  const searchInventoryIds = inventoryMatches.map((inventory) => inventory._id);
+
+  const dailySearchOr = [];
+  const eventSearchOr = [];
+
+  if (searchCampaignIds.length > 0) {
+    dailySearchOr.push({ campaign: { $in: searchCampaignIds } });
+    eventSearchOr.push({ campaign: { $in: searchCampaignIds } });
   }
 
-  if (inventoryQuery) {
-    if (mongoose.Types.ObjectId.isValid(inventoryQuery)) {
-      inventoryOr.push({ _id: new mongoose.Types.ObjectId(inventoryQuery) });
-    }
-    inventoryOr.push({ name: inventoryQuery });
-    inventoryOr.push({ key: inventoryQuery.toLowerCase() });
+  if (searchAdUnitIds.length > 0) {
+    dailySearchOr.push({ adUnit: { $in: searchAdUnitIds } });
+    eventSearchOr.push({ adUnit: { $in: searchAdUnitIds } });
   }
 
-  if (inventoryOr.length > 0) {
-    inventorySearch.$or = inventoryOr;
+  if (searchInventoryIds.length > 0) {
+    dailySearchOr.push({ inventory: { $in: searchInventoryIds } });
+    eventSearchOr.push({ inventory: { $in: searchInventoryIds } });
   }
 
-  const inventories = await Inventory.find(inventorySearch).select('_id');
-
-  if (inventories.length === 0) {
+  if (dailySearchOr.length === 0) {
     return { dailyMatch, eventMatch, noResults: true };
   }
 
-  const inventoryIds = inventories.map((inventory) => inventory._id);
-  dailyMatch.inventory = { $in: inventoryIds };
-  eventMatch.inventory = { $in: inventoryIds };
+  dailyMatch.$or = dailySearchOr;
+  eventMatch.$or = eventSearchOr;
 
   return { dailyMatch, eventMatch, noResults: false };
 };

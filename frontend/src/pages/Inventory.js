@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { adUnitAPI, inventoryAPI } from "../services/api";
+import AccountSelector from "../components/AccountSelector";
 import "../styles/Inventory.css";
 
 const isAdUnitLinkedToChannel = (adUnit, channelId) => {
@@ -21,6 +22,10 @@ function Inventory({ searchQuery = "" }) {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [runningAdsOnly, setRunningAdsOnly] = useState(false);
+  const [sortMode, setSortMode] = useState("name");
+  const [isCmsSetupExpanded, setIsCmsSetupExpanded] = useState(false);
+  const [expandedSnippets, setExpandedSnippets] = useState({});
+  const [inventorySummaryViewById, setInventorySummaryViewById] = useState({});
   const [form, setForm] = useState({
     name: "",
     key: "",
@@ -36,6 +41,15 @@ function Inventory({ searchQuery = "" }) {
     adUnitIds: [],
   });
   const cmsScriptTag = `<script src="https://YOUR-AD-SERVER.DOMAIN/ad-client.js"></script>`;
+
+  const isRunningAdUnit = useCallback((adUnit) => {
+    const adUnitStatus = String(adUnit?.status || "").toLowerCase();
+    if (adUnitStatus !== "active") return false;
+
+    const campaignStatus = String(adUnit?.campaign?.status || "").toLowerCase();
+    if (!campaignStatus) return true;
+    return campaignStatus === "active" || campaignStatus === "running" || campaignStatus === "live";
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -64,15 +78,100 @@ function Inventory({ searchQuery = "" }) {
     loadData();
   }, [loadData]);
 
+  const inventoryDetailsById = useMemo(() => {
+    const detailsMap = new Map();
+
+    inventories.forEach((inventory) => {
+      const linkedAdUnits = adUnits.filter((adUnit) => isAdUnitLinkedToChannel(adUnit, inventory._id));
+      const runningAdUnits = linkedAdUnits.filter(isRunningAdUnit);
+
+      const buildCampaignEntries = (sourceAdUnits) => {
+        const campaignMap = new Map();
+        sourceAdUnits.forEach((adUnit) => {
+          const campaignId = String(adUnit?.campaign?._id || adUnit?.campaign || `campaign-unavailable-${adUnit._id}`);
+          const campaignName = adUnit?.campaign?.name || "Campaign unavailable";
+          const campaignStatus = adUnit?.campaign?.status || "unavailable";
+          if (!campaignMap.has(campaignId)) {
+            campaignMap.set(campaignId, {
+              campaignId,
+              campaignName,
+              campaignStatus,
+              adUnits: [],
+            });
+          }
+          campaignMap.get(campaignId).adUnits.push(adUnit);
+        });
+        return [...campaignMap.values()].sort((a, b) =>
+          String(a.campaignName || "").localeCompare(String(b.campaignName || ""), undefined, { sensitivity: "base" })
+        );
+      };
+
+      const linkedCampaigns = buildCampaignEntries(linkedAdUnits);
+      const runningCampaigns = buildCampaignEntries(runningAdUnits);
+      const linkedImpressions = linkedAdUnits.reduce((sum, adUnit) => sum + Number(adUnit?.impressions || 0), 0);
+      const linkedClicks = linkedAdUnits.reduce((sum, adUnit) => sum + Number(adUnit?.clicks || 0), 0);
+      const linkedCtr = linkedImpressions > 0 ? (linkedClicks / linkedImpressions) * 100 : 0;
+      const runningImpressions = runningAdUnits.reduce((sum, adUnit) => sum + Number(adUnit?.impressions || 0), 0);
+      const runningClicks = runningAdUnits.reduce((sum, adUnit) => sum + Number(adUnit?.clicks || 0), 0);
+      const runningCtr = runningImpressions > 0 ? (runningClicks / runningImpressions) * 100 : 0;
+
+      detailsMap.set(String(inventory._id), {
+        linkedCount: linkedAdUnits.length,
+        runningCount: runningAdUnits.length,
+        linkedMetrics: {
+          impressions: linkedImpressions,
+          clicks: linkedClicks,
+          ctr: linkedCtr,
+        },
+        runningMetrics: {
+          impressions: runningImpressions,
+          clicks: runningClicks,
+          ctr: runningCtr,
+        },
+        linkedCampaigns,
+        runningCampaigns,
+      });
+    });
+
+    return detailsMap;
+  }, [inventories, adUnits, isRunningAdUnit]);
+
+  const sortedAdUnits = useMemo(() => [...adUnits].sort((a, b) =>
+    String(a?.name || "").localeCompare(String(b?.name || ""), undefined, { sensitivity: "base" })
+  ), [adUnits]);
+
   const sortedInventories = useMemo(() => {
     const normalizedSearch = String(searchQuery || "").trim().toLowerCase();
     return [...inventories]
       .map((inventory, index) => ({ inventory, index }))
       .filter(({ inventory }) => {
         if (!normalizedSearch) return true;
-        return (inventory?.name || "").toLowerCase().includes(normalizedSearch);
+        const nameMatch = (inventory?.name || "").toLowerCase().includes(normalizedSearch);
+        const keyMatch = (inventory?.key || "").toLowerCase().includes(normalizedSearch);
+        if (nameMatch || keyMatch) return true;
+
+        const details = inventoryDetailsById.get(String(inventory?._id));
+        if (!details) return false;
+        const summaryView = inventorySummaryViewById[inventory?._id] || "linked";
+        const campaignEntries = summaryView === "running" ? details.runningCampaigns : details.linkedCampaigns;
+
+        return campaignEntries.some((campaignEntry) => {
+          const campaignMatch = String(campaignEntry?.campaignName || "")
+            .toLowerCase()
+            .includes(normalizedSearch);
+          if (campaignMatch) return true;
+          return (campaignEntry?.adUnits || []).some((adUnit) =>
+            String(adUnit?.name || "").toLowerCase().includes(normalizedSearch),
+          );
+        });
       })
       .sort((a, b) => {
+        if (sortMode === "mostActiveAdUnits") {
+          const aDetails = inventoryDetailsById.get(String(a.inventory?._id));
+          const bDetails = inventoryDetailsById.get(String(b.inventory?._id));
+          const runningDelta = Number(bDetails?.runningCount || 0) - Number(aDetails?.runningCount || 0);
+          if (runningDelta !== 0) return runningDelta;
+        }
         const nameA = (a.inventory?.name || "").toLowerCase();
         const nameB = (b.inventory?.name || "").toLowerCase();
         if (nameA < nameB) return -1;
@@ -80,11 +179,27 @@ function Inventory({ searchQuery = "" }) {
         return a.index - b.index;
       })
       .map(({ inventory }) => inventory);
-  }, [inventories, searchQuery]);
+  }, [inventories, searchQuery, sortMode, inventoryDetailsById, inventorySummaryViewById]);
 
   const showCopiedFeedback = () => {
     setSuccessMessage("Copied to the clipboard");
     setTimeout(() => setSuccessMessage(null), 2500);
+  };
+
+  const toggleSnippetExpanded = (inventoryId) => {
+    setExpandedSnippets((prev) => ({
+      ...prev,
+      [inventoryId]: !prev[inventoryId],
+    }));
+  };
+
+  const getSummaryView = (inventoryId) => inventorySummaryViewById[inventoryId] || "linked";
+
+  const setSummaryView = (inventoryId, view) => {
+    setInventorySummaryViewById((prev) => ({
+      ...prev,
+      [inventoryId]: view,
+    }));
   };
 
   const copyToClipboard = async (text) => {
@@ -271,21 +386,11 @@ function Inventory({ searchQuery = "" }) {
   return (
     <div className="inventory-page">
       <header className="inventory-header">
-        <div>
-          <h2>Ad Channels</h2>
+        <div className="inventory-header-copy">
+          <h1>Ad Channels</h1>
           <p>Create and manage ad placement channels.</p>
         </div>
-        <div className="inventory-toolbar">
-          <label htmlFor="running-ads-only">Show only running ads</label>
-          <select
-            id="running-ads-only"
-            value={runningAdsOnly ? "yes" : "no"}
-            onChange={(e) => setRunningAdsOnly(e.target.value === "yes")}
-          >
-            <option value="no">All Ad Channels</option>
-            <option value="yes">Running Ads</option>
-          </select>
-        </div>
+        <AccountSelector />
       </header>
 
       {successMessage && (
@@ -299,24 +404,38 @@ function Inventory({ searchQuery = "" }) {
           </button>
         </div>
       )}
-      <div className="ad-unit-cms">
-        <div className="ad-unit-cms-label">CMS Setup</div>
-        <div className="ad-unit-cms-description">
-          Add this script inside the {`<Head>`} element of your website or CMS
-          template.
-        </div>
-        <code className="ad-unit-cms-code">{cmsScriptTag}</code>
-        <div className="ad-unit-cms-actions">
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={async () => {
-              await copyToClipboard(`${cmsScriptTag}\n`);
-            }}
-          >
-            Copy CMS Tag
-          </button>
-        </div>
+      <div className={`ad-unit-cms ${isCmsSetupExpanded ? "is-expanded" : ""}`}>
+        <button
+          type="button"
+          className="ad-unit-cms-toggle"
+          aria-expanded={isCmsSetupExpanded}
+          onClick={() => setIsCmsSetupExpanded((prev) => !prev)}
+        >
+          <span className="ad-unit-cms-label">CMS Setup</span>
+          <span className="ad-unit-cms-toggle-icon" aria-hidden="true">
+            {isCmsSetupExpanded ? "▾" : "▸"}
+          </span>
+        </button>
+        {isCmsSetupExpanded && (
+          <div className="ad-unit-cms-body">
+            <div className="ad-unit-cms-description">
+              Add this script inside the {`<Head>`} element of your website or CMS
+              template.
+            </div>
+            <code className="ad-unit-cms-code">{cmsScriptTag}</code>
+            <div className="ad-unit-cms-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={async () => {
+                  await copyToClipboard(`${cmsScriptTag}\n`);
+                }}
+              >
+                Copy CMS Tag
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <div className="inventory-card">
         <h3>Create Ad Channel</h3>
@@ -342,13 +461,14 @@ function Inventory({ searchQuery = "" }) {
           />
           <div className="inventory-form-adunits">
             <div className="inventory-form-adunits-label">Ad Units</div>
-            {adUnits.length === 0 ? (
+            {sortedAdUnits.length === 0 ? (
               <p className="no-data">No ad units available.</p>
             ) : (
               <div className="selectable-checkbox-list inventory-adunit-list">
-                {adUnits.map((adUnit) => {
+                {sortedAdUnits.map((adUnit) => {
                   const adUnitId = String(adUnit._id);
                   const checked = createAdUnitSelection.has(adUnitId);
+                  const campaignName = adUnit?.campaign?.name || "Campaign unavailable";
                   return (
                     <label key={adUnitId} className={`selectable-checkbox-item ${checked ? "selected" : ""}`}>
                       <input
@@ -363,7 +483,11 @@ function Inventory({ searchQuery = "" }) {
                           });
                         }}
                       />
-                      <span>{adUnit.name}</span>
+                      <span className="inventory-adunit-choice-text">
+                        <span className="inventory-adunit-choice-name">{adUnit.name}</span>
+                        <span className="inventory-adunit-choice-meta">Campaign: {campaignName}</span>
+                        <span className="inventory-adunit-choice-meta">Status: {adUnit.status || "unknown"}</span>
+                      </span>
                     </label>
                   );
                 })}
@@ -378,10 +502,36 @@ function Inventory({ searchQuery = "" }) {
 
       <section className="inventory-card">
         <h3>Ad Channels</h3>
+        <div className="inventory-toolbar">
+          <div className="inventory-toolbar-group">
+            <label htmlFor="running-ads-only">Running Ads</label>
+            <select
+              id="running-ads-only"
+              value={runningAdsOnly ? "yes" : "no"}
+              onChange={(e) => setRunningAdsOnly(e.target.value === "yes")}
+            >
+              <option value="no">All Ad Channels</option>
+              <option value="yes">Show only running ads</option>
+            </select>
+          </div>
+          <div className="inventory-toolbar-group">
+            <label htmlFor="inventory-sort-mode">Sort By</label>
+            <select
+              id="inventory-sort-mode"
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value)}
+            >
+              <option value="name">Ad Channel Name</option>
+              <option value="mostActiveAdUnits">Most Active Ad Units</option>
+            </select>
+          </div>
+        </div>
         <div className="inventory-list">
           {sortedInventories.length === 0 && (
             <p className="no-data">
-              {runningAdsOnly
+              {String(searchQuery || "").trim()
+                ? "No Ad Channels found for this search."
+                : runningAdsOnly
                 ? "No Ad Channels with running ads found."
                 : "No ad channels yet."}
             </p>
@@ -424,13 +574,14 @@ function Inventory({ searchQuery = "" }) {
                   </label>
                   <div className="inventory-form-adunits inventory-form-adunits-inline">
                     <div className="inventory-form-adunits-label">Ad Units</div>
-                    {adUnits.length === 0 ? (
+                    {sortedAdUnits.length === 0 ? (
                       <p className="no-data">No ad units available.</p>
                     ) : (
                       <div className="selectable-checkbox-list inventory-adunit-list">
-                        {adUnits.map((adUnit) => {
+                        {sortedAdUnits.map((adUnit) => {
                           const adUnitId = String(adUnit._id);
                           const checked = editAdUnitSelection.has(adUnitId);
+                          const campaignName = adUnit?.campaign?.name || "Campaign unavailable";
                           return (
                             <label key={adUnitId} className={`selectable-checkbox-item ${checked ? "selected" : ""}`}>
                               <input
@@ -445,7 +596,11 @@ function Inventory({ searchQuery = "" }) {
                                   });
                                 }}
                               />
-                              <span>{adUnit.name}</span>
+                              <span className="inventory-adunit-choice-text">
+                                <span className="inventory-adunit-choice-name">{adUnit.name}</span>
+                                <span className="inventory-adunit-choice-meta">Campaign: {campaignName}</span>
+                                <span className="inventory-adunit-choice-meta">Status: {adUnit.status || "unknown"}</span>
+                              </span>
                             </label>
                           );
                         })}
@@ -467,38 +622,126 @@ function Inventory({ searchQuery = "" }) {
                 <>
                   <div className="inventory-main">
                     <div className="inventory-info">
-                      <div className="inventory-name">{inventory.name}</div>
-                      <div className="inventory-key">Key: {inventory.key}</div>
-                      {inventory.description && (
-                        <div className="inventory-desc">
-                          {inventory.description}
-                        </div>
-                      )}
-                      <div
-                        className={`inventory-status ${inventory.isActive ? "active" : "inactive"}`}
-                      >
-                        {inventory.isActive ? "Active" : "Inactive"}
-                      </div>
-                      <div className="inventory-snippet">
-                        <div className="inventory-snippet-label">CMS Tag</div>
-                        <code>{`<div data-inventory="${inventory.key}" data-width="100%"></div>`}</code>
-                        <div className="inventory-snippet-actions">
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={async () => {
-                              await copyToClipboard(
-                                `<div data-inventory="${inventory.key}" data-width="100%"></div>`,
-                              );
-                            }}
-                          >
-                            Copy Tag
-                          </button>
-                        </div>
-                      </div>
-                      <div className="inventory-snippet-label">
-                        Linked Ad Units: {adUnits.filter((adUnit) => isAdUnitLinkedToChannel(adUnit, inventory._id)).length}
-                      </div>
+                      {(() => {
+                        const details = inventoryDetailsById.get(String(inventory._id)) || {
+                          linkedCount: 0,
+                          runningCount: 0,
+                          linkedMetrics: { impressions: 0, clicks: 0, ctr: 0 },
+                          runningMetrics: { impressions: 0, clicks: 0, ctr: 0 },
+                          linkedCampaigns: [],
+                          runningCampaigns: [],
+                        };
+                        const summaryView = getSummaryView(inventory._id);
+                        const currentMetrics = summaryView === "running" ? details.runningMetrics : details.linkedMetrics;
+                        const currentCampaigns = summaryView === "running" ? details.runningCampaigns : details.linkedCampaigns;
+                        const isSnippetExpanded = Boolean(expandedSnippets[inventory._id]);
+                        return (
+                          <>
+                            <div className="inventory-title-row">
+                              <div className="inventory-name">{inventory.name}</div>
+                              <div className="inventory-inline-metrics">
+                                <span>Impressions: {new Intl.NumberFormat("en-US").format(currentMetrics.impressions)}</span>
+                                <span>Clicks: {new Intl.NumberFormat("en-US").format(currentMetrics.clicks)}</span>
+                                <span>CTR: {Number(currentMetrics.ctr || 0).toFixed(2)}%</span>
+                              </div>
+                            </div>
+                            <div className="inventory-key">Key: {inventory.key}</div>
+                            {inventory.description && (
+                              <div className="inventory-desc">
+                                {inventory.description}
+                              </div>
+                            )}
+                            <div
+                              className={`inventory-status ${inventory.isActive ? "active" : "inactive"}`}
+                            >
+                              {inventory.isActive ? "Active" : "Inactive"}
+                            </div>
+                            <div className="inventory-performance">
+                              <div className="inventory-performance-summary" role="tablist" aria-label="Ad unit scope">
+                                <button
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={summaryView === "linked"}
+                                  className={`inventory-summary-toggle ${summaryView === "linked" ? "is-active" : ""}`}
+                                  onClick={() => setSummaryView(inventory._id, "linked")}
+                                >
+                                  Linked Ad Units: {details.linkedCount}
+                                </button>
+                                <button
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={summaryView === "running"}
+                                  className={`inventory-summary-toggle ${summaryView === "running" ? "is-active" : ""}`}
+                                  onClick={() => setSummaryView(inventory._id, "running")}
+                                >
+                                  Running Ad Units: {details.runningCount}
+                                </button>
+                              </div>
+                              {currentCampaigns.length === 0 ? (
+                                <div className="inventory-performance-empty">
+                                  {summaryView === "running"
+                                    ? "No running ad units in this ad channel."
+                                    : "No linked ad units in this ad channel."}
+                                </div>
+                              ) : (
+                                <div className="inventory-campaign-list">
+                                  {currentCampaigns.map((campaignEntry) => (
+                                    <div key={campaignEntry.campaignId} className="inventory-campaign-item">
+                                      <div className="inventory-campaign-title">
+                                        Campaign: {campaignEntry.campaignName}
+                                      </div>
+                                      <div className="inventory-campaign-status">
+                                        Status: {campaignEntry.campaignStatus}
+                                      </div>
+                                      {campaignEntry.adUnits.map((adUnit) => (
+                                        <div key={adUnit._id} className="inventory-adunit-line">
+                                          <span>Ad Unit: {adUnit.name}</span>
+                                          <span>Status: {adUnit.status}</span>
+                                          <span>Impressions: {new Intl.NumberFormat("en-US").format(Number(adUnit.impressions || 0))}</span>
+                                          <span>Clicks: {new Intl.NumberFormat("en-US").format(Number(adUnit.clicks || 0))}</span>
+                                          <span>CTR: {Number(adUnit.ctr || 0).toFixed(2)}%</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className={`inventory-snippet ${isSnippetExpanded ? "is-expanded" : ""}`}>
+                              <button
+                                type="button"
+                                className="inventory-snippet-toggle"
+                                aria-expanded={isSnippetExpanded}
+                                onClick={() => toggleSnippetExpanded(inventory._id)}
+                              >
+                                <span className="inventory-snippet-label">CMS Tag</span>
+                                <span className="inventory-snippet-toggle-icon" aria-hidden="true">
+                                  {isSnippetExpanded ? "▾" : "▸"}
+                                </span>
+                              </button>
+                              {isSnippetExpanded && (
+                                <div className="inventory-snippet-body">
+                                  <code>{`<div data-inventory="${inventory.key}" data-width="100%"></div>`}</code>
+                                  <div className="inventory-snippet-actions">
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary btn-sm"
+                                      onClick={async () => {
+                                        await copyToClipboard(
+                                          `<div data-inventory="${inventory.key}" data-width="100%"></div>`,
+                                        );
+                                      }}
+                                    >
+                                      Copy Tag
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="inventory-actions">

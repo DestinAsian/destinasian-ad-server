@@ -44,14 +44,6 @@ const formatNumber = (value) => {
   return new Intl.NumberFormat('en-US').format(Number(value) || 0);
 };
 
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(Number(value) || 0);
-};
-
 const CAMPAIGN_PAGE_SIZE = 5;
 
 function Dashboard({ view = 'overview', searchQuery = '' }) {
@@ -80,7 +72,6 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
     impressions: 0,
     clicks: 0,
     ctr: 0,
-    revenue: 0,
     daily: [],
     topCampaigns: [],
     topAdUnits: []
@@ -222,7 +213,6 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
           impressions: 0,
           clicks: 0,
           ctr: 0,
-          revenue: 0,
           daily: [],
           topCampaigns: [],
           topAdUnits: []
@@ -237,13 +227,13 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
         endDate: dateRange.endDate || undefined,
         inventoryId: selectedOverviewAdChannelId || undefined,
         campaignId: selectedOverviewCampaignId || undefined,
+        search: debouncedSearchQuery || undefined,
         limit: 5
       });
       setAnalytics({
         impressions: response.data?.impressions || 0,
         clicks: response.data?.clicks || 0,
         ctr: response.data?.ctr || 0,
-        revenue: response.data?.revenue || 0,
         daily: response.data?.daily || [],
         topCampaigns: response.data?.topCampaigns || [],
         topAdUnits: response.data?.topAdUnits || []
@@ -254,7 +244,6 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
         impressions: 0,
         clicks: 0,
         ctr: 0,
-        revenue: 0,
         daily: [],
         topCampaigns: [],
         topAdUnits: []
@@ -262,7 +251,7 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
     } finally {
       setAnalyticsLoading(false);
     }
-  }, [currentAccount?.id, dateRange.endDate, dateRange.startDate, selectedOverviewAdChannelId, selectedOverviewCampaignId]);
+  }, [currentAccount?.id, dateRange.endDate, dateRange.startDate, selectedOverviewAdChannelId, selectedOverviewCampaignId, debouncedSearchQuery]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -689,6 +678,16 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
     }
   }), []);
 
+  const hasSearchNoDashboardData = useMemo(() => {
+    if (!debouncedSearchQuery || analyticsLoading) return false;
+    const impressions = Number(analytics?.impressions || 0);
+    const clicks = Number(analytics?.clicks || 0);
+    const dailyCount = Array.isArray(analytics?.daily) ? analytics.daily.length : 0;
+    const topCampaignCount = Array.isArray(analytics?.topCampaigns) ? analytics.topCampaigns.length : 0;
+    const topAdUnitCount = Array.isArray(analytics?.topAdUnits) ? analytics.topAdUnits.length : 0;
+    return impressions === 0 && clicks === 0 && dailyCount === 0 && topCampaignCount === 0 && topAdUnitCount === 0;
+  }, [debouncedSearchQuery, analyticsLoading, analytics]);
+
   if (loading) return <div className="loading">Loading...</div>;
 
   if (user?.role === 'editor' && (!Array.isArray(accounts) || accounts.length === 0 || !currentAccount?.id)) {
@@ -896,6 +895,10 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
           </div>
         </div>
 
+        {hasSearchNoDashboardData && (
+          <p className="no-data">No dashboard data found for this search.</p>
+        )}
+
         <div className="dashboard-kpi-grid">
           <div className="stat-card dashboard-kpi-card">
             <h4>Impressions</h4>
@@ -908,10 +911,6 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
           <div className="stat-card dashboard-kpi-card">
             <h4>CTR</h4>
             <p className="stat-value">{analyticsLoading ? '...' : `${Number(analytics.ctr || 0).toFixed(2)}%`}</p>
-          </div>
-          <div className="stat-card dashboard-kpi-card">
-            <h4>Revenue</h4>
-            <p className="stat-value">{analyticsLoading ? '...' : formatCurrency(analytics.revenue)}</p>
           </div>
         </div>
 
@@ -992,11 +991,19 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
                 const campaignAdUnits = Array.isArray(campaign.adUnits) ? campaign.adUnits : [];
                 const matchingAdUnits = normalizedSearchToken
                   ? campaignAdUnits.filter((adUnit) => {
+                    const linkedInventoryNames = [
+                      ...(Array.isArray(adUnit?.inventories) ? adUnit.inventories : []),
+                      adUnit?.inventory
+                    ]
+                      .filter(Boolean)
+                      .map((inventoryEntry) => inventoryEntry?.name || inventoryEntry?.key || '')
+                      .filter(Boolean);
                     const searchableFields = [
                       adUnit?.name,
                       adUnit?.description,
                       adUnit?.adCode,
-                      adUnit?.status
+                      adUnit?.status,
+                      ...linkedInventoryNames
                     ];
                     return searchableFields
                       .filter(Boolean)
@@ -1076,7 +1083,7 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
                       <div className="ad-units-header">
                         <h3>Ad Units</h3>
                         <button
-                          className="btn btn-primary btn-sm"
+                          className="btn btn-primary btn-sm new-ad-unit-button"
                           onClick={() => handleOpenCreateAdUnitModal(campaign._id)}
                         >
                           + New Ad Unit

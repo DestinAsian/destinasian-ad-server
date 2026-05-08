@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
 import { accountAPI, userAPI } from '../services/api';
+import '../styles/Users.css';
 import '../styles/AccountManagement.css';
 
 function AccountManagement() {
@@ -189,8 +190,8 @@ function AccountManagement() {
   if (loading) return <div className="loading">Loading accounts...</div>;
 
   return (
-    <div className="account-management">
-      <header className="account-page-header">
+    <div className="account-management users-page">
+      <header className="account-page-header users-header">
         <div>
           <h2>My Accounts</h2>
           <p>Manage account access, sharing, and account-level campaign and ad channel overview.</p>
@@ -206,7 +207,7 @@ function AccountManagement() {
       )}
 
       {isOwner && (
-        <section className="account-create-card">
+        <section className="account-create-card users-card">
           <h3>Add Account</h3>
           <form className="account-create-form" onSubmit={handleCreateAccount}>
             <input
@@ -223,8 +224,10 @@ function AccountManagement() {
         </section>
       )}
 
-      <div className="accounts-grid">
-        {sortedAccounts.map((account) => {
+      <section className="account-list-card users-card">
+        <h3>All Accounts</h3>
+        <div className="accounts-grid">
+          {sortedAccounts.map((account) => {
           const isOwnerOfAccount = String(account?.owner?._id || '') === String(user?.id || '');
           const canManageAccount = isOwner && (account.accessLevel === 'owner' || isOwnerOfAccount);
           const summary = account.summary || {};
@@ -306,10 +309,6 @@ function AccountManagement() {
                     <span className="stat-label">Clicks</span>
                     <span className="stat-value">{summary.clicks || 0}</span>
                   </div>
-                  <div className="stat">
-                    <span className="stat-label">Revenue</span>
-                    <span className="stat-value">{Number(summary.revenue || 0).toFixed(2)}</span>
-                  </div>
                 </div>
 
                 {canManageAccount && (
@@ -362,18 +361,18 @@ function AccountManagement() {
               </div>
             </div>
           );
-        })}
-      </div>
-
-      {sortedAccounts.length === 0 && (
-        <div className="no-accounts">
-          <p>
-            {isOwner
-              ? 'No accounts found.'
-              : 'No account has been shared with you yet. Please contact the account owner.'}
-          </p>
+          })}
         </div>
-      )}
+        {sortedAccounts.length === 0 && (
+          <div className="no-accounts">
+            <p>
+              {isOwner
+                ? 'No accounts found.'
+                : 'No account has been shared with you yet. Please contact the account owner.'}
+            </p>
+          </div>
+        )}
+      </section>
 
       <Modal
         isOpen={Boolean(shareModalAccount)}

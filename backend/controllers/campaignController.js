@@ -325,8 +325,34 @@ exports.getAllCampaigns = async (req, res) => {
         ]
       }).select('campaign');
 
+      const matchingInventories = await Inventory.find({
+        account: req.user.accountId,
+        $or: [
+          { name: searchRegex },
+          { key: searchRegex },
+          { groupName: searchRegex }
+        ]
+      }).select('_id');
+
+      let adUnitMatchesByInventory = [];
+      if (matchingInventories.length > 0) {
+        const matchingInventoryIds = matchingInventories.map((inventory) => inventory._id);
+        adUnitMatchesByInventory = await AdUnit.find({
+          account: req.user.accountId,
+          $or: [
+            { inventory: { $in: matchingInventoryIds } },
+            { inventories: { $in: matchingInventoryIds } }
+          ]
+        }).select('campaign');
+      }
+
       const searchCampaignIdSet = new Set(campaignMatches.map((campaign) => campaign._id.toString()));
       adUnitMatches.forEach((adUnit) => {
+        if (adUnit.campaign) {
+          searchCampaignIdSet.add(adUnit.campaign.toString());
+        }
+      });
+      adUnitMatchesByInventory.forEach((adUnit) => {
         if (adUnit.campaign) {
           searchCampaignIdSet.add(adUnit.campaign.toString());
         }

@@ -871,6 +871,25 @@
   padding: 10px;
 }
 
+.inventory-selector-search-wrap {
+  margin-bottom: 8px;
+}
+
+.inventory-selector-search {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2937;
+}
+
+.inventory-selector-search:focus {
+  outline: none;
+  border-color: rgba(124, 170, 184, 0.75);
+  box-shadow: 0 0 0 3px rgba(199, 224, 231, 0.32);
+}
+
 /* Ad Unit CRUD Styles */
 .ad-units-header {
   display: flex;
@@ -890,6 +909,16 @@
   padding: 8px 16px !important;
   font-size: 13px !important;
   white-space: nowrap;
+}
+
+.btn-primary.new-ad-unit-button {
+  width: 20%;
+}
+
+@media (max-width: 768px) {
+  .btn-primary.new-ad-unit-button {
+    width: auto;
+  }
 }
 
 .ad-unit-card {
@@ -1556,7 +1585,7 @@
 
 .dashboard-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 18px;
 }
 
@@ -2111,7 +2140,7 @@
 }
 
 .modal-content {
-  max-width: 620px;
+  max-width: 1024px;
 }
 
 .modal-header,
@@ -2375,6 +2404,10 @@
 
   .dashboard-chart-canvas {
     height: 260px;
+  }
+
+  .btn-primary.new-ad-unit-button {
+    width: auto;
   }
 
   .dashboard-report-item {

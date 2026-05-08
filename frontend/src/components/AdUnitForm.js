@@ -1,15 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { inventoryAPI } from '../services/api';
+import React, { useMemo, useState, useEffect } from "react";
+import { inventoryAPI } from "../services/api";
 
-function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCancel }) {
+function AdUnitForm({
+  adUnit,
+  submitting,
+  campaignId,
+  campaign,
+  onSubmit,
+  onCancel,
+}) {
   const [formData, setFormData] = useState({
-    name: '',
+    name: "",
     campaignId,
     inventoryIds: [],
-    startDate: '',
-    endDate: '',
-    imageUrl: '',
-    clickUrl: ''
+    startDate: "",
+    endDate: "",
+    imageUrl: "",
+    clickUrl: "",
   });
   const [errors, setErrors] = useState({});
   const [imagePreview, setImagePreview] = useState(null);
@@ -19,53 +26,66 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
   const [inventoryLoading, setInventoryLoading] = useState(true);
   const [isInventoriesExpanded, setIsInventoriesExpanded] = useState(false);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
+  const [inventorySearchQuery, setInventorySearchQuery] = useState("");
 
   useEffect(() => {
     const formatToLocalDateTime = (isoDate) => {
-      if (!isoDate) return '';
+      if (!isoDate) return "";
       const date = new Date(isoDate);
       const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
       return `${year}-${month}-${day}T${hours}:${minutes}`;
     };
 
     if (adUnit) {
       const formattedStart = formatToLocalDateTime(adUnit.startDate);
       const multiInventories = Array.isArray(adUnit.inventories)
-        ? adUnit.inventories.map((inventory) => inventory?._id || inventory).filter(Boolean)
+        ? adUnit.inventories
+            .map((inventory) => inventory?._id || inventory)
+            .filter(Boolean)
         : [];
       const fallbackInventory = adUnit.inventory?._id || adUnit.inventory;
 
       setFormData({
-        name: adUnit.name || '',
+        name: adUnit.name || "",
         campaignId: adUnit.campaignId || campaignId,
-        inventoryIds: multiInventories.length > 0 ? multiInventories : (fallbackInventory ? [fallbackInventory] : []),
+        inventoryIds:
+          multiInventories.length > 0
+            ? multiInventories
+            : fallbackInventory
+              ? [fallbackInventory]
+              : [],
         startDate: formattedStart,
         endDate: formatToLocalDateTime(adUnit.endDate),
-        imageUrl: adUnit.imageUrl || '',
-        clickUrl: adUnit.clickUrl || ''
+        imageUrl: adUnit.imageUrl || "",
+        clickUrl: adUnit.clickUrl || "",
       });
       setInitialStartDateValue(formattedStart);
       setImagePreview(adUnit.imageUrl || null);
     } else {
-      const defaultStartDate = campaign?.startDate ? formatToLocalDateTime(campaign.startDate) : '';
-      const defaultEndDate = campaign?.endDate ? formatToLocalDateTime(campaign.endDate) : '';
+      const defaultStartDate = campaign?.startDate
+        ? formatToLocalDateTime(campaign.startDate)
+        : "";
+      const defaultEndDate = campaign?.endDate
+        ? formatToLocalDateTime(campaign.endDate)
+        : "";
       setFormData({
-        name: '',
+        name: "",
         campaignId,
         inventoryIds: [],
         startDate: defaultStartDate,
         endDate: defaultEndDate,
-        imageUrl: '',
-        clickUrl: ''
+        imageUrl: "",
+        clickUrl: "",
       });
       setInitialStartDateValue(defaultStartDate);
       setImagePreview(null);
     }
     setIsInventoriesExpanded(false);
+    setInventorySearchQuery("");
     setErrors({});
     setImageError(null);
   }, [adUnit, campaignId, campaign]);
@@ -78,7 +98,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
         setInventories(response.data || []);
         setInventoryError(null);
       } catch (err) {
-        setInventoryError('Failed to load ad channels');
+        setInventoryError("Failed to load ad channels");
       } finally {
         setInventoryLoading(false);
       }
@@ -86,42 +106,50 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
     loadInventories();
   }, []);
 
-  const isEditingActiveAdUnit = Boolean(adUnit && adUnit.status === 'active');
+  const isEditingActiveAdUnit = Boolean(adUnit && adUnit.status === "active");
 
   const validateForm = () => {
     const newErrors = {};
     const now = new Date();
 
     if (!formData.name.trim()) {
-      newErrors.name = 'Ad unit name is required';
+      newErrors.name = "Ad unit name is required";
     }
 
-    if (!Array.isArray(formData.inventoryIds) || formData.inventoryIds.length === 0) {
-      newErrors.inventoryIds = 'At least one ad channel is required';
+    if (
+      !Array.isArray(formData.inventoryIds) ||
+      formData.inventoryIds.length === 0
+    ) {
+      newErrors.inventoryIds = "At least one ad channel is required";
     }
 
     if (!formData.startDate) {
-      newErrors.startDate = 'Start date and time is required';
+      newErrors.startDate = "Start date and time is required";
     }
 
     if (!formData.endDate) {
-      newErrors.endDate = 'End date and time is required';
+      newErrors.endDate = "End date and time is required";
     }
 
     if (formData.startDate) {
       const startDateTime = new Date(formData.startDate);
       if (!isEditingActiveAdUnit && startDateTime < now) {
-        newErrors.startDate = 'Start date and time cannot be in the past';
+        newErrors.startDate = "Start date and time cannot be in the past";
       }
-      if (isEditingActiveAdUnit && initialStartDateValue && formData.startDate !== initialStartDateValue) {
-          newErrors.startDate = 'Active ad units cannot change start date. Pause the ad unit first.';
+      if (
+        isEditingActiveAdUnit &&
+        initialStartDateValue &&
+        formData.startDate !== initialStartDateValue
+      ) {
+        newErrors.startDate =
+          "Active ad units cannot change start date. Pause the ad unit first.";
       }
     }
 
     if (formData.endDate) {
       const endDateTime = new Date(formData.endDate);
       if (!isEditingActiveAdUnit && endDateTime < now) {
-        newErrors.endDate = 'End date and time cannot be in the past';
+        newErrors.endDate = "End date and time cannot be in the past";
       }
     }
 
@@ -129,7 +157,8 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       const startDateTime = new Date(formData.startDate);
       const endDateTime = new Date(formData.endDate);
       if (startDateTime > endDateTime) {
-        newErrors.endDate = 'End date and time must be after start date and time';
+        newErrors.endDate =
+          "End date and time must be after start date and time";
       }
     }
 
@@ -140,29 +169,31 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
       if (formData.startDate) {
         const startDateTime = new Date(formData.startDate);
         if (startDateTime < campaignStart) {
-          newErrors.startDate = 'Start date and time cannot be before campaign start';
+          newErrors.startDate =
+            "Start date and time cannot be before campaign start";
         }
       }
 
       if (formData.endDate) {
         const endDateTime = new Date(formData.endDate);
         if (endDateTime > campaignEnd) {
-          newErrors.endDate = 'End date and time cannot be after campaign end';
+          newErrors.endDate = "End date and time cannot be after campaign end";
         }
       }
     }
 
     if (!formData.imageUrl) {
-      newErrors.imageUrl = '1:1 image is required';
+      newErrors.imageUrl = "1:1 image is required";
     }
 
     if (!formData.clickUrl.trim()) {
-      newErrors.clickUrl = 'Click-through URL is required';
+      newErrors.clickUrl = "Click-through URL is required";
     } else {
       try {
         new URL(formData.clickUrl);
       } catch (err) {
-        newErrors.clickUrl = 'Please enter a valid URL (e.g., https://example.com)';
+        newErrors.clickUrl =
+          "Please enter a valid URL (e.g., https://example.com)";
       }
     }
 
@@ -175,7 +206,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
 
     setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
 
     if (errors[name]) {
@@ -194,7 +225,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
         ...prev,
         inventoryIds: exists
           ? prev.inventoryIds.filter((id) => id !== inventoryId)
-          : [...prev.inventoryIds, inventoryId]
+          : [...prev.inventoryIds, inventoryId],
       };
     });
 
@@ -207,10 +238,20 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
     }
   };
 
-  const selectedInventoriesCount = Array.isArray(formData.inventoryIds) ? formData.inventoryIds.length : 0;
-  const inventorySummaryLabel = selectedInventoriesCount > 0
-    ? `${selectedInventoriesCount} ${selectedInventoriesCount === 1 ? 'ad channel' : 'ad channels'} selected`
-    : 'No ad channels selected';
+  const selectedInventoriesCount = Array.isArray(formData.inventoryIds)
+    ? formData.inventoryIds.length
+    : 0;
+  const inventorySummaryLabel =
+    selectedInventoriesCount > 0
+      ? `${selectedInventoriesCount} ${selectedInventoriesCount === 1 ? "ad channel" : "ad channels"} selected`
+      : "No ad channels selected";
+  const normalizedInventorySearch = String(inventorySearchQuery || "").trim().toLowerCase();
+  const visibleInventories = useMemo(() => {
+    if (!normalizedInventorySearch) return inventories;
+    return inventories.filter((inventory) =>
+      String(inventory?.name || "").toLowerCase().includes(normalizedInventorySearch)
+    );
+  }, [inventories, normalizedInventorySearch]);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -222,12 +263,12 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
     if (file.size > maxFileSize) {
       const fileSizeMB = (file.size / 1048576).toFixed(1);
       setImageError(`Image must be under 1MB. Your file is ${fileSizeMB}MB.`);
-      e.target.value = '';
+      e.target.value = "";
       return;
     }
 
-    if (!file.type.startsWith('image/')) {
-      setImageError('Please upload an image file');
+    if (!file.type.startsWith("image/")) {
+      setImageError("Please upload an image file");
       return;
     }
 
@@ -238,7 +279,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
         if (img.width === img.height) {
           setFormData((prev) => ({
             ...prev,
-            imageUrl: event.target.result
+            imageUrl: event.target.result,
           }));
           setImagePreview(event.target.result);
           if (errors.imageUrl) {
@@ -249,19 +290,21 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
             });
           }
         } else {
-          setImageError(`Image must be 1:1 (square). Your image is ${img.width}x${img.height}. Please crop it to a square.`);
-          e.target.value = '';
+          setImageError(
+            `Image must be 1:1 (square). Your image is ${img.width}x${img.height}. Please crop it to a square.`,
+          );
+          e.target.value = "";
         }
       };
       img.onerror = () => {
-        setImageError('Failed to load image. Please try another image.');
-        e.target.value = '';
+        setImageError("Failed to load image. Please try another image.");
+        e.target.value = "";
       };
       img.src = event.target.result;
     };
     reader.onerror = () => {
-      setImageError('Failed to read image file');
-      e.target.value = '';
+      setImageError("Failed to read image file");
+      e.target.value = "";
     };
     reader.readAsDataURL(file);
   };
@@ -269,7 +312,7 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
   const removeImage = () => {
     setFormData((prev) => ({
       ...prev,
-      imageUrl: ''
+      imageUrl: "",
     }));
     setImagePreview(null);
     setImageError(null);
@@ -285,13 +328,20 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
         inventory: normalizedInventoryIds[0],
         inventories: normalizedInventoryIds,
         inventoryIds: normalizedInventoryIds,
-        endDate: formData.endDate ? new Date(formData.endDate).toISOString() : '',
+        endDate: formData.endDate
+          ? new Date(formData.endDate).toISOString()
+          : "",
         imageUrl: formData.imageUrl,
-        clickUrl: formData.clickUrl
+        clickUrl: formData.clickUrl,
       };
 
-      if (!isEditingActiveAdUnit || formData.startDate !== initialStartDateValue) {
-        submitData.startDate = formData.startDate ? new Date(formData.startDate).toISOString() : '';
+      if (
+        !isEditingActiveAdUnit ||
+        formData.startDate !== initialStartDateValue
+      ) {
+        submitData.startDate = formData.startDate
+          ? new Date(formData.startDate).toISOString()
+          : "";
       }
       onSubmit(submitData);
     }
@@ -308,13 +358,15 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
           value={formData.name}
           onChange={handleChange}
           placeholder="e.g., Homepage Banner"
-          className={errors.name ? 'error' : ''}
+          className={errors.name ? "error" : ""}
         />
         {errors.name && <span className="error-message">{errors.name}</span>}
       </div>
 
       <div className="form-group">
-        <div className={`inventory-selector-panel ${isInventoriesExpanded ? 'is-expanded' : ''}`}>
+        <div
+          className={`inventory-selector-panel ${isInventoriesExpanded ? "is-expanded" : ""}`}
+        >
           <button
             type="button"
             className="inventory-selector-toggle"
@@ -324,34 +376,64 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
           >
             <span className="inventory-selector-title-wrap">
               <span className="inventory-selector-title">Ad Channels *</span>
-              <span className="inventory-selector-summary">{inventorySummaryLabel}</span>
+              <span className="inventory-selector-summary">
+                {inventorySummaryLabel}
+              </span>
             </span>
             <span className="inventory-selector-icon" aria-hidden="true">
-              {isInventoriesExpanded ? '▾' : '▸'}
+              {isInventoriesExpanded ? "▾" : "▸"}
             </span>
           </button>
 
           {isInventoriesExpanded && (
-            <div id="adunit-inventory-selector-body" className="inventory-selector-body">
+            <div
+              id="adunit-inventory-selector-body"
+              className="inventory-selector-body"
+            >
+              <div className="inventory-selector-search-wrap">
+                <input
+                  type="search"
+                  className="inventory-selector-search"
+                  placeholder="Search ad channels..."
+                  value={inventorySearchQuery}
+                  onChange={(event) => setInventorySearchQuery(event.target.value)}
+                />
+              </div>
               {inventoryLoading ? (
-                <p className="inventory-selection-state">Loading ad channels...</p>
+                <p className="inventory-selection-state">
+                  Loading ad channels...
+                </p>
               ) : inventories.length === 0 ? (
-                <p className="inventory-selection-state">No ad channels available.</p>
+                <p className="inventory-selection-state">
+                  No ad channels available.
+                </p>
+              ) : visibleInventories.length === 0 ? (
+                <p className="inventory-selection-state">
+                  No Ad Channels found.
+                </p>
               ) : (
-                <div className="selectable-checkbox-list inventory-checkbox-list" role="group" aria-label="Select ad channels">
-                  {inventories.map((inventory) => {
+                <div
+                  className="selectable-checkbox-list inventory-checkbox-list"
+                  role="group"
+                  aria-label="Select ad channels"
+                >
+                  {visibleInventories.map((inventory) => {
                     const inventoryId = String(inventory._id);
-                    const isSelected = formData.inventoryIds.includes(inventoryId);
+                    const isSelected =
+                      formData.inventoryIds.includes(inventoryId);
                     const checkboxId = `adunit-inventory-${inventoryId}`;
                     const metaItems = [];
                     if (inventory.key) metaItems.push(`Key: ${inventory.key}`);
-                    if (inventory.isActive !== undefined) metaItems.push(inventory.isActive ? 'Active' : 'Inactive');
+                    if (inventory.isActive !== undefined)
+                      metaItems.push(
+                        inventory.isActive ? "Active" : "Inactive",
+                      );
 
                     return (
                       <label
                         key={inventoryId}
                         htmlFor={checkboxId}
-                        className={`selectable-checkbox-item inventory-checkbox-item ${isSelected ? 'selected' : ''}`}
+                        className={`selectable-checkbox-item inventory-checkbox-item ${isSelected ? "selected" : ""}`}
                       >
                         <input
                           id={checkboxId}
@@ -361,9 +443,13 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
                           disabled={submitting}
                         />
                         <span className="inventory-checkbox-content">
-                          <span className="inventory-checkbox-title">{inventory.name}</span>
+                          <span className="inventory-checkbox-title">
+                            {inventory.name}
+                          </span>
                           {metaItems.length > 0 && (
-                            <span className="inventory-checkbox-meta">{metaItems.join(' • ')}</span>
+                            <span className="inventory-checkbox-meta">
+                              {metaItems.join(" • ")}
+                            </span>
                           )}
                         </span>
                       </label>
@@ -374,8 +460,12 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
             </div>
           )}
         </div>
-        {inventoryError && <span className="error-message">{inventoryError}</span>}
-        {errors.inventoryIds && <span className="error-message">{errors.inventoryIds}</span>}
+        {inventoryError && (
+          <span className="error-message">{inventoryError}</span>
+        )}
+        {errors.inventoryIds && (
+          <span className="error-message">{errors.inventoryIds}</span>
+        )}
       </div>
 
       <div className="form-row">
@@ -388,9 +478,11 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
             value={formData.startDate}
             onChange={handleChange}
             step="1800"
-            className={errors.startDate ? 'error' : ''}
+            className={errors.startDate ? "error" : ""}
           />
-          {errors.startDate && <span className="error-message">{errors.startDate}</span>}
+          {errors.startDate && (
+            <span className="error-message">{errors.startDate}</span>
+          )}
         </div>
 
         <div className="form-group">
@@ -402,68 +494,76 @@ function AdUnitForm({ adUnit, submitting, campaignId, campaign, onSubmit, onCanc
             value={formData.endDate}
             onChange={handleChange}
             step="1800"
-            className={errors.endDate ? 'error' : ''}
+            className={errors.endDate ? "error" : ""}
           />
-          {errors.endDate && <span className="error-message">{errors.endDate}</span>}
-        </div>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="image">Ad Image (1:1 Square) *</label>
-        <div className="image-upload-container">
-          {imagePreview ? (
-            <div className="image-preview">
-              <img src={imagePreview} alt="Ad preview" />
-              <button
-                type="button"
-                className="btn-remove-image"
-                onClick={removeImage}
-                disabled={submitting}
-              >
-                ✕ Remove
-              </button>
-            </div>
-          ) : (
-            <label htmlFor="image" className="image-upload-box">
-              <div className="upload-icon">📸</div>
-              <div className="upload-text">Click to upload 1:1 image</div>
-              <div className="upload-hint">PNG, JPG up to 1MB</div>
-            </label>
+          {errors.endDate && (
+            <span className="error-message">{errors.endDate}</span>
           )}
-          <input
-            type="file"
-            id="image"
-            accept="image/*"
-            onChange={handleImageUpload}
-            disabled={submitting}
-            style={{ display: 'none' }}
-          />
         </div>
-        {imageError && <span className="error-message">{imageError}</span>}
-        {errors.imageUrl && <span className="error-message">{errors.imageUrl}</span>}
       </div>
 
-      <div className="form-group">
-        <label htmlFor="clickUrl">Click-Through URL *</label>
-        <input
-          type="url"
-          id="clickUrl"
-          name="clickUrl"
-          value={formData.clickUrl}
-          onChange={handleChange}
-          placeholder="e.g., https://example.com"
-          className={errors.clickUrl ? 'error' : ''}
-        />
-        {errors.clickUrl && <span className="error-message">{errors.clickUrl}</span>}
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="image">Ad Image (1:1 Square) *</label>
+          <div className="image-upload-container">
+            {imagePreview ? (
+              <div className="image-preview">
+                <img src={imagePreview} alt="Ad preview" />
+                <button
+                  type="button"
+                  className="btn-remove-image"
+                  onClick={removeImage}
+                  disabled={submitting}
+                >
+                  ✕ Remove
+                </button>
+              </div>
+            ) : (
+              <label htmlFor="image" className="image-upload-box">
+                <div className="upload-icon">📸</div>
+                <div className="upload-text">Click to upload 1:1 image</div>
+                <div className="upload-hint">PNG, JPG up to 1MB</div>
+              </label>
+            )}
+            <input
+              type="file"
+              id="image"
+              accept="image/*"
+              onChange={handleImageUpload}
+              disabled={submitting}
+              style={{ display: "none" }}
+            />
+          </div>
+          {imageError && <span className="error-message">{imageError}</span>}
+          {errors.imageUrl && (
+            <span className="error-message">{errors.imageUrl}</span>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="clickUrl">Click-Through URL *</label>
+          <input
+            type="url"
+            id="clickUrl"
+            name="clickUrl"
+            value={formData.clickUrl}
+            onChange={handleChange}
+            placeholder="e.g., https://example.com"
+            className={errors.clickUrl ? "error" : ""}
+          />
+          {errors.clickUrl && (
+            <span className="error-message">{errors.clickUrl}</span>
+          )}
+        </div>
       </div>
 
       <div className="form-actions">
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={submitting}
-        >
-          {submitting ? 'Saving...' : (adUnit ? 'Update Ad Unit' : 'Create Ad Unit')}
+        <button type="submit" className="btn btn-primary" disabled={submitting}>
+          {submitting
+            ? "Saving..."
+            : adUnit
+              ? "Update Ad Unit"
+              : "Create Ad Unit"}
         </button>
         <button
           type="button"
