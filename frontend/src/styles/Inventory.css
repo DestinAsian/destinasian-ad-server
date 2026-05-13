@@ -35,7 +35,7 @@
 
 .inventory-toolbar {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -63,6 +63,62 @@
   color: var(--ink-body);
 }
 
+.inventory-filter-dropdown {
+  position: relative;
+}
+
+.inventory-filter-trigger {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink-body);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inventory-filter-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 100%;
+  min-width: 240px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  padding: 10px;
+}
+
+.inventory-filter-menu-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.inventory-filter-options {
+  max-height: 220px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inventory-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-body);
+}
+
 .inventory-card {
   background: linear-gradient(
     180deg,
@@ -76,10 +132,18 @@
 }
 
 .inventory-card h3 {
-  margin: 0 0 14px;
+  margin: 0;
   font-family: "EB Garamond", serif;
   font-size: 1.7rem;
   color: var(--ink-strong);
+}
+
+.create-ad-channel-toggle {
+  width: 100%;
+}
+
+.create-ad-channel-body {
+  margin-top: 10px;
 }
 
 .inventory-form {
@@ -116,6 +180,19 @@
   gap: 16px;
 }
 
+.inventory-channel-card {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.inventory-channel-card.is-collapsed {
+  gap: 12px;
+}
+
+.inventory-channel-card.is-expanded {
+  gap: 16px;
+}
+
 .inventory-main {
   display: flex;
   align-items: flex-start;
@@ -142,6 +219,51 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.inventory-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.inventory-list-card-toggle,
+.inventory-channel-toggle {
+  width: 100%;
+}
+
+.inventory-list-card-header {
+  display: flex;
+  flex-direction: column;
+}
+
+.inventory-list-card-toggle h3 {
+  margin: 0;
+}
+
+.inventory-list-card .inventory-list-card-toggle {
+  margin-bottom: 14px;
+}
+
+.inventory-channel-toggle-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.inventory-channel-toggle .inventory-inline-metrics {
+  justify-content: flex-end;
+}
+
+.inventory-channel-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .inventory-inline-metrics {
@@ -176,6 +298,51 @@
 
 .inventory-status.inactive {
   color: #a33;
+}
+
+.inventory-card-toggle {
+  border: 1px solid var(--line-soft);
+  background: rgba(247, 249, 248, 0.95);
+  border-radius: 999px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--ink-body);
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.inventory-card-toggle:hover {
+  border-color: rgba(111, 152, 166, 0.5);
+  background: rgba(223, 236, 240, 0.35);
+}
+
+.inventory-card-toggle-label {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.inventory-card-toggle-icon {
+  color: var(--accent-text);
+  font-size: 12px;
+}
+
+.inventory-collapsed-summary {
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inventory-collapsed-summary span {
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(223, 236, 240, 0.38);
+  color: var(--ink-muted);
 }
 
 .inventory-actions {
@@ -433,13 +600,18 @@
     grid-template-columns: 1fr;
   }
 
-  .inventory-item {
+  .inventory-main {
+    width: 100%;
+  }
+
+  .inventory-channel-toggle-label {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .inventory-main {
+  .inventory-channel-toggle .inventory-inline-metrics {
     width: 100%;
+    justify-content: flex-start;
   }
 
   .inventory-actions {
@@ -472,6 +644,11 @@
 
   .inventory-header h1 {
     font-size: 2rem;
+  }
+
+  .create-ad-channel-toggle {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .inventory-inline-metrics {

@@ -58,7 +58,7 @@
 
 .accounts-grid {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 12px;
 }
 
@@ -217,8 +217,8 @@
 }
 
 .account-card-footer .btn-sm {
-  flex: 1;
-  min-width: 120px;
+  flex: 1 1;
+  min-width: 150px;
 }
 
 .account-list-card .no-accounts {
@@ -269,8 +269,8 @@
   padding: 4px 2px;
 }
 
-.selectable-checkbox-item input[type='checkbox'],
-.share-checkbox-item input[type='checkbox'] {
+.selectable-checkbox-item input[type="checkbox"],
+.share-checkbox-item input[type="checkbox"] {
   width: 14px;
   height: 14px;
 }
@@ -290,6 +290,15 @@
 }
 
 @media (max-width: 768px) {
+  .users-actions .btn-secondary,
+  .users-actions .btn.btn-danger.btn-sm {
+    width: 100%;
+  }
+
+  .accounts-grid {
+    flex-direction: column;
+  }
+
   .account-management {
     padding: 16px;
   }

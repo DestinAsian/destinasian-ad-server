@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adUnitAPI, inventoryAPI } from "../services/api";
 import AccountSelector from "../components/AccountSelector";
 import "../styles/Inventory.css";
@@ -10,7 +10,9 @@ const isAdUnitLinkedToChannel = (adUnit, channelId) => {
   const inventoryIds = Array.isArray(adUnit?.inventories)
     ? adUnit.inventories.map((entry) => String(entry?._id || entry))
     : [];
-  const primaryInventoryId = adUnit?.inventory ? String(adUnit.inventory?._id || adUnit.inventory) : null;
+  const primaryInventoryId = adUnit?.inventory
+    ? String(adUnit.inventory?._id || adUnit.inventory)
+    : null;
 
   return inventoryIds.includes(targetId) || primaryInventoryId === targetId;
 };
@@ -24,7 +26,16 @@ function Inventory({ searchQuery = "" }) {
   const [runningAdsOnly, setRunningAdsOnly] = useState(false);
   const [sortMode, setSortMode] = useState("name");
   const [isCmsSetupExpanded, setIsCmsSetupExpanded] = useState(false);
+  const [isCreateCardExpanded, setIsCreateCardExpanded] = useState(false);
+  const [isAdChannelsExpanded, setIsAdChannelsExpanded] = useState(true);
+  const [selectedInventoryFilterIds, setSelectedInventoryFilterIds] = useState(
+    [],
+  );
+  const [isInventoryFilterOpen, setIsInventoryFilterOpen] = useState(false);
   const [expandedSnippets, setExpandedSnippets] = useState({});
+  const [expandedInventoryIds, setExpandedInventoryIds] = useState(
+    () => new Set(),
+  );
   const [inventorySummaryViewById, setInventorySummaryViewById] = useState({});
   const [form, setForm] = useState({
     name: "",
@@ -41,6 +52,7 @@ function Inventory({ searchQuery = "" }) {
     adUnitIds: [],
   });
   const cmsScriptTag = `<script src="https://YOUR-AD-SERVER.DOMAIN/ad-client.js"></script>`;
+  const inventoryFilterRef = useRef(null);
 
   const isRunningAdUnit = useCallback((adUnit) => {
     const adUnitStatus = String(adUnit?.status || "").toLowerCase();
@@ -48,7 +60,11 @@ function Inventory({ searchQuery = "" }) {
 
     const campaignStatus = String(adUnit?.campaign?.status || "").toLowerCase();
     if (!campaignStatus) return true;
-    return campaignStatus === "active" || campaignStatus === "running" || campaignStatus === "live";
+    return (
+      campaignStatus === "active" ||
+      campaignStatus === "running" ||
+      campaignStatus === "live"
+    );
   }, []);
 
   const loadData = useCallback(async () => {
@@ -78,17 +94,37 @@ function Inventory({ searchQuery = "" }) {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (!isInventoryFilterOpen) return undefined;
+
+    const handleOutsideClick = (event) => {
+      if (inventoryFilterRef.current?.contains(event.target)) return;
+      setIsInventoryFilterOpen(false);
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [isInventoryFilterOpen]);
+
   const inventoryDetailsById = useMemo(() => {
     const detailsMap = new Map();
 
     inventories.forEach((inventory) => {
-      const linkedAdUnits = adUnits.filter((adUnit) => isAdUnitLinkedToChannel(adUnit, inventory._id));
+      const linkedAdUnits = adUnits.filter((adUnit) =>
+        isAdUnitLinkedToChannel(adUnit, inventory._id),
+      );
       const runningAdUnits = linkedAdUnits.filter(isRunningAdUnit);
 
       const buildCampaignEntries = (sourceAdUnits) => {
         const campaignMap = new Map();
         sourceAdUnits.forEach((adUnit) => {
-          const campaignId = String(adUnit?.campaign?._id || adUnit?.campaign || `campaign-unavailable-${adUnit._id}`);
+          const campaignId = String(
+            adUnit?.campaign?._id ||
+              adUnit?.campaign ||
+              `campaign-unavailable-${adUnit._id}`,
+          );
           const campaignName = adUnit?.campaign?.name || "Campaign unavailable";
           const campaignStatus = adUnit?.campaign?.status || "unavailable";
           if (!campaignMap.has(campaignId)) {
@@ -102,18 +138,36 @@ function Inventory({ searchQuery = "" }) {
           campaignMap.get(campaignId).adUnits.push(adUnit);
         });
         return [...campaignMap.values()].sort((a, b) =>
-          String(a.campaignName || "").localeCompare(String(b.campaignName || ""), undefined, { sensitivity: "base" })
+          String(a.campaignName || "").localeCompare(
+            String(b.campaignName || ""),
+            undefined,
+            { sensitivity: "base" },
+          ),
         );
       };
 
       const linkedCampaigns = buildCampaignEntries(linkedAdUnits);
       const runningCampaigns = buildCampaignEntries(runningAdUnits);
-      const linkedImpressions = linkedAdUnits.reduce((sum, adUnit) => sum + Number(adUnit?.impressions || 0), 0);
-      const linkedClicks = linkedAdUnits.reduce((sum, adUnit) => sum + Number(adUnit?.clicks || 0), 0);
-      const linkedCtr = linkedImpressions > 0 ? (linkedClicks / linkedImpressions) * 100 : 0;
-      const runningImpressions = runningAdUnits.reduce((sum, adUnit) => sum + Number(adUnit?.impressions || 0), 0);
-      const runningClicks = runningAdUnits.reduce((sum, adUnit) => sum + Number(adUnit?.clicks || 0), 0);
-      const runningCtr = runningImpressions > 0 ? (runningClicks / runningImpressions) * 100 : 0;
+      const linkedImpressions = linkedAdUnits.reduce(
+        (sum, adUnit) => sum + Number(adUnit?.impressions || 0),
+        0,
+      );
+      const linkedClicks = linkedAdUnits.reduce(
+        (sum, adUnit) => sum + Number(adUnit?.clicks || 0),
+        0,
+      );
+      const linkedCtr =
+        linkedImpressions > 0 ? (linkedClicks / linkedImpressions) * 100 : 0;
+      const runningImpressions = runningAdUnits.reduce(
+        (sum, adUnit) => sum + Number(adUnit?.impressions || 0),
+        0,
+      );
+      const runningClicks = runningAdUnits.reduce(
+        (sum, adUnit) => sum + Number(adUnit?.clicks || 0),
+        0,
+      );
+      const runningCtr =
+        runningImpressions > 0 ? (runningClicks / runningImpressions) * 100 : 0;
 
       detailsMap.set(String(inventory._id), {
         linkedCount: linkedAdUnits.length,
@@ -136,24 +190,69 @@ function Inventory({ searchQuery = "" }) {
     return detailsMap;
   }, [inventories, adUnits, isRunningAdUnit]);
 
-  const sortedAdUnits = useMemo(() => [...adUnits].sort((a, b) =>
-    String(a?.name || "").localeCompare(String(b?.name || ""), undefined, { sensitivity: "base" })
-  ), [adUnits]);
+  const sortedAdUnits = useMemo(
+    () =>
+      [...adUnits].sort((a, b) =>
+        String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
+          sensitivity: "base",
+        }),
+      ),
+    [adUnits],
+  );
+
+  const inventoryFilterOptions = useMemo(
+    () =>
+      [...inventories]
+        .map((inventory) => ({
+          id: String(inventory?._id || ""),
+          name: String(inventory?.name || "Untitled Ad Channel"),
+        }))
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+        ),
+    [inventories],
+  );
+
+  useEffect(() => {
+    const optionIds = new Set(inventoryFilterOptions.map((entry) => entry.id));
+    setSelectedInventoryFilterIds((prev) => {
+      const next = prev.filter((id) => optionIds.has(String(id)));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [inventoryFilterOptions]);
+
+  const selectedInventoryFilterSet = useMemo(
+    () => new Set(selectedInventoryFilterIds.map((id) => String(id))),
+    [selectedInventoryFilterIds],
+  );
+
+  const hasInventorySelectionFilter = selectedInventoryFilterIds.length > 0;
 
   const sortedInventories = useMemo(() => {
-    const normalizedSearch = String(searchQuery || "").trim().toLowerCase();
+    const normalizedSearch = String(searchQuery || "")
+      .trim()
+      .toLowerCase();
+    const hasSelectionFilter = selectedInventoryFilterIds.length > 0;
     return [...inventories]
       .map((inventory, index) => ({ inventory, index }))
       .filter(({ inventory }) => {
         if (!normalizedSearch) return true;
-        const nameMatch = (inventory?.name || "").toLowerCase().includes(normalizedSearch);
-        const keyMatch = (inventory?.key || "").toLowerCase().includes(normalizedSearch);
+        const nameMatch = (inventory?.name || "")
+          .toLowerCase()
+          .includes(normalizedSearch);
+        const keyMatch = (inventory?.key || "")
+          .toLowerCase()
+          .includes(normalizedSearch);
         if (nameMatch || keyMatch) return true;
 
         const details = inventoryDetailsById.get(String(inventory?._id));
         if (!details) return false;
-        const summaryView = inventorySummaryViewById[inventory?._id] || "linked";
-        const campaignEntries = summaryView === "running" ? details.runningCampaigns : details.linkedCampaigns;
+        const summaryView =
+          inventorySummaryViewById[inventory?._id] || "linked";
+        const campaignEntries =
+          summaryView === "running"
+            ? details.runningCampaigns
+            : details.linkedCampaigns;
 
         return campaignEntries.some((campaignEntry) => {
           const campaignMatch = String(campaignEntry?.campaignName || "")
@@ -161,15 +260,24 @@ function Inventory({ searchQuery = "" }) {
             .includes(normalizedSearch);
           if (campaignMatch) return true;
           return (campaignEntry?.adUnits || []).some((adUnit) =>
-            String(adUnit?.name || "").toLowerCase().includes(normalizedSearch),
+            String(adUnit?.name || "")
+              .toLowerCase()
+              .includes(normalizedSearch),
           );
         });
+      })
+      .filter(({ inventory }) => {
+        if (!hasSelectionFilter) return true;
+        const inventoryId = String(inventory?._id || "");
+        return selectedInventoryFilterSet.has(inventoryId);
       })
       .sort((a, b) => {
         if (sortMode === "mostActiveAdUnits") {
           const aDetails = inventoryDetailsById.get(String(a.inventory?._id));
           const bDetails = inventoryDetailsById.get(String(b.inventory?._id));
-          const runningDelta = Number(bDetails?.runningCount || 0) - Number(aDetails?.runningCount || 0);
+          const runningDelta =
+            Number(bDetails?.runningCount || 0) -
+            Number(aDetails?.runningCount || 0);
           if (runningDelta !== 0) return runningDelta;
         }
         const nameA = (a.inventory?.name || "").toLowerCase();
@@ -179,7 +287,34 @@ function Inventory({ searchQuery = "" }) {
         return a.index - b.index;
       })
       .map(({ inventory }) => inventory);
-  }, [inventories, searchQuery, sortMode, inventoryDetailsById, inventorySummaryViewById]);
+  }, [
+    inventories,
+    searchQuery,
+    sortMode,
+    selectedInventoryFilterIds,
+    selectedInventoryFilterSet,
+    inventoryDetailsById,
+    inventorySummaryViewById,
+  ]);
+
+  const selectedInventoryFilterSummary = useMemo(() => {
+    const selectedOptions = inventoryFilterOptions.filter((entry) =>
+      selectedInventoryFilterSet.has(entry.id),
+    );
+    if (
+      selectedOptions.length === 0 ||
+      selectedOptions.length === inventoryFilterOptions.length
+    ) {
+      return "All Ad Channels";
+    }
+    if (selectedOptions.length === 1) {
+      return selectedOptions[0].name;
+    }
+    if (selectedOptions.length === 2) {
+      return `${selectedOptions[0].name}, ${selectedOptions[1].name}`;
+    }
+    return `${selectedOptions[0].name} +${selectedOptions.length - 1}`;
+  }, [inventoryFilterOptions, selectedInventoryFilterSet]);
 
   const showCopiedFeedback = () => {
     setSuccessMessage("Copied to the clipboard");
@@ -193,13 +328,50 @@ function Inventory({ searchQuery = "" }) {
     }));
   };
 
-  const getSummaryView = (inventoryId) => inventorySummaryViewById[inventoryId] || "linked";
+  const toggleInventoryExpanded = (inventoryId) => {
+    const normalizedId = String(inventoryId || "");
+    setExpandedInventoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(normalizedId)) {
+        next.delete(normalizedId);
+      } else {
+        next.add(normalizedId);
+      }
+      return next;
+    });
+  };
+
+  const getSummaryView = (inventoryId) =>
+    inventorySummaryViewById[inventoryId] || "linked";
 
   const setSummaryView = (inventoryId, view) => {
     setInventorySummaryViewById((prev) => ({
       ...prev,
       [inventoryId]: view,
     }));
+  };
+
+  const toggleInventoryFilterSelection = (inventoryId) => {
+    const normalizedId = String(inventoryId || "");
+    setSelectedInventoryFilterIds((prev) => {
+      const next = new Set(prev.map((id) => String(id)));
+      if (next.has(normalizedId)) {
+        next.delete(normalizedId);
+      } else {
+        next.add(normalizedId);
+      }
+      return [...next];
+    });
+  };
+
+  const selectAllInventoryFilters = () => {
+    setSelectedInventoryFilterIds(
+      inventoryFilterOptions.map((option) => option.id),
+    );
+  };
+
+  const clearInventoryFilters = () => {
+    setSelectedInventoryFilterIds([]);
   };
 
   const copyToClipboard = async (text) => {
@@ -378,8 +550,14 @@ function Inventory({ searchQuery = "" }) {
     }
   };
 
-  const createAdUnitSelection = useMemo(() => new Set(form.adUnitIds.map((id) => String(id))), [form.adUnitIds]);
-  const editAdUnitSelection = useMemo(() => new Set(editForm.adUnitIds.map((id) => String(id))), [editForm.adUnitIds]);
+  const createAdUnitSelection = useMemo(
+    () => new Set(form.adUnitIds.map((id) => String(id))),
+    [form.adUnitIds],
+  );
+  const editAdUnitSelection = useMemo(
+    () => new Set(editForm.adUnitIds.map((id) => String(id))),
+    [editForm.adUnitIds],
+  );
 
   if (loading) return <div className="loading">Loading ad channels...</div>;
 
@@ -419,8 +597,8 @@ function Inventory({ searchQuery = "" }) {
         {isCmsSetupExpanded && (
           <div className="ad-unit-cms-body">
             <div className="ad-unit-cms-description">
-              Add this script inside the {`<Head>`} element of your website or CMS
-              template.
+              Add this script inside the {`<Head>`} element of your website or
+              CMS template.
             </div>
             <code className="ad-unit-cms-code">{cmsScriptTag}</code>
             <div className="ad-unit-cms-actions">
@@ -437,193 +615,343 @@ function Inventory({ searchQuery = "" }) {
           </div>
         )}
       </div>
-      <div className="inventory-card">
-        <h3>Create Ad Channel</h3>
-        <form onSubmit={handleCreate} className="inventory-form">
-          <input
-            type="text"
-            placeholder="Name (e.g., Homepage Banner)"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Key (optional, e.g., homepage-banner)"
-            value={form.key}
-            onChange={(e) => setForm({ ...form, key: e.target.value })}
-          />
-          <input
-            type="text"
-            placeholder="Description (optional)"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-          />
-          <div className="inventory-form-adunits">
-            <div className="inventory-form-adunits-label">Ad Units</div>
-            {sortedAdUnits.length === 0 ? (
-              <p className="no-data">No ad units available.</p>
-            ) : (
-              <div className="selectable-checkbox-list inventory-adunit-list">
-                {sortedAdUnits.map((adUnit) => {
-                  const adUnitId = String(adUnit._id);
-                  const checked = createAdUnitSelection.has(adUnitId);
-                  const campaignName = adUnit?.campaign?.name || "Campaign unavailable";
-                  return (
-                    <label key={adUnitId} className={`selectable-checkbox-item ${checked ? "selected" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          setForm((prev) => {
-                            const set = new Set(prev.adUnitIds.map((id) => String(id)));
-                            if (set.has(adUnitId)) set.delete(adUnitId);
-                            else set.add(adUnitId);
-                            return { ...prev, adUnitIds: [...set] };
-                          });
-                        }}
-                      />
-                      <span className="inventory-adunit-choice-text">
-                        <span className="inventory-adunit-choice-name">{adUnit.name}</span>
-                        <span className="inventory-adunit-choice-meta">Campaign: {campaignName}</span>
-                        <span className="inventory-adunit-choice-meta">Status: {adUnit.status || "unknown"}</span>
-                      </span>
-                    </label>
-                  );
-                })}
+      <div
+        className={`inventory-card create-ad-channel-card ${isCreateCardExpanded ? "is-expanded" : "is-collapsed"}`}
+      >
+        <button
+          type="button"
+          className="ad-unit-cms-toggle create-ad-channel-toggle"
+          aria-expanded={isCreateCardExpanded}
+          onClick={() => setIsCreateCardExpanded((prev) => !prev)}
+        >
+          <h3>Create Ad Channel</h3>
+          <span className="ad-unit-cms-toggle-icon" aria-hidden="true">
+            {isCreateCardExpanded ? "▾" : "▸"}
+          </span>
+        </button>
+        {isCreateCardExpanded && (
+          <div className="create-ad-channel-body">
+            <form onSubmit={handleCreate} className="inventory-form">
+              <input
+                type="text"
+                placeholder="Name (e.g., Homepage Banner)"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Key (optional, e.g., homepage-banner)"
+                value={form.key}
+                onChange={(e) => setForm({ ...form, key: e.target.value })}
+              />
+              <input
+                type="text"
+                placeholder="Description (optional)"
+                value={form.description}
+                onChange={(e) =>
+                  setForm({ ...form, description: e.target.value })
+                }
+              />
+              <div className="inventory-form-adunits">
+                <div className="inventory-form-adunits-label">Ad Units</div>
+                {sortedAdUnits.length === 0 ? (
+                  <p className="no-data">No ad units available.</p>
+                ) : (
+                  <div className="selectable-checkbox-list inventory-adunit-list">
+                    {sortedAdUnits.map((adUnit) => {
+                      const adUnitId = String(adUnit._id);
+                      const checked = createAdUnitSelection.has(adUnitId);
+                      const campaignName =
+                        adUnit?.campaign?.name || "Campaign unavailable";
+                      return (
+                        <label
+                          key={adUnitId}
+                          className={`selectable-checkbox-item ${checked ? "selected" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setForm((prev) => {
+                                const set = new Set(
+                                  prev.adUnitIds.map((id) => String(id)),
+                                );
+                                if (set.has(adUnitId)) set.delete(adUnitId);
+                                else set.add(adUnitId);
+                                return { ...prev, adUnitIds: [...set] };
+                              });
+                            }}
+                          />
+                          <span className="inventory-adunit-choice-text">
+                            <span className="inventory-adunit-choice-name">
+                              {adUnit.name}
+                            </span>
+                            <span className="inventory-adunit-choice-meta">
+                              Campaign: {campaignName}
+                            </span>
+                            <span className="inventory-adunit-choice-meta">
+                              Status: {adUnit.status || "unknown"}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
+              <button type="submit" className="btn btn-primary">
+                Create
+              </button>
+            </form>
           </div>
-          <button type="submit" className="btn btn-primary">
-            Create
-          </button>
-        </form>
+        )}
       </div>
 
-      <section className="inventory-card">
-        <h3>Ad Channels</h3>
-        <div className="inventory-toolbar">
-          <div className="inventory-toolbar-group">
-            <label htmlFor="running-ads-only">Running Ads</label>
-            <select
-              id="running-ads-only"
-              value={runningAdsOnly ? "yes" : "no"}
-              onChange={(e) => setRunningAdsOnly(e.target.value === "yes")}
-            >
-              <option value="no">All Ad Channels</option>
-              <option value="yes">Show only running ads</option>
-            </select>
-          </div>
-          <div className="inventory-toolbar-group">
-            <label htmlFor="inventory-sort-mode">Sort By</label>
-            <select
-              id="inventory-sort-mode"
-              value={sortMode}
-              onChange={(e) => setSortMode(e.target.value)}
-            >
-              <option value="name">Ad Channel Name</option>
-              <option value="mostActiveAdUnits">Most Active Ad Units</option>
-            </select>
-          </div>
-        </div>
-        <div className="inventory-list">
-          {sortedInventories.length === 0 && (
-            <p className="no-data">
-              {String(searchQuery || "").trim()
-                ? "No Ad Channels found for this search."
-                : runningAdsOnly
-                ? "No Ad Channels with running ads found."
-                : "No ad channels yet."}
-            </p>
-          )}
-          {sortedInventories.map((inventory) => (
-            <div key={inventory._id} className="inventory-item">
-              {editingId === inventory._id ? (
-                <form onSubmit={handleUpdate} className="inventory-edit-form">
-                  <input
-                    type="text"
-                    value={editForm.name}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, name: e.target.value })
-                    }
-                    required
-                  />
-                  <input
-                    type="text"
-                    value={editForm.key}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, key: e.target.value })
-                    }
-                  />
-                  <input
-                    type="text"
-                    value={editForm.description}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, description: e.target.value })
-                    }
-                  />
-                  <label className="inventory-toggle">
-                    <input
-                      type="checkbox"
-                      checked={editForm.isActive}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, isActive: e.target.checked })
-                      }
-                    />
-                    Active
-                  </label>
-                  <div className="inventory-form-adunits inventory-form-adunits-inline">
-                    <div className="inventory-form-adunits-label">Ad Units</div>
-                    {sortedAdUnits.length === 0 ? (
-                      <p className="no-data">No ad units available.</p>
+      <section
+        className={`inventory-card inventory-list-card ${isAdChannelsExpanded ? "is-expanded" : "is-collapsed"}`}
+      >
+        <div className="inventory-list-card-header">
+          <button
+            type="button"
+            className="ad-unit-cms-toggle inventory-list-card-toggle"
+            aria-expanded={isAdChannelsExpanded}
+            onClick={() => setIsAdChannelsExpanded((prev) => !prev)}
+          >
+            <h3>Ad Channels</h3>
+            <span className="ad-unit-cms-toggle-icon" aria-hidden="true">
+              {isAdChannelsExpanded ? "▾" : "▸"}
+            </span>
+          </button>
+          <div className="inventory-toolbar">
+            <div className="inventory-toolbar-group">
+              <label htmlFor="running-ads-only">Running Ads</label>
+              <select
+                id="running-ads-only"
+                value={runningAdsOnly ? "yes" : "no"}
+                onChange={(e) => setRunningAdsOnly(e.target.value === "yes")}
+              >
+                <option value="no">All Ad Channels</option>
+                <option value="yes">Show only running ads</option>
+              </select>
+            </div>
+            <div className="inventory-toolbar-group">
+              <label htmlFor="inventory-sort-mode">Sort By</label>
+              <select
+                id="inventory-sort-mode"
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value)}
+              >
+                <option value="name">Ad Channel Name</option>
+                <option value="mostActiveAdUnits">Most Active Ad Units</option>
+              </select>
+            </div>
+            <div className="inventory-toolbar-group">
+              <label htmlFor="inventory-visibility-filter">Filter Ad Channels</label>
+              <div
+                ref={inventoryFilterRef}
+                className="inventory-filter-dropdown"
+                id="inventory-visibility-filter"
+              >
+                <button
+                  type="button"
+                  className="inventory-filter-trigger"
+                  aria-expanded={isInventoryFilterOpen}
+                  aria-haspopup="true"
+                  onClick={() => setIsInventoryFilterOpen((prev) => !prev)}
+                >
+                  <span>{selectedInventoryFilterSummary}</span>
+                  <span aria-hidden="true">
+                    {isInventoryFilterOpen ? "▾" : "▸"}
+                  </span>
+                </button>
+                {isInventoryFilterOpen && (
+                  <div className="inventory-filter-menu">
+                    <div className="inventory-filter-menu-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={selectAllInventoryFilters}
+                      >
+                        Select All
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={clearInventoryFilters}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    {inventoryFilterOptions.length === 0 ? (
+                      <p className="no-data">No Ad Channels available.</p>
                     ) : (
-                      <div className="selectable-checkbox-list inventory-adunit-list">
-                        {sortedAdUnits.map((adUnit) => {
-                          const adUnitId = String(adUnit._id);
-                          const checked = editAdUnitSelection.has(adUnitId);
-                          const campaignName = adUnit?.campaign?.name || "Campaign unavailable";
+                      <div className="inventory-filter-options">
+                        {inventoryFilterOptions.map((option) => {
+                          const checked = selectedInventoryFilterSet.has(
+                            option.id,
+                          );
                           return (
-                            <label key={adUnitId} className={`selectable-checkbox-item ${checked ? "selected" : ""}`}>
+                            <label
+                              key={option.id}
+                              className="inventory-filter-option"
+                            >
                               <input
                                 type="checkbox"
                                 checked={checked}
-                                onChange={() => {
-                                  setEditForm((prev) => {
-                                    const set = new Set(prev.adUnitIds.map((id) => String(id)));
-                                    if (set.has(adUnitId)) set.delete(adUnitId);
-                                    else set.add(adUnitId);
-                                    return { ...prev, adUnitIds: [...set] };
-                                  });
-                                }}
+                                onChange={() =>
+                                  toggleInventoryFilterSelection(option.id)
+                                }
                               />
-                              <span className="inventory-adunit-choice-text">
-                                <span className="inventory-adunit-choice-name">{adUnit.name}</span>
-                                <span className="inventory-adunit-choice-meta">Campaign: {campaignName}</span>
-                                <span className="inventory-adunit-choice-meta">Status: {adUnit.status || "unknown"}</span>
-                              </span>
+                              <span>{option.name}</span>
                             </label>
                           );
                         })}
                       </div>
                     )}
                   </div>
-                  <button type="submit" className="btn btn-primary btn-sm">
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={cancelEdit}
-                  >
-                    Cancel
-                  </button>
-                </form>
-              ) : (
-                <>
-                  <div className="inventory-main">
-                    <div className="inventory-info">
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {isAdChannelsExpanded && (
+          <>
+            <div className="inventory-list">
+              {sortedInventories.length === 0 && (
+                <p className="no-data">
+                  {hasInventorySelectionFilter
+                    ? "No Ad Channels match the selected filters."
+                    : String(searchQuery || "").trim()
+                    ? "No Ad Channels found for this search."
+                    : runningAdsOnly
+                      ? "No Ad Channels with running ads found."
+                      : "No ad channels yet."}
+                </p>
+              )}
+              {sortedInventories.map((inventory) => (
+                <div
+                  key={inventory._id}
+                  className={`inventory-item inventory-channel-card ${
+                    expandedInventoryIds.has(String(inventory._id))
+                      ? "is-expanded"
+                      : "is-collapsed"
+                  }`}
+                >
+                  {editingId === inventory._id ? (
+                    <form
+                      onSubmit={handleUpdate}
+                      className="inventory-edit-form"
+                    >
+                      <input
+                        type="text"
+                        value={editForm.name}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, name: e.target.value })
+                        }
+                        required
+                      />
+                      <input
+                        type="text"
+                        value={editForm.key}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, key: e.target.value })
+                        }
+                      />
+                      <input
+                        type="text"
+                        value={editForm.description}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            description: e.target.value,
+                          })
+                        }
+                      />
+                      <label className="inventory-toggle">
+                        <input
+                          type="checkbox"
+                          checked={editForm.isActive}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              isActive: e.target.checked,
+                            })
+                          }
+                        />
+                        Active
+                      </label>
+                      <div className="inventory-form-adunits inventory-form-adunits-inline">
+                        <div className="inventory-form-adunits-label">
+                          Ad Units
+                        </div>
+                        {sortedAdUnits.length === 0 ? (
+                          <p className="no-data">No ad units available.</p>
+                        ) : (
+                          <div className="selectable-checkbox-list inventory-adunit-list">
+                            {sortedAdUnits.map((adUnit) => {
+                              const adUnitId = String(adUnit._id);
+                              const checked = editAdUnitSelection.has(adUnitId);
+                              const campaignName =
+                                adUnit?.campaign?.name ||
+                                "Campaign unavailable";
+                              return (
+                                <label
+                                  key={adUnitId}
+                                  className={`selectable-checkbox-item ${checked ? "selected" : ""}`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {
+                                      setEditForm((prev) => {
+                                        const set = new Set(
+                                          prev.adUnitIds.map((id) =>
+                                            String(id),
+                                          ),
+                                        );
+                                        if (set.has(adUnitId))
+                                          set.delete(adUnitId);
+                                        else set.add(adUnitId);
+                                        return { ...prev, adUnitIds: [...set] };
+                                      });
+                                    }}
+                                  />
+                                  <span className="inventory-adunit-choice-text">
+                                    <span className="inventory-adunit-choice-name">
+                                      {adUnit.name}
+                                    </span>
+                                    <span className="inventory-adunit-choice-meta">
+                                      Campaign: {campaignName}
+                                    </span>
+                                    <span className="inventory-adunit-choice-meta">
+                                      Status: {adUnit.status || "unknown"}
+                                    </span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <button type="submit" className="btn btn-primary btn-sm">
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={cancelEdit}
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  ) : (
+                    <>
                       {(() => {
-                        const details = inventoryDetailsById.get(String(inventory._id)) || {
+                        const details = inventoryDetailsById.get(
+                          String(inventory._id),
+                        ) || {
                           linkedCount: 0,
                           runningCount: 0,
                           linkedMetrics: { impressions: 0, clicks: 0, ctr: 0 },
@@ -632,143 +960,277 @@ function Inventory({ searchQuery = "" }) {
                           runningCampaigns: [],
                         };
                         const summaryView = getSummaryView(inventory._id);
-                        const currentMetrics = summaryView === "running" ? details.runningMetrics : details.linkedMetrics;
-                        const currentCampaigns = summaryView === "running" ? details.runningCampaigns : details.linkedCampaigns;
-                        const isSnippetExpanded = Boolean(expandedSnippets[inventory._id]);
+                        const currentMetrics =
+                          summaryView === "running"
+                            ? details.runningMetrics
+                            : details.linkedMetrics;
+                        const currentCampaigns =
+                          summaryView === "running"
+                            ? details.runningCampaigns
+                            : details.linkedCampaigns;
+                        const isSnippetExpanded = Boolean(
+                          expandedSnippets[inventory._id],
+                        );
+                        const isExpanded = expandedInventoryIds.has(
+                          String(inventory._id),
+                        );
+
                         return (
                           <>
-                            <div className="inventory-title-row">
-                              <div className="inventory-name">{inventory.name}</div>
-                              <div className="inventory-inline-metrics">
-                                <span>Impressions: {new Intl.NumberFormat("en-US").format(currentMetrics.impressions)}</span>
-                                <span>Clicks: {new Intl.NumberFormat("en-US").format(currentMetrics.clicks)}</span>
-                                <span>CTR: {Number(currentMetrics.ctr || 0).toFixed(2)}%</span>
-                              </div>
-                            </div>
-                            <div className="inventory-key">Key: {inventory.key}</div>
-                            {inventory.description && (
-                              <div className="inventory-desc">
-                                {inventory.description}
+                            <button
+                              type="button"
+                              className="ad-unit-cms-toggle inventory-channel-toggle"
+                              aria-expanded={isExpanded}
+                              onClick={() =>
+                                toggleInventoryExpanded(inventory._id)
+                              }
+                            >
+                              <span className="ad-unit-cms-label inventory-channel-toggle-label">
+                                <span className="inventory-name">
+                                  {inventory.name}
+                                </span>
+                                <span className="inventory-inline-metrics">
+                                  <span>
+                                    Impressions:{" "}
+                                    {new Intl.NumberFormat("en-US").format(
+                                      currentMetrics.impressions,
+                                    )}
+                                  </span>
+                                  <span>
+                                    Clicks:{" "}
+                                    {new Intl.NumberFormat("en-US").format(
+                                      currentMetrics.clicks,
+                                    )}
+                                  </span>
+                                  <span>
+                                    CTR:{" "}
+                                    {Number(currentMetrics.ctr || 0).toFixed(2)}
+                                    %
+                                  </span>
+                                </span>
+                              </span>
+                              <span
+                                className="ad-unit-cms-toggle-icon"
+                                aria-hidden="true"
+                              >
+                                {isExpanded ? "▾" : "▸"}
+                              </span>
+                            </button>
+                            {!isExpanded && (
+                              <div className="inventory-collapsed-summary">
+                                <span>
+                                  Linked Ad Units: {details.linkedCount}
+                                </span>
+                                <span>
+                                  Running Ad Units: {details.runningCount}
+                                </span>
                               </div>
                             )}
-                            <div
-                              className={`inventory-status ${inventory.isActive ? "active" : "inactive"}`}
-                            >
-                              {inventory.isActive ? "Active" : "Inactive"}
-                            </div>
-                            <div className="inventory-performance">
-                              <div className="inventory-performance-summary" role="tablist" aria-label="Ad unit scope">
-                                <button
-                                  type="button"
-                                  role="tab"
-                                  aria-selected={summaryView === "linked"}
-                                  className={`inventory-summary-toggle ${summaryView === "linked" ? "is-active" : ""}`}
-                                  onClick={() => setSummaryView(inventory._id, "linked")}
-                                >
-                                  Linked Ad Units: {details.linkedCount}
-                                </button>
-                                <button
-                                  type="button"
-                                  role="tab"
-                                  aria-selected={summaryView === "running"}
-                                  className={`inventory-summary-toggle ${summaryView === "running" ? "is-active" : ""}`}
-                                  onClick={() => setSummaryView(inventory._id, "running")}
-                                >
-                                  Running Ad Units: {details.runningCount}
-                                </button>
-                              </div>
-                              {currentCampaigns.length === 0 ? (
-                                <div className="inventory-performance-empty">
-                                  {summaryView === "running"
-                                    ? "No running ad units in this ad channel."
-                                    : "No linked ad units in this ad channel."}
+                            {isExpanded && (
+                              <div className="inventory-channel-body">
+                                <div className="inventory-actions">
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => handleDuplicate(inventory)}
+                                  >
+                                    Duplicate
+                                  </button>
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => startEdit(inventory)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    className="btn btn-danger btn-sm"
+                                    onClick={() => handleDelete(inventory)}
+                                  >
+                                    Delete
+                                  </button>
                                 </div>
-                              ) : (
-                                <div className="inventory-campaign-list">
-                                  {currentCampaigns.map((campaignEntry) => (
-                                    <div key={campaignEntry.campaignId} className="inventory-campaign-item">
-                                      <div className="inventory-campaign-title">
-                                        Campaign: {campaignEntry.campaignName}
-                                      </div>
-                                      <div className="inventory-campaign-status">
-                                        Status: {campaignEntry.campaignStatus}
-                                      </div>
-                                      {campaignEntry.adUnits.map((adUnit) => (
-                                        <div key={adUnit._id} className="inventory-adunit-line">
-                                          <span>Ad Unit: {adUnit.name}</span>
-                                          <span>Status: {adUnit.status}</span>
-                                          <span>Impressions: {new Intl.NumberFormat("en-US").format(Number(adUnit.impressions || 0))}</span>
-                                          <span>Clicks: {new Intl.NumberFormat("en-US").format(Number(adUnit.clicks || 0))}</span>
-                                          <span>CTR: {Number(adUnit.ctr || 0).toFixed(2)}%</span>
-                                        </div>
-                                      ))}
+                                <div className="inventory-main">
+                                  <div className="inventory-info">
+                                    <div className="inventory-key">
+                                      Key: {inventory.key}
                                     </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className={`inventory-snippet ${isSnippetExpanded ? "is-expanded" : ""}`}>
-                              <button
-                                type="button"
-                                className="inventory-snippet-toggle"
-                                aria-expanded={isSnippetExpanded}
-                                onClick={() => toggleSnippetExpanded(inventory._id)}
-                              >
-                                <span className="inventory-snippet-label">CMS Tag</span>
-                                <span className="inventory-snippet-toggle-icon" aria-hidden="true">
-                                  {isSnippetExpanded ? "▾" : "▸"}
-                                </span>
-                              </button>
-                              {isSnippetExpanded && (
-                                <div className="inventory-snippet-body">
-                                  <code>{`<div data-inventory="${inventory.key}" data-width="100%"></div>`}</code>
-                                  <div className="inventory-snippet-actions">
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary btn-sm"
-                                      onClick={async () => {
-                                        await copyToClipboard(
-                                          `<div data-inventory="${inventory.key}" data-width="100%"></div>`,
-                                        );
-                                      }}
+                                    {inventory.description && (
+                                      <div className="inventory-desc">
+                                        {inventory.description}
+                                      </div>
+                                    )}
+                                    <div
+                                      className={`inventory-status ${inventory.isActive ? "active" : "inactive"}`}
                                     >
-                                      Copy Tag
-                                    </button>
+                                      {inventory.isActive
+                                        ? "Active"
+                                        : "Inactive"}
+                                    </div>
+                                    <div className="inventory-performance">
+                                      <div
+                                        className="inventory-performance-summary"
+                                        role="tablist"
+                                        aria-label="Ad unit scope"
+                                      >
+                                        <button
+                                          type="button"
+                                          role="tab"
+                                          aria-selected={
+                                            summaryView === "linked"
+                                          }
+                                          className={`inventory-summary-toggle ${summaryView === "linked" ? "is-active" : ""}`}
+                                          onClick={() =>
+                                            setSummaryView(
+                                              inventory._id,
+                                              "linked",
+                                            )
+                                          }
+                                        >
+                                          Linked Ad Units: {details.linkedCount}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          role="tab"
+                                          aria-selected={
+                                            summaryView === "running"
+                                          }
+                                          className={`inventory-summary-toggle ${summaryView === "running" ? "is-active" : ""}`}
+                                          onClick={() =>
+                                            setSummaryView(
+                                              inventory._id,
+                                              "running",
+                                            )
+                                          }
+                                        >
+                                          Running Ad Units:{" "}
+                                          {details.runningCount}
+                                        </button>
+                                      </div>
+                                      {currentCampaigns.length === 0 ? (
+                                        <div className="inventory-performance-empty">
+                                          {summaryView === "running"
+                                            ? "No running ad units in this ad channel."
+                                            : "No linked ad units in this ad channel."}
+                                        </div>
+                                      ) : (
+                                        <div className="inventory-campaign-list">
+                                          {currentCampaigns.map(
+                                            (campaignEntry) => (
+                                              <div
+                                                key={campaignEntry.campaignId}
+                                                className="inventory-campaign-item"
+                                              >
+                                                <div className="inventory-campaign-title">
+                                                  Campaign:{" "}
+                                                  {campaignEntry.campaignName}
+                                                </div>
+                                                <div className="inventory-campaign-status">
+                                                  Status:{" "}
+                                                  {campaignEntry.campaignStatus}
+                                                </div>
+                                                {campaignEntry.adUnits.map(
+                                                  (adUnit) => (
+                                                    <div
+                                                      key={adUnit._id}
+                                                      className="inventory-adunit-line"
+                                                    >
+                                                      <span>
+                                                        Ad Unit: {adUnit.name}
+                                                      </span>
+                                                      <span>
+                                                        Status: {adUnit.status}
+                                                      </span>
+                                                      <span>
+                                                        Impressions:{" "}
+                                                        {new Intl.NumberFormat(
+                                                          "en-US",
+                                                        ).format(
+                                                          Number(
+                                                            adUnit.impressions ||
+                                                              0,
+                                                          ),
+                                                        )}
+                                                      </span>
+                                                      <span>
+                                                        Clicks:{" "}
+                                                        {new Intl.NumberFormat(
+                                                          "en-US",
+                                                        ).format(
+                                                          Number(
+                                                            adUnit.clicks || 0,
+                                                          ),
+                                                        )}
+                                                      </span>
+                                                      <span>
+                                                        CTR:{" "}
+                                                        {Number(
+                                                          adUnit.ctr || 0,
+                                                        ).toFixed(2)}
+                                                        %
+                                                      </span>
+                                                    </div>
+                                                  ),
+                                                )}
+                                              </div>
+                                            ),
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div
+                                      className={`inventory-snippet ${isSnippetExpanded ? "is-expanded" : ""}`}
+                                    >
+                                      <button
+                                        type="button"
+                                        className="inventory-snippet-toggle"
+                                        aria-expanded={isSnippetExpanded}
+                                        onClick={() =>
+                                          toggleSnippetExpanded(inventory._id)
+                                        }
+                                      >
+                                        <span className="inventory-snippet-label">
+                                          CMS Tag
+                                        </span>
+                                        <span
+                                          className="inventory-snippet-toggle-icon"
+                                          aria-hidden="true"
+                                        >
+                                          {isSnippetExpanded ? "▾" : "▸"}
+                                        </span>
+                                      </button>
+                                      {isSnippetExpanded && (
+                                        <div className="inventory-snippet-body">
+                                          <code>{`<div data-inventory="${inventory.key}" data-width="100%"></div>`}</code>
+                                          <div className="inventory-snippet-actions">
+                                            <button
+                                              type="button"
+                                              className="btn btn-secondary btn-sm"
+                                              onClick={async () => {
+                                                await copyToClipboard(
+                                                  `<div data-inventory="${inventory.key}" data-width="100%"></div>`,
+                                                );
+                                              }}
+                                            >
+                                              Copy Tag
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </>
                         );
                       })()}
-                    </div>
-                  </div>
-                  <div className="inventory-actions">
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleDuplicate(inventory)}
-                    >
-                      Duplicate
-                    </button>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => startEdit(inventory)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => handleDelete(inventory)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </>
-              )}
+                    </>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </section>
     </div>
   );

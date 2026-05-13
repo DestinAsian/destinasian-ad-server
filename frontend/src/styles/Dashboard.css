@@ -1993,7 +1993,8 @@
 }
 
 .ad-unit-cms-label {
-  margin-bottom: 8px;
+  margin-bottom: 0;
+  padding: 8px 0;
   font-size: 0.72rem;
   font-weight: 500;
   letter-spacing: 0.12em;

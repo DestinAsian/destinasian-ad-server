@@ -116,6 +116,11 @@
   gap: 8px;
 }
 
+.users-actions .btn,
+.users-actions .btn.btn-danger.btn-sm {
+  width: calc(50% - 8px);
+}
+
 .role-pill,
 .status-pill {
   display: inline-flex;
