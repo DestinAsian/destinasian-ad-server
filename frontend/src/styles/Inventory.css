@@ -213,22 +213,6 @@
   color: var(--ink-strong);
 }
 
-.inventory-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.inventory-title-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-left: auto;
-}
-
 .inventory-list-card-toggle,
 .inventory-channel-toggle {
   width: 100%;
@@ -298,36 +282,6 @@
 
 .inventory-status.inactive {
   color: #a33;
-}
-
-.inventory-card-toggle {
-  border: 1px solid var(--line-soft);
-  background: rgba(247, 249, 248, 0.95);
-  border-radius: 999px;
-  padding: 6px 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  color: var(--ink-body);
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
-.inventory-card-toggle:hover {
-  border-color: rgba(111, 152, 166, 0.5);
-  background: rgba(223, 236, 240, 0.35);
-}
-
-.inventory-card-toggle-label {
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-}
-
-.inventory-card-toggle-icon {
-  color: var(--accent-text);
-  font-size: 12px;
 }
 
 .inventory-collapsed-summary {

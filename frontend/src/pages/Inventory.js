@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { adUnitAPI, inventoryAPI } from "../services/api";
 import AccountSelector from "../components/AccountSelector";
+import { useAuth } from "../contexts/AuthContext";
 import "../styles/Inventory.css";
 
 const isAdUnitLinkedToChannel = (adUnit, channelId) => {
@@ -18,6 +19,7 @@ const isAdUnitLinkedToChannel = (adUnit, channelId) => {
 };
 
 function Inventory({ searchQuery = "" }) {
+  const { currentAccount, user, accounts } = useAuth();
   const [inventories, setInventories] = useState([]);
   const [adUnits, setAdUnits] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +55,7 @@ function Inventory({ searchQuery = "" }) {
   });
   const cmsScriptTag = `<script src="https://YOUR-AD-SERVER.DOMAIN/ad-client.js"></script>`;
   const inventoryFilterRef = useRef(null);
+  const loadRequestIdRef = useRef(0);
 
   const isRunningAdUnit = useCallback((adUnit) => {
     const adUnitStatus = String(adUnit?.status || "").toLowerCase();
@@ -68,11 +71,25 @@ function Inventory({ searchQuery = "" }) {
   }, []);
 
   const loadData = useCallback(async () => {
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+
+    if (!currentAccount?.id) {
+      setInventories([]);
+      setAdUnits([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     try {
       const [inventoryResponse, adUnitResponse] = await Promise.all([
         inventoryAPI.getAll({ runningAdsOnly }),
         adUnitAPI.getAll(),
       ]);
+
+      if (loadRequestIdRef.current !== requestId) return;
+
       const inventoryList = inventoryResponse.data || [];
       const adUnitList = adUnitResponse.data || [];
       const uniqueInventories = Array.from(
@@ -85,14 +102,42 @@ function Inventory({ searchQuery = "" }) {
       setAdUnits(uniqueAdUnits);
       setLoading(false);
     } catch (err) {
+      if (loadRequestIdRef.current !== requestId) return;
       setError("Failed to load ad channel data");
       setLoading(false);
     }
-  }, [runningAdsOnly]);
+  }, [currentAccount?.id, runningAdsOnly]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setInventories([]);
+    setAdUnits([]);
+    setSelectedInventoryFilterIds([]);
+    setIsInventoryFilterOpen(false);
+    setExpandedSnippets({});
+    setExpandedInventoryIds(new Set());
+    setInventorySummaryViewById({});
+    setEditingId(null);
+    setEditForm({
+      name: "",
+      key: "",
+      description: "",
+      isActive: true,
+      adUnitIds: [],
+    });
+    setForm({
+      name: "",
+      key: "",
+      description: "",
+      adUnitIds: [],
+    });
+    setIsCreateCardExpanded(false);
+  }, [currentAccount?.id]);
 
   useEffect(() => {
     if (!isInventoryFilterOpen) return undefined;
@@ -559,6 +604,20 @@ function Inventory({ searchQuery = "" }) {
     [editForm.adUnitIds],
   );
 
+  if (
+    user?.role === "editor" &&
+    (!Array.isArray(accounts) || accounts.length === 0 || !currentAccount?.id)
+  ) {
+    return (
+      <div className="inventory-page">
+        <div className="no-data">
+          No account has been shared with you yet. Please contact the account
+          owner.
+        </div>
+      </div>
+    );
+  }
+
   if (loading) return <div className="loading">Loading ad channels...</div>;
 
   return (
@@ -827,7 +886,7 @@ function Inventory({ searchQuery = "" }) {
                     ? "No Ad Channels found for this search."
                     : runningAdsOnly
                       ? "No Ad Channels with running ads found."
-                      : "No ad channels yet."}
+                      : "No Ad Channels found for this account."}
                 </p>
               )}
               {sortedInventories.map((inventory) => (

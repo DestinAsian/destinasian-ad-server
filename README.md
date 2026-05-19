@@ -1,301 +1,164 @@
-# Ad Server - Complete Documentation
+# DestinAsian Ad Server Dashboard
 
-## Overview
-A full-stack ad server similar to Google Ad Manager with a dashboard for tracking impressions and clicks. Features flexible/100% width ad units with 1:1 aspect ratio.
+Publisher-side ad server and CMS/dashboard for managing campaigns, ad units, and ad channels (internally still modeled as `Inventory` in MongoDB).  
+The product focuses on operational metrics only: **impressions, clicks, CTR** (no revenue KPI in the UI).
+
+## Current Features
+- Authentication with JWT, owner/editor roles, and owner 2FA flow.
+- Account-based access with account selector and account switching.
+- Dashboard overview:
+  - KPI cards (impressions, clicks, CTR, campaign/ad unit/ad channel context).
+  - Search from topbar (`Campaign`, `Ad Unit`, `Ad Channel`).
+  - Account-scoped analytics and filtering.
+- Campaign management:
+  - CRUD, ad unit assignment, date/status handling.
+  - Topbar search and infinite scroll in batches.
+- Ad Unit management:
+  - CRUD with ad channel mapping.
+  - Collapsible ad channel selector with search.
+- Ad Channels management:
+  - CRUD with collapsible cards.
+  - Running Ads filter, sort modes, visibility multi-checkbox filter.
+  - Linked/Running ad unit views, campaign context, CMS tag/snippet copy.
+- Users management:
+  - Owner manages users.
+  - Editor limited access by role rules.
+- My Accounts:
+  - Account CRUD (owner), sharing with users/editors, account switching.
+- Ad serving/tracking:
+  - Serve route + ad client.
+  - Impression/click event capture and analytics endpoints.
+- Scheduled jobs:
+  - Campaign stats updater.
+  - End-date enforcement cron.
+
+## Role Model (Current)
+- **Owner**
+  - Full management of users/accounts/campaigns/ad units/ad channels.
+  - Account sharing controls.
+  - 2FA-required flows (as implemented in backend auth/user controllers).
+- **Editor**
+  - Access only to shared account data.
+  - Limited write access based on backend permission checks.
+
+## Tech Stack
+- **Backend:** Node.js, Express
+- **Database:** MongoDB + Mongoose
+- **Frontend:** React (CRA)
+- **Auth:** JWT + account selection token rotation + owner 2FA (TOTP)
+- **Scheduling:** `node-cron`
+- **Charts:** `chart.js`, `react-chartjs-2`
+- **HTTP client (frontend):** `axios`
 
 ## Project Structure
-
-```
+```text
 destinasian-ad-server/
-├── backend/                 # Node.js/Express API
-│   ├── models/             # MongoDB schemas
-│   ├── controllers/        # Route controllers
-│   ├── routes/            # API routes
-│   ├── server.js          # Main server file
-│   └── package.json
-├── frontend/              # React Dashboard
+├── ad-client.js
+├── backend/
+│   ├── controllers/   # API business logic
+│   ├── jobs/          # cron jobs (stats + end-date enforcement)
+│   ├── middleware/    # auth/account access middleware
+│   ├── migrations/    # additive/backfill migration scripts
+│   ├── models/        # Mongoose models
+│   ├── routes/        # API routes
+│   ├── utils/         # helper utilities (2FA, etc.)
+│   └── server.js
+├── frontend/
 │   ├── src/
-│   │   ├── components/   # React components
-│   │   ├── pages/       # Page components
-│   │   ├── services/    # API services
-│   │   ├── styles/      # CSS styles
-│   │   └── index.js
+│   │   ├── components/
+│   │   ├── contexts/
+│   │   ├── pages/
+│   │   ├── services/
+│   │   └── styles/
 │   └── package.json
-└── README.md
+└── tests/             # ad-client tests
 ```
 
-## Setup Instructions
+## Environment Variables
 
-### Prerequisites
-- Node.js (v14+)
-- MongoDB (running locally or cloud)
-- npm or yarn
+### Backend (`backend/.env`)
+Based on code usage:
+- `NODE_ENV`
+- `PORT`
+- `HOST`
+- `MONGO_URI`
+- `JWT_SECRET`
+- `JWT_EXPIRE`
+- `OWNER_SETUP_TOKEN_EXPIRE`
+- `TWO_FACTOR_CHALLENGE_EXPIRE`
+- `MAX_2FA_ATTEMPTS`
+- `TWO_FACTOR_LOCK_WINDOW_MS`
+- `TWO_FACTOR_ISSUER`
+- `TWO_FACTOR_WINDOW`
+- `DASHBOARD_URL`
+- `CORS_ORIGIN`
+- `ENABLE_STATUS_CRON`
+- `STATUS_CRON_SCHEDULE`
 
-### Backend Setup
+Reference starter file: `backend/.env.example`.
 
-1. Navigate to backend directory:
-   ```bash
-   cd backend
-   npm install
-   ```
+### Frontend (`frontend/.env`)
+- `REACT_APP_API_URL` (default fallback in code: `http://localhost:5001/api`)
+- `REACT_APP_ENABLE_RESPONSIVE_AD_PREVIEW` (used by ad unit chart preview logic)
 
-2. Create `.env` file:
-   ```
-   PORT=5001
-   MONGODB_URI=mongodb://localhost:27017/ad-server
-   NODE_ENV=development
-   CORS_ORIGIN=http://localhost:3000
-   ```
+## Local Development
 
-3. Start the backend:
-   ```bash
-   npm run dev
-   ```
-   Backend runs on `http://localhost:5001`
-
-### Frontend Setup
-
-1. Navigate to frontend directory:
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. Create `.env` file:
-   ```
-   REACT_APP_API_URL=http://localhost:5001/api
-   ```
-
-3. Start the frontend:
-   ```bash
-   npm start
-   ```
-   Dashboard runs on `http://localhost:3000`
-
-## API Endpoints
-
-### Campaigns
-- `GET /api/campaigns` - Get all campaigns
-- `POST /api/campaigns` - Create campaign
-- `GET /api/campaigns/:id` - Get campaign
-- `PUT /api/campaigns/:id` - Update campaign
-- `DELETE /api/campaigns/:id` - Delete campaign
-- `GET /api/campaigns/:id/stats` - Get campaign stats
-
-### Ad Units
-- `GET /api/ad-units` - Get all ad units
-- `POST /api/ad-units` - Create ad unit
-- `GET /api/ad-units/:id` - Get ad unit
-- `PUT /api/ad-units/:id` - Update ad unit
-- `DELETE /api/ad-units/:id` - Delete ad unit
-- `GET /api/ad-units/:id/stats` - Get ad unit stats
-- `GET /api/ad-units/campaign/:campaignId` - Get ad units by campaign
-
-### Tracking
-- `POST /api/tracking/:adUnitId/impression` - Record impression
-- `POST /api/tracking/:adUnitId/click` - Record click
-- `GET /api/tracking/stats` - Get tracking stats
-
-## Database Models
-
-### Campaign
-```javascript
-{
-  name: String,
-  description: String,
-  status: 'active' | 'paused' | 'ended',
-  startDate: Date,
-  endDate: Date,
-  budget: Number,
-  spent: Number,
-  adUnits: [ObjectId],
-  totalImpressions: Number,
-  totalClicks: Number
-}
-```
-
-### AdUnit
-```javascript
-{
-  name: String,
-  description: String,
-  campaign: ObjectId,
-  adCode: String (unique),
-  width: 'flexible' | '100%',
-  aspectRatio: '1:1',
-  imageUrl: String,
-  clickUrl: String,
-  status: 'active' | 'paused',
-  impressions: Number,
-  clicks: Number
-}
-```
-
-### Impression
-```javascript
-{
-  adUnit: ObjectId,
-  campaign: ObjectId,
-  userIp: String,
-  userAgent: String,
-  referrer: String,
-  timestamp: Date
-}
-```
-
-### Click
-```javascript
-{
-  adUnit: ObjectId,
-  campaign: ObjectId,
-  userIp: String,
-  userAgent: String,
-  referrer: String,
-  timestamp: Date
-}
-```
-
-## Dashboard Features
-
-1. **Campaign Overview**
-   - List of all campaigns with status
-   - Real-time impressions and clicks tracking
-   - CTR calculation
-
-2. **Ad Unit Analytics**
-   - Individual ad unit performance
-   - Impressions and clicks per ad unit
-   - Click-through rate (CTR) per ad unit
-
-3. **Responsive Design**
-   - Mobile-friendly interface
-   - Real-time stat updates (5-second refresh)
-   - Sidebar navigation
-
-## Ad Unit Integration
-
-### Embedding Ad Units in Your Website
-
-Include the ad unit component in your website:
-
-```html
-<script>
-  async function loadAd(adUnitId) {
-    // Record impression
-    await fetch(`http://localhost:5001/api/tracking/${adUnitId}/impression`, {
-      method: 'POST'
-    });
-
-    // Display ad with click tracking
-    const adImage = document.querySelector(`[data-ad-unit="${adUnitId}"]`);
-    if (adImage) {
-      adImage.addEventListener('click', async () => {
-        await fetch(`http://localhost:5001/api/tracking/${adUnitId}/click`, {
-          method: 'POST'
-        });
-      });
-    }
-  }
-</script>
-
-<div data-ad-unit="ad-code-here" style="width: 100%; aspect-ratio: 1;">
-  <img id="ad-image" src="..." />
-</div>
-
-<script>
-  loadAd('ad-code-here');
-</script>
-```
-
-## Ad Unit Sizes
-- **Width**: Flexible (100%) or 100% of container
-- **Aspect Ratio**: 1:1 (Square)
-- **Responsive**: Maintains aspect ratio on all screen sizes
-
-## Features
-
-✅ Campaign Management
-✅ Ad Unit Creation & Management
-✅ Real-time Impression Tracking
-✅ Real-time Click Tracking
-✅ Analytics Dashboard
-✅ CTR Calculation
-✅ Responsive Design
-✅ Ad Unit Code Generation
-✅ Campaign Statistics
-✅ Ad Unit Statistics
-
-## Running the Project
-
-### Terminal 1 - Backend
+### 1) Backend
 ```bash
 cd backend
 npm install
 npm run dev
 ```
 
-### Terminal 2 - Frontend
+### 2) Frontend
 ```bash
 cd frontend
 npm install
 npm start
 ```
 
-### Terminal 3 - MongoDB (if running locally)
+### 3) Production build (frontend)
 ```bash
-mongod
+cd frontend
+npm run build
 ```
 
-## Example Usage
+## Available Scripts (Actual)
 
-### Creating a Campaign
-```bash
-curl -X POST http://localhost:5001/api/campaigns \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Spring Sale 2024",
-    "description": "Spring promotion campaign",
-    "startDate": "2024-01-01",
-    "endDate": "2024-03-31",
-    "budget": 5001
-  }'
-```
+### Backend (`backend/package.json`)
+- `npm run start`
+- `npm run dev`
+- `npm run migrate:add-ad-events`
+- `npm run migrate:rollback:add-ad-events`
+- `npm run migrate:merge-inventory-entity`
+- `npm run migrate:rollback:merge-inventory-entity`
+- `npm run migrate:user-roles`
+- `npm run migrate:rollback:user-roles`
+- `npm run migrate:owner-2fa`
+- `npm run migrate:rollback:owner-2fa`
+- `npm run migrate:account-sharing`
+- `npm run migrate:rollback:account-sharing`
+- `npm run migrate:cleanup-editor-accounts`
+- `npm run migrate:rollback:cleanup-editor-accounts`
 
-### Creating an Ad Unit
-```bash
-curl -X POST http://localhost:5001/api/ad-units \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Banner Ad 1",
-    "campaign": "campaign-id-here",
-    "imageUrl": "https://example.com/banner.jpg",
-    "clickUrl": "https://example.com/offer",
-    "width": "100%"
-  }'
-```
+### Frontend (`frontend/package.json`)
+- `npm start`
+- `npm run build`
+- `npm test`
+- `npm run eject`
 
-## Troubleshooting
+## Migrations
+- Migrations are JavaScript scripts in `backend/migrations`.
+- They are additive/backfill oriented and should be reviewed before production runs.
+- Run with the `npm run migrate:*` scripts listed above.
 
-### MongoDB Connection Error
-- Ensure MongoDB is running: `mongod`
-- Check MONGODB_URI in .env
+## Deployment Notes
+- Backend serves API and `ad-client.js`.
+- Frontend is a separate build/deploy artifact (`frontend/build`).
+- Ensure environment variables are configured for database, JWT, CORS, and cron behavior.
 
-### CORS Error
-- Verify CORS_ORIGIN matches frontend URL
-- Check backend is running on correct port
+## Cleanup Notes (Current)
+- User-facing terminology is standardized to **Ad Channel(s)**.
+- Revenue UI has been removed from dashboard/user-facing pages.
+- Internal Mongo model/collection naming may still use `Inventory` for compatibility.
 
-### Dashboard Not Loading Data
-- Verify backend API is running
-- Check browser console for errors
-- Confirm campaigns exist in database
-
-## Future Enhancements
-
-- User authentication & authorization
-- Multiple publisher support
-- Advanced reporting & analytics
-- Ad creative management
-- Budget tracking & alerts
-- A/B testing framework
-- Contextual ad targeting
-- Real-time bidding integration
