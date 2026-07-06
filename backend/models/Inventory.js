@@ -23,6 +23,11 @@ const inventorySchema = new mongoose.Schema(
       trim: true,
       lowercase: true
     },
+    inventoryCode: {
+      type: Number,
+      min: 1,
+      max: 999
+    },
     description: {
       type: String,
       trim: true
@@ -47,5 +52,12 @@ const inventorySchema = new mongoose.Schema(
 inventorySchema.index({ account: 1, key: 1 }, { unique: true });
 inventorySchema.index({ account: 1, name: 1 }, { unique: true });
 inventorySchema.index({ account: 1, groupName: 1 });
+inventorySchema.index(
+  { account: 1, inventoryCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { inventoryCode: { $exists: true } }
+  }
+);
 
 module.exports = mongoose.model('Inventory', inventorySchema);

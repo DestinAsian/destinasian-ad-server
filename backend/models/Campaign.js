@@ -21,6 +21,11 @@ const campaignSchema = new mongoose.Schema(
       type: String,
       trim: true
     },
+    campaignCode: {
+      type: Number,
+      min: 1,
+      max: 9999
+    },
     status: {
       type: String,
       enum: ['active', 'paused', 'ended'],
@@ -50,5 +55,12 @@ const campaignSchema = new mongoose.Schema(
 );
 
 campaignSchema.index({ account: 1, name: 1 }, { unique: true });
+campaignSchema.index(
+  { account: 1, campaignCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { campaignCode: { $exists: true } }
+  }
+);
 
 module.exports = mongoose.model('Campaign', campaignSchema);

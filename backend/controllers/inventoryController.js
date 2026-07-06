@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Inventory = require('../models/Inventory');
 const AdUnit = require('../models/AdUnit');
 const Campaign = require('../models/Campaign');
+const { assignCrmAdIdToAdUnit, ensureInventoryCode } = require('../utils/crmAdIdAssignment');
 
 const slugifyKey = (value) => {
   return String(value || '')
@@ -105,11 +106,37 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
 
     const remainingInventories = (Array.isArray(adUnit.inventories) ? adUnit.inventories : [])
       .map((entry) => String(entry))
+      .filter((entry) => entry !== String(inventoryObjectId));
+
+    if (remainingInventories.length === 0) {
+      const error = new Error('At least one Ad Channel is required to generate CRM AD ID');
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  for (const adUnit of linkedAdUnits) {
+    const adUnitId = String(adUnit._id);
+    if (selectedIdSet.has(adUnitId)) {
+      continue;
+    }
+
+    const remainingInventories = (Array.isArray(adUnit.inventories) ? adUnit.inventories : [])
+      .map((entry) => String(entry))
       .filter((entry) => entry !== String(inventoryObjectId))
       .map((entry) => new mongoose.Types.ObjectId(entry));
 
+    if (remainingInventories.length === 0) {
+      const error = new Error('At least one Ad Channel is required to generate CRM AD ID');
+      error.statusCode = 400;
+      throw error;
+    }
+
     adUnit.inventories = remainingInventories;
     adUnit.inventory = remainingInventories[0] || null;
+    if (adUnit.inventory) {
+      await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId: inventoryObjectId });
+    }
     await adUnit.save();
   }
 
@@ -128,6 +155,7 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
       adUnit.inventory = inventoryObjectId;
     }
 
+    await assignCrmAdIdToAdUnit(adUnit);
     await adUnit.save();
   }
 };
@@ -158,6 +186,7 @@ exports.createInventory = async (req, res) => {
       groupName: normalized.groupName,
       rotationMode: 'rotate'
     });
+    await ensureInventoryCode(inventory);
 
     if (Array.isArray(req.body.adUnitIds)) {
       await syncInventoryAdUnits({

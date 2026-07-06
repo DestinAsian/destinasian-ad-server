@@ -2,7 +2,10 @@ const mongoose = require('mongoose');
 const Campaign = require('../models/Campaign');
 const AdUnit = require('../models/AdUnit');
 const Inventory = require('../models/Inventory');
+const Impression = require('../models/Impression');
+const Click = require('../models/Click');
 const { calculateCampaignStats } = require('../jobs/updateCampaignStats');
+const { assignCrmAdIdToAdUnit, ensureCampaignCode } = require('../utils/crmAdIdAssignment');
 
 const normalizeString = (value) => {
   if (typeof value !== 'string') {
@@ -190,11 +193,9 @@ const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings })
       .filter(Boolean);
 
     if (normalizedInventoryObjectIds.length === 0) {
-      await AdUnit.findByIdAndUpdate(adUnitId, {
-        $set: { inventories: [] },
-        $unset: { inventory: '' }
-      });
-      continue;
+      const error = new Error('At least one Ad Channel is required to generate CRM AD ID');
+      error.statusCode = 400;
+      throw error;
     }
 
     const inventories = await Inventory.find({
@@ -210,10 +211,14 @@ const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings })
 
     const deduped = [...new Set(inventories.map((inventory) => inventory._id.toString()))].map((id) => new mongoose.Types.ObjectId(id));
 
-    await AdUnit.findByIdAndUpdate(adUnitId, {
-      inventories: deduped,
-      inventory: deduped[0]
-    });
+    const adUnit = await AdUnit.findById(adUnitId);
+    if (adUnit) {
+      const previousInventoryId = adUnit.inventory;
+      adUnit.inventories = deduped;
+      adUnit.inventory = deduped[0];
+      await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId });
+      await adUnit.save();
+    }
   }
 };
 
@@ -225,6 +230,24 @@ const requireAdUnitInventoryAssignmentsForActiveCampaign = async ({ campaignId }
     error.statusCode = 400;
     throw error;
   }
+};
+
+const getTodayRange = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+};
+
+const calculateCampaignTodayStats = async (campaignId) => {
+  const { start, end } = getTodayRange();
+  const [impressionsToday, clicksToday] = await Promise.all([
+    Impression.countDocuments({ campaign: campaignId, timestamp: { $gte: start, $lt: end } }),
+    Click.countDocuments({ campaign: campaignId, timestamp: { $gte: start, $lt: end } })
+  ]);
+
+  return { impressionsToday, clicksToday };
 };
 
 exports.createCampaign = async (req, res) => {
@@ -245,6 +268,7 @@ exports.createCampaign = async (req, res) => {
     });
 
     await campaign.save();
+    await ensureCampaignCode(campaign);
     res.status(201).json(campaign);
   } catch (error) {
     if (error.code === 11000) {
@@ -418,14 +442,19 @@ exports.getAllCampaigns = async (req, res) => {
 
     const enrichedCampaigns = await Promise.all(
       campaigns.map(async (campaign) => {
-        const stats = await calculateCampaignStats(campaign._id);
+        const [stats, todayStats] = await Promise.all([
+          calculateCampaignStats(campaign._id),
+          calculateCampaignTodayStats(campaign._id)
+        ]);
         const campaignObj = campaign.toObject();
         const mappedAdUnits = adUnitsByCampaignId.get(campaign._id.toString());
         return {
           ...campaignObj,
           adUnits: Array.isArray(mappedAdUnits) ? mappedAdUnits : (campaignObj.adUnits || []),
           totalImpressions: stats.totalImpressions,
+          impressionsToday: todayStats.impressionsToday,
           totalClicks: stats.totalClicks,
+          clicksToday: todayStats.clicksToday,
           ctr: stats.ctr
         };
       })

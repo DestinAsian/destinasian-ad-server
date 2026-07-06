@@ -47,6 +47,31 @@ const adUnitSchema = new mongoose.Schema(
       unique: true,
       required: true
     },
+    sourceCode: {
+      type: String,
+      enum: ['01', '02'],
+      trim: true
+    },
+    inventoryCode: {
+      type: Number,
+      min: 1,
+      max: 999
+    },
+    campaignCode: {
+      type: Number,
+      min: 1,
+      max: 9999
+    },
+    adUnitCode: {
+      type: Number,
+      min: 1,
+      max: 99
+    },
+    crmAdId: {
+      type: String,
+      match: [/^\d{11}$/, 'CRM AD ID must be exactly 11 digits'],
+      trim: true
+    },
     width: {
       type: String,
       enum: ['flexible', '100%'],
@@ -104,5 +129,19 @@ adUnitSchema.pre('validate', function(next) {
 
 adUnitSchema.index({ account: 1, inventories: 1 });
 adUnitSchema.index({ account: 1, inventory: 1 });
+adUnitSchema.index(
+  { crmAdId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { crmAdId: { $type: 'string' } }
+  }
+);
+adUnitSchema.index(
+  { account: 1, campaign: 1, inventory: 1, adUnitCode: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { adUnitCode: { $exists: true } }
+  }
+);
 
 module.exports = mongoose.model('AdUnit', adUnitSchema);

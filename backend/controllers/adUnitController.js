@@ -5,6 +5,7 @@ const Campaign = require('../models/Campaign');
 const Inventory = require('../models/Inventory');
 const Impression = require('../models/Impression');
 const Click = require('../models/Click');
+const { assignCrmAdIdToAdUnit } = require('../utils/crmAdIdAssignment');
 
 const toObjectIdString = (value) => {
   if (!value) {
@@ -316,6 +317,10 @@ exports.createAdUnit = async (req, res) => {
       width: width || '100%'
     });
 
+    await assignCrmAdIdToAdUnit(adUnit, {
+      campaignDoc,
+      inventoryDoc: inventoryDocs[0]
+    });
     await adUnit.save();
 
     await Campaign.findByIdAndUpdate(campaignDoc._id, {
@@ -417,6 +422,8 @@ exports.updateAdUnit = async (req, res) => {
     }
 
     const updatePayload = { ...req.body };
+    const previousInventoryId = adUnit.inventory;
+    const previousCampaignId = adUnit.campaign;
     const hasInventoryInput = [
       req.body.inventory,
       req.body.inventoryId,
@@ -441,16 +448,46 @@ exports.updateAdUnit = async (req, res) => {
       updatePayload.inventory = inventoryDocs[0]._id;
     }
 
+    let nextCampaignDoc = null;
+    if (updatePayload.campaign !== undefined) {
+      nextCampaignDoc = await Campaign.findById(updatePayload.campaign);
+      if (!nextCampaignDoc) {
+        return res.status(404).json({ error: 'Campaign not found' });
+      }
+
+      if (nextCampaignDoc.account.toString() !== req.user.accountId) {
+        return res.status(403).json({ error: 'Not authorized to use this campaign' });
+      }
+    }
+
     updatePayload.startDate = dateValidation.startDate;
     updatePayload.endDate = dateValidation.endDate;
 
+    delete updatePayload.crmAdId;
+    delete updatePayload.sourceCode;
+    delete updatePayload.inventoryCode;
+    delete updatePayload.campaignCode;
+    delete updatePayload.adUnitCode;
     delete updatePayload.inventoryId;
     delete updatePayload.inventoryIds;
     delete updatePayload.inventoryGroup;
     delete updatePayload.inventoryGroupId;
     delete updatePayload.inventory_group_id;
 
-    const updated = await AdUnit.findByIdAndUpdate(req.params.id, updatePayload, { new: true })
+    Object.entries(updatePayload).forEach(([key, value]) => {
+      if (value !== undefined) {
+        adUnit[key] = value;
+      }
+    });
+
+    await assignCrmAdIdToAdUnit(adUnit, {
+      campaignDoc: nextCampaignDoc,
+      previousCampaignId,
+      previousInventoryId
+    });
+    await adUnit.save();
+
+    const updated = await AdUnit.findById(adUnit._id)
       .populate('campaign')
       .populate('inventory')
       .populate('inventories');
@@ -493,6 +530,7 @@ exports.getAdUnitStats = async (req, res) => {
 
     res.json({
       adUnitId: adUnit._id,
+      crmAdId: adUnit.crmAdId,
       adUnitName: adUnit.name,
       impressions: stats.impressions,
       clicks: stats.clicks,
@@ -609,6 +647,7 @@ exports.serveAd = async (req, res) => {
 
     res.json({
       adCode: adUnit.adCode,
+      crmAdId: adUnit.crmAdId,
       name: adUnit.name,
       imageUrl: adUnit.imageUrl,
       htmlCreative: adUnit.htmlCreative,

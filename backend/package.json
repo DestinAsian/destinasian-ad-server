@@ -17,7 +17,9 @@
     "migrate:account-sharing": "node migrations/20260506_add_account_sharing_fields_and_indexes.js up",
     "migrate:rollback:account-sharing": "node migrations/20260506_add_account_sharing_fields_and_indexes.js down",
     "migrate:cleanup-editor-accounts": "node migrations/20260506_cleanup_auto_created_editor_accounts.js up",
-    "migrate:rollback:cleanup-editor-accounts": "node migrations/20260506_cleanup_auto_created_editor_accounts.js down"
+    "migrate:rollback:cleanup-editor-accounts": "node migrations/20260506_cleanup_auto_created_editor_accounts.js down",
+    "migrate:crm-ad-ids:dry-run": "node migrations/20260706_add_crm_ad_ids.js dry-run",
+    "migrate:crm-ad-ids": "node migrations/20260706_add_crm_ad_ids.js up"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

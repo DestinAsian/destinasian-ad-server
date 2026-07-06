@@ -18,6 +18,11 @@ const accountSchema = new mongoose.Schema(
       lowercase: true,
       trim: true
     },
+    sourceCode: {
+      type: String,
+      enum: ['01', '02'],
+      trim: true
+    },
     isActive: {
       type: Boolean,
       default: true
