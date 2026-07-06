@@ -1,7 +1,7 @@
 # DestinAsian Ad Server Dashboard
 
 Publisher-side ad server and CMS/dashboard for managing campaigns, ad units, and ad channels (internally still modeled as `Inventory` in MongoDB).  
-The product focuses on operational metrics only: **impressions, clicks, CTR** (no revenue KPI in the UI).
+The product focuses on publisher operational metrics only: **impressions, clicks, CTR**. Revenue metrics are intentionally excluded from user-facing UI.
 
 ## Current Features
 - Authentication with JWT, owner/editor roles, and owner 2FA flow.
@@ -9,10 +9,11 @@ The product focuses on operational metrics only: **impressions, clicks, CTR** (n
 - Dashboard overview:
   - KPI cards (impressions, clicks, CTR, campaign/ad unit/ad channel context).
   - Search from topbar (`Campaign`, `Ad Unit`, `Ad Channel`).
+  - Works with dashboard campaign/ad channel filters and account selector.
   - Account-scoped analytics and filtering.
 - Campaign management:
   - CRUD, ad unit assignment, date/status handling.
-  - Topbar search and infinite scroll in batches.
+  - Topbar search and infinite scroll in batches of 5.
 - Ad Unit management:
   - CRUD with ad channel mapping.
   - Collapsible ad channel selector with search.
@@ -82,6 +83,7 @@ Based on code usage:
 - `PORT`
 - `HOST`
 - `MONGO_URI`
+- `MONGODB_URI` (optional legacy variable used by `backend/seed.js`)
 - `JWT_SECRET`
 - `JWT_EXPIRE`
 - `OWNER_SETUP_TOKEN_EXPIRE`
@@ -147,6 +149,9 @@ npm run build
 - `npm test`
 - `npm run eject`
 
+Lint note:
+- No dedicated `lint` script is currently defined in either `frontend/package.json` or `backend/package.json`.
+
 ## Migrations
 - Migrations are JavaScript scripts in `backend/migrations`.
 - They are additive/backfill oriented and should be reviewed before production runs.
@@ -159,6 +164,5 @@ npm run build
 
 ## Cleanup Notes (Current)
 - User-facing terminology is standardized to **Ad Channel(s)**.
-- Revenue UI has been removed from dashboard/user-facing pages.
+- Revenue UI has been removed from dashboard and other user-facing pages.
 - Internal Mongo model/collection naming may still use `Inventory` for compatibility.
-

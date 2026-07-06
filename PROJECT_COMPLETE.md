@@ -1,476 +1,380 @@
-# 🎉 PROJECT COMPLETE - Your Ad Server is Ready!
+# PROJECT COMPLETE - DestinAsian Ad Server Dashboard
 
-## What You've Built
+## Current Project Status
 
-A **complete, production-ready ad server system** similar to Google Ad Manager with:
+The DestinAsian Ad Server Dashboard is a publisher-side ad server application for managing campaigns, ad units, ad channels, users, accounts, serving tags, and operational performance reporting.
 
-### ✅ Core Features
-- **Dashboard**: Real-time analytics for campaigns and ad units
-- **Campaign Management**: Create, manage, and track campaigns
-- **Ad Unit Management**: 100% width or flexible width, 1:1 aspect ratio
-- **Impression Tracking**: Track when ads are viewed
-- **Click Tracking**: Track when users click ads
-- **Real-time Stats**: 5-second auto-updating metrics
-- **Responsive Design**: Works on desktop, tablet, and mobile
-- **Client SDK**: Easy embed code for websites
+The application is focused on publisher operations and delivery metrics:
 
-### 🏗️ Architecture
-```
-┌─────────────┐         ┌─────────────┐         ┌─────────────┐
-│   Websites  │         │   Dashboard │         │   API SDK   │
-│ (embed ads) │         │  (analytics)│         │  (tracking) │
-└─────┬───────┘         └─────┬───────┘         └─────┬───────┘
-      │                       │                       │
-      └───────────────────────┼───────────────────────┘
-                              │
-                    ┌─────────▼─────────┐
-                    │  Express Backend  │
-                    │  (Node.js API)    │
-                    └─────────┬─────────┘
-                              │
-                    ┌─────────▼──────────┐
-                    │    MongoDB DB      │
-                    │ (campaigns, stats) │
-                    └────────────────────┘
-```
+- Impressions
+- Clicks
+- CTR
+- Campaign, ad unit, and ad channel activity
+
+Revenue-focused dashboard UI has been removed. User-facing terminology is standardized around **Ad Channels**, while some internal MongoDB models and API routes still use `Inventory` for compatibility.
 
 ---
 
-## 📁 Project Structure
+## What Is Included
 
-### Complete File Tree (35+ files created)
+### Core Features
 
-```
+- JWT authentication with owner/editor roles.
+- Owner two-factor authentication support using TOTP.
+- Account selector and account-scoped data access.
+- My Accounts page with account sharing.
+- Users management with owner/editor permission rules.
+- Dashboard overview with topbar search by campaign, ad unit, and ad channel.
+- Campaign management with topbar search and infinite scrolling.
+- Ad unit management with ad channel assignment.
+- Ad Channels page with search, filters, sorting, collapsible cards, CMS tags, and linked/running ad unit views.
+- Impression and click tracking.
+- Client-side ad embed script via `ad-client.js`.
+- Scheduled backend jobs for campaign stats and end-date enforcement.
+- Migration scripts for stats collections, inventory/ad channel backfills, roles, owner 2FA, and account sharing.
+
+---
+
+## Project Structure
+
+```text
 destinasian-ad-server/
-│
-├─ 📚 Documentation (8 files)
-│  ├─ INDEX.md ..................... Complete file index & guide
-│  ├─ README.md .................... Full documentation  
-│  ├─ QUICKSTART.md ................ Quick start (START HERE!)
-│  ├─ SETUP_SUMMARY.md ............. What was built
-│  ├─ INSTALLATION_GUIDE.md ........ Detailed setup
-│  ├─ ARCHITECTURE.md .............. System design
-│  ├─ FILE_STRUCTURE.md ............ File purposes
-│  └─ COMMANDS_AND_TROUBLESHOOTING.md  Common issues
-│
-├─ 🧪 Testing Files (3 files)
-│  ├─ TEST_ADS.html ............... Interactive testing
-│  ├─ INTEGRATION_EXAMPLE.html .... Integration examples
-│  └─ ad-client.js ................ Client SDK
-│
-├─ 🔧 Backend (16 files)
-│  ├─ server.js ................... Express app entry
-│  ├─ seed.js ..................... Database seeding
-│  ├─ package.json ................ Dependencies
-│  ├─ .env.example ................ Config template
-│  │
-│  ├─ models/ (4 files)
-│  │  ├─ Campaign.js .............. Campaign schema
-│  │  ├─ AdUnit.js ................ Ad unit schema
-│  │  ├─ Impression.js ............ Impression schema
-│  │  └─ Click.js ................. Click schema
-│  │
-│  ├─ controllers/ (3 files)
-│  │  ├─ campaignController.js .... Campaign logic
-│  │  ├─ adUnitController.js ...... Ad unit logic
-│  │  └─ trackingController.js .... Tracking logic
-│  │
-│  └─ routes/ (3 files)
-│     ├─ campaigns.js ............. Campaign endpoints
-│     ├─ adUnits.js ............... Ad unit endpoints
-│     └─ tracking.js .............. Tracking endpoints
-│
-├─ 🎨 Frontend (12+ files)
-│  ├─ package.json ................ Dependencies
-│  │
-│  ├─ public/
-│  │  └─ index.html ............... HTML entry
-│  │
-│  └─ src/
-│     ├─ index.js ................. React entry
-│     ├─ index.css ................ Global styles
-│     │
-│     ├─ pages/ (1 file)
-│     │  └─ Dashboard.js .......... Main dashboard
-│     │
-│     ├─ components/ (3 files)
-│     │  ├─ CampaignChart.js ...... Campaign stats
-│     │  ├─ AdUnitChart.js ........ Ad stats display
-│     │  └─ AdUnit.js ............. Ad component
-│     │
-│     ├─ services/ (1 file)
-│     │  └─ api.js ................ API client
-│     │
-│     └─ styles/ (1 file)
-│        └─ Dashboard.css ......... Dashboard styles
-│
-└─ .gitignore ...................... Git ignore
-
-Total: 35+ files, 5001+ lines of documentation, 3000+ lines of code
+├── .github/
+│   └── workflows/
+│       └── deploy.yml
+├── backend/
+│   ├── controllers/
+│   │   ├── accountController.js
+│   │   ├── adUnitController.js
+│   │   ├── authController.js
+│   │   ├── campaignController.js
+│   │   ├── inventoryController.js
+│   │   ├── trackingController.js
+│   │   └── userController.js
+│   ├── jobs/
+│   │   ├── enforceEndDates.js
+│   │   └── updateCampaignStats.js
+│   ├── middleware/
+│   │   └── auth.js
+│   ├── migrations/
+│   │   ├── 20260402_add_ad_event_and_daily_stat_collections.js
+│   │   ├── 20260430_merge_inventory_group_and_backfill_adunit_inventories.js
+│   │   ├── 20260505_add_two_factor_owner_enforcement.js
+│   │   ├── 20260505_enforce_single_owner_and_editor_roles.js
+│   │   ├── 20260506_add_account_sharing_fields_and_indexes.js
+│   │   └── 20260506_cleanup_auto_created_editor_accounts.js
+│   ├── models/
+│   │   ├── Account.js
+│   │   ├── AdClickEvent.js
+│   │   ├── AdDailyStat.js
+│   │   ├── AdImpressionEvent.js
+│   │   ├── AdUnit.js
+│   │   ├── Campaign.js
+│   │   ├── Click.js
+│   │   ├── Impression.js
+│   │   ├── Inventory.js
+│   │   └── User.js
+│   ├── routes/
+│   │   ├── accounts.js
+│   │   ├── adUnits.js
+│   │   ├── auth.js
+│   │   ├── campaigns.js
+│   │   ├── inventories.js
+│   │   ├── serve.js
+│   │   ├── tracking.js
+│   │   └── users.js
+│   ├── utils/
+│   │   └── twoFactor.js
+│   ├── .env.example
+│   ├── package.json
+│   ├── seed.js
+│   └── server.js
+├── frontend/
+│   ├── public/
+│   │   └── index.html
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── AccountSelector.js
+│   │   │   ├── AdUnit.js
+│   │   │   ├── AdUnitChart.js
+│   │   │   ├── AdUnitForm.js
+│   │   │   ├── CampaignForm.js
+│   │   │   └── Modal.js
+│   │   ├── contexts/
+│   │   │   └── AuthContext.js
+│   │   ├── pages/
+│   │   │   ├── AccountManagement.js
+│   │   │   ├── Dashboard.js
+│   │   │   ├── ForgotPassword.js
+│   │   │   ├── Inventory.js
+│   │   │   ├── Login.js
+│   │   │   ├── ResetPassword.js
+│   │   │   ├── Signup.js
+│   │   │   ├── TwoFactorSetup.js
+│   │   │   └── Users.js
+│   │   ├── services/
+│   │   │   └── api.js
+│   │   ├── styles/
+│   │   │   ├── AccountManagement.css
+│   │   │   ├── Auth.css
+│   │   │   ├── Dashboard.css
+│   │   │   ├── Inventory.css
+│   │   │   ├── ResponsiveAdUnit.css
+│   │   │   └── Users.css
+│   │   ├── utils/
+│   │   │   └── adTracking.js
+│   │   ├── App.js
+│   │   ├── index.css
+│   │   └── index.js
+├── tests/
+│   └── ad-client.test.js
+├── ad-client.js
+├── INTEGRATION_EXAMPLE.html
+├── TEST_ADS.html
+├── README.md
+├── AUTHENTICATION_SETUP.md
+├── ARCHITECTURE.md
+├── FILE_STRUCTURE.md
+├── INSTALLATION_GUIDE.md
+├── QUICKSTART.md
+└── PROJECT_COMPLETE.md
 ```
 
 ---
 
-## 🚀 How to Run (3 Steps)
+## Backend Overview
 
-### Terminal 1: Start MongoDB
-```bash
-mongod
-```
+### API Areas
 
-### Terminal 2: Start Backend
+- `auth` - registration, login, password reset, owner 2FA, account selection.
+- `accounts` - account CRUD, account sharing, account stats.
+- `users` - user management, owner reassignment, role/status/password flows.
+- `campaigns` - campaign CRUD, pagination/search, stats, ad unit to ad channel mappings.
+- `ad-units` - ad unit CRUD, status changes, serving helpers.
+- `inventories` - internal route for Ad Channels.
+- `tracking` - impression/click recording and analytics.
+- `serve` - public ad-serving route.
+
+### Database Models
+
+- `Account`
+- `User`
+- `Campaign`
+- `AdUnit`
+- `Inventory` (internal Ad Channel model)
+- `Impression`
+- `Click`
+- `AdImpressionEvent`
+- `AdClickEvent`
+- `AdDailyStat`
+
+### Jobs
+
+- `updateCampaignStats.js` updates campaign delivery totals.
+- `enforceEndDates.js` enforces campaign/ad unit status based on end dates.
+
+### Migrations
+
+Migration scripts live in `backend/migrations` and are exposed through `backend/package.json` scripts. Review them before production execution.
+
+---
+
+## Frontend Overview
+
+### Main Screens
+
+- `Dashboard.js` powers both Dashboard overview and Campaigns view.
+- `Inventory.js` powers the user-facing Ad Channels page.
+- `AccountManagement.js` powers My Accounts.
+- `Users.js` powers user management.
+- Auth pages include login, signup, reset/forgot password, and owner 2FA setup.
+
+### Navigation
+
+The app shell in `App.js` contains:
+
+- Dashboard
+- Campaigns
+- Admin dropdown
+  - Ad Channels
+  - Users
+  - My Accounts
+- Logout
+
+Topbar search is available for Dashboard, Campaigns, and Ad Channels.
+
+### Styling
+
+CSS is organized by feature:
+
+- `index.css` for global shell/topbar styles.
+- `Dashboard.css` for dashboard and campaigns UI.
+- `Inventory.css` for Ad Channels UI.
+- `Users.css` for users and shared management styling.
+- `AccountManagement.css` for My Accounts.
+- `Auth.css` for auth screens.
+- `ResponsiveAdUnit.css` for embeddable ad unit rendering.
+
+---
+
+## Local Development
+
+### Backend
+
 ```bash
 cd backend
-npm install  # First time only
+npm install
 npm run dev
 ```
-✅ Runs on http://localhost:5001
 
-### Terminal 3: Start Frontend
+Backend defaults to `http://localhost:5001`.
+
+### Frontend
+
 ```bash
 cd frontend
-npm install  # First time only
+npm install
 npm start
 ```
-✅ Runs on http://localhost:3000
 
-**Dashboard**: http://localhost:3000  
-**API**: http://localhost:5001  
-**Health Check**: curl http://localhost:5001/health
+Frontend defaults to Create React App behavior. The current `frontend/package.json` proxy points to `http://localhost:5001`.
 
----
+### Frontend Build
 
-## 📊 What's Inside
-
-### Backend API (15+ Endpoints)
-
-**Campaigns**
-- `GET /api/campaigns` - List all campaigns
-- `POST /api/campaigns` - Create campaign
-- `GET /api/campaigns/:id` - Get campaign
-- `PUT /api/campaigns/:id` - Update campaign
-- `DELETE /api/campaigns/:id` - Delete campaign
-- `GET /api/campaigns/:id/stats` - Get stats
-
-**Ad Units**
-- `GET /api/ad-units` - List all ads
-- `POST /api/ad-units` - Create ad
-- `GET /api/ad-units/:id` - Get ad
-- `PUT /api/ad-units/:id` - Update ad
-- `DELETE /api/ad-units/:id` - Delete ad
-- `GET /api/ad-units/:id/stats` - Get stats
-- `GET /api/ad-units/campaign/:campaignId` - Ads by campaign
-
-**Tracking**
-- `POST /api/tracking/:adCode/impression` - Record impression
-- `POST /api/tracking/:adCode/click` - Record click
-- `GET /api/tracking/stats` - Get tracking stats
-
-### React Dashboard
-
-- **Campaign Selection** - Sidebar to switch campaigns
-- **Real-time Stats** - Impressions, clicks, CTR updates
-- **Ad Unit Grid** - Performance cards for each ad
-- **Responsive Design** - Mobile-friendly layout
-- **Auto-refresh** - 5-second stat updates
-
-### Database (4 Collections)
-
-- **campaigns** - Campaign data and totals
-- **adunits** - Ad units and performance
-- **impressions** - Impression records (25+ fields)
-- **clicks** - Click records (25+ fields)
-
-### Client SDK
-
-```javascript
-// Include in website
-<script src="http://localhost:5001/ad-client.js"></script>
-
-// Add ad container
-<div data-ad-code="ad-code-here" data-width="100%"></div>
-
-// Auto-tracks impressions and clicks
-```
-
----
-
-## 🎯 Key Features
-
-### ✅ Ad Unit Sizes
-- **100% Width**: Fixed 100% of container width, 1:1 aspect ratio
-- **Flexible Width**: Full width of container, 1:1 aspect ratio
-- **Responsive**: Adapts to all screen sizes
-
-### ✅ Real-time Tracking
-- Impression tracking with user data (IP, user agent, referrer)
-- Click tracking with full attribution
-- Timestamp logging for all events
-- Campaign and ad unit attribution
-
-### ✅ Analytics
-- Impressions per campaign
-- Clicks per campaign
-- Click-through rate (CTR) calculation
-- Per-ad-unit statistics
-- Real-time dashboard updates
-
-### ✅ Data Persistence
-- MongoDB for data storage
-- Indexed queries for performance
-- Automatic data relationships
-- Clean data model
-
----
-
-## 📖 Documentation Included
-
-### For Different Needs
-
-| File | Purpose | Time |
-|------|---------|------|
-| INDEX.md | Complete navigation | 5 min |
-| QUICKSTART.md | Get running fast | 10 min |
-| SETUP_SUMMARY.md | What was built | 10 min |
-| ARCHITECTURE.md | System design | 15 min |
-| README.md | Full reference | 30 min |
-| INSTALLATION_GUIDE.md | Detailed setup | 20 min |
-| FILE_STRUCTURE.md | File purposes | 15 min |
-| COMMANDS_AND_TROUBLESHOOTING.md | Common issues | Reference |
-
----
-
-## 🔧 Technology Stack
-
-- **Backend**: Node.js, Express.js
-- **Database**: MongoDB, Mongoose
-- **Frontend**: React 18, React Router, Axios
-- **Styling**: CSS3, Flexbox, Grid
-- **SDK**: Vanilla JavaScript
-- **Package Manager**: npm
-
----
-
-## 📋 Example Usage
-
-### Create a Campaign
 ```bash
-curl -X POST http://localhost:5001/api/campaigns \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Spring Sale",
-    "startDate": "2024-01-01",
-    "budget": 5001
-  }'
+cd frontend
+npm run build
 ```
 
-### Create an Ad Unit
-```bash
-curl -X POST http://localhost:5001/api/ad-units \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Banner Ad",
-    "campaign": "CAMPAIGN_ID",
-    "imageUrl": "https://example.com/banner.jpg",
-    "clickUrl": "https://example.com/offer",
-    "width": "100%"
-  }'
-```
+---
 
-### Integrate on Website
+## Available Scripts
+
+### Backend
+
+- `npm run start`
+- `npm run dev`
+- `npm run migrate:add-ad-events`
+- `npm run migrate:rollback:add-ad-events`
+- `npm run migrate:merge-inventory-entity`
+- `npm run migrate:rollback:merge-inventory-entity`
+- `npm run migrate:user-roles`
+- `npm run migrate:rollback:user-roles`
+- `npm run migrate:owner-2fa`
+- `npm run migrate:rollback:owner-2fa`
+- `npm run migrate:account-sharing`
+- `npm run migrate:rollback:account-sharing`
+- `npm run migrate:cleanup-editor-accounts`
+- `npm run migrate:rollback:cleanup-editor-accounts`
+
+### Frontend
+
+- `npm start`
+- `npm run build`
+- `npm test`
+- `npm run eject`
+
+There is currently no dedicated `lint` script in either package.
+
+---
+
+## Environment Files
+
+### Backend
+
+Template: `backend/.env.example`
+
+Important variables include:
+
+- `HOST`
+- `PORT`
+- `MONGO_URI`
+- `MONGODB_URI` (legacy seed script support)
+- `JWT_SECRET`
+- `JWT_EXPIRE`
+- `OWNER_SETUP_TOKEN_EXPIRE`
+- `TWO_FACTOR_CHALLENGE_EXPIRE`
+- `MAX_2FA_ATTEMPTS`
+- `TWO_FACTOR_LOCK_WINDOW_MS`
+- `TWO_FACTOR_ISSUER`
+- `TWO_FACTOR_WINDOW`
+- `DASHBOARD_URL`
+- `CORS_ORIGIN`
+- `ENABLE_STATUS_CRON`
+- `STATUS_CRON_SCHEDULE`
+
+### Frontend
+
+Template: `frontend/.env.example`
+
+- `PORT`
+- `REACT_APP_API_URL`
+- `REACT_APP_ENABLE_RESPONSIVE_AD_PREVIEW`
+
+---
+
+## Testing And Integration Files
+
+- `tests/ad-client.test.js` contains ad client tests.
+- `TEST_ADS.html` is an interactive browser test page.
+- `INTEGRATION_EXAMPLE.html` documents integration usage.
+- `ad-client.js` is the public client script served by the backend at `/ad-client.js`.
+
+Example embed:
+
 ```html
 <script src="http://localhost:5001/ad-client.js"></script>
-<div data-ad-code="ad-code-here" data-width="100%"></div>
+<div data-inventory="homepage-leaderboard" data-width="100%"></div>
 ```
 
 ---
 
-## ✨ Dashboard Features
+## Deployment
 
-- 📊 Real-time statistics
-- 📈 Campaign metrics
-- 📱 Responsive design
-- 🔄 Auto-refresh (5 seconds)
-- 🎯 Per-ad-unit tracking
-- 📋 Campaign sidebar navigation
-- 🎨 Modern UI design
-- ⚡ Fast loading
+Deployment workflow:
 
----
+- `.github/workflows/deploy.yml`
 
-## 🧪 Testing
+The workflow deploys:
 
-### Test Files Included
-1. **TEST_ADS.html** - Interactive demo
-   - 100% width ad example
-   - Flexible width ad example
-   - Manual impression/click buttons
-   - Real-time stat updates
+- `main` to production.
+- `test` to staging.
 
-2. **INTEGRATION_EXAMPLE.html** - Integration guide
-   - Multiple ad placements
-   - Code examples
-   - API reference
-
-### Test Locally
-```bash
-# Seed sample data
-cd backend
-node seed.js
-
-# Open test page
-open TEST_ADS.html
-```
+Server-side deployment is delegated to VPS scripts referenced by the workflow.
 
 ---
 
-## 🚀 Production Ready
+## Verification Checklist
 
-### Included for Production
-- ✅ Error handling
-- ✅ Data validation
-- ✅ CORS support
-- ✅ Environment configuration
-- ✅ Database indexing
-- ✅ API documentation
-- ✅ Response formatting
-- ✅ Logging ready
-
-### To Deploy
-1. Update `.env` files for production
-2. Configure MongoDB Atlas or cloud DB
-3. Deploy backend (Heroku, AWS, etc.)
-4. Deploy frontend (Vercel, Netlify, etc.)
-5. Update CORS_ORIGIN
-6. Update API URLs
+- Backend installs with `npm install`.
+- Backend starts with `npm run dev` or `npm run start`.
+- Frontend installs with `npm install`.
+- Frontend builds with `npm run build`.
+- Login and owner 2FA flows work.
+- Dashboard loads account-scoped metrics.
+- Campaigns search and infinite scroll work.
+- Campaign items expand/collapse correctly.
+- Ad Channels search/filter/sort and collapsible cards work.
+- CMS tag copy behavior works.
+- Users page works.
+- My Accounts sharing works.
+- Owner/editor permissions remain enforced by backend.
+- Revenue is not visible in user-facing UI.
 
 ---
 
-## 📊 Performance
+## Current Completion Summary
 
-- **Impression Tracking**: <50ms
-- **Click Tracking**: <50ms
-- **Dashboard Load**: <1s
-- **API Response**: <200ms
-- **Database Queries**: Indexed for speed
+The project is now a multi-account, role-aware publisher ad server dashboard with:
 
----
+- Express and MongoDB backend.
+- React dashboard frontend.
+- JWT authentication and owner 2FA.
+- Account sharing and account-scoped access.
+- Campaign, ad unit, and Ad Channel management.
+- Public ad serving and tracking.
+- Operational analytics for impressions, clicks, and CTR.
+- Scheduled jobs and migration scripts.
+- Deployment workflow and integration examples.
 
-## 🎓 Learning Resources
-
-### File to Study
-- **backend/models/** - Database design
-- **backend/controllers/** - Business logic
-- **backend/routes/** - API design
-- **frontend/src/pages/Dashboard.js** - React patterns
-- **frontend/src/services/api.js** - API integration
-
-### Concepts Covered
-- RESTful API design
-- MongoDB schema design
-- React component architecture
-- Real-time data updates
-- Request/response handling
-- Database relationships
-- Authentication ready
-- CORS handling
-
----
-
-## 🤝 Next Steps
-
-### Immediate
-1. ✅ Run all 3 terminals (MongoDB, Backend, Frontend)
-2. ✅ Open http://localhost:3000
-3. ✅ Test with TEST_ADS.html
-4. ✅ Seed sample data
-
-### Short Term
-1. Create campaigns in dashboard
-2. Create ad units
-3. Test tracking
-4. Integrate ads on website
-
-### Medium Term
-1. Deploy to production
-2. Set up real domain
-3. Configure custom settings
-4. Add more features
-
-### Long Term
-1. User authentication
-2. Multiple publishers
-3. Ad networks integration
-4. Advanced analytics
-
----
-
-## 📞 Support
-
-All documentation is in the project:
-- **For setup**: QUICKSTART.md
-- **For understanding**: ARCHITECTURE.md, README.md
-- **For integration**: INTEGRATION_EXAMPLE.html, ad-client.js
-- **For troubleshooting**: COMMANDS_AND_TROUBLESHOOTING.md
-- **For files**: FILE_STRUCTURE.md
-- **For navigation**: INDEX.md
-
----
-
-## ✅ Verification Checklist
-
-Before starting, verify:
-- [ ] Node.js installed
-- [ ] npm installed
-- [ ] MongoDB installed
-- [ ] All files created (35+)
-- [ ] Backend code ready
-- [ ] Frontend code ready
-- [ ] Documentation complete
-
----
-
-## 🎉 Congratulations!
-
-You now have a **complete, production-ready ad server** with:
-
-✅ Backend API (Express.js)  
-✅ Frontend Dashboard (React)  
-✅ Database (MongoDB)  
-✅ Ad Serving System  
-✅ Tracking System  
-✅ Client SDK  
-✅ Complete Documentation  
-✅ Example Code  
-✅ Testing Files  
-
-**Everything you need to run a professional ad server!**
-
----
-
-## 📝 Start Here
-
-👉 **Read**: [QUICKSTART.md](QUICKSTART.md) (5 minutes)
-
-👉 **Run**: The 3 terminal commands
-
-👉 **Test**: Open http://localhost:3000
-
-👉 **Enjoy**: Your ad server is running!
-
----
-
-**Project Status**: ✅ **COMPLETE & READY TO USE**
-
-**Version**: 1.0.0  
-**Created**: 2024  
-**Type**: Production-Ready Ad Server  
-**Technology**: Node.js, Express, React, MongoDB  
-
----
-
-# 🚀 Let's Go!
-
-Start with [QUICKSTART.md](QUICKSTART.md) and enjoy your new ad server!
-
-Good luck! 💪
+**Project status:** complete and actively evolved.

@@ -106,6 +106,58 @@ textarea {
   justify-content: flex-end;
 }
 
+.app-nav-dropdown {
+  position: relative;
+}
+
+.app-nav-dropdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-nav-dropdown-icon {
+  font-size: 0.8rem;
+}
+
+.app-nav-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 253, 249, 0.98);
+  box-shadow: 0 10px 24px rgba(20, 30, 38, 0.12);
+  z-index: 30;
+}
+
+.app-nav-dropdown-item {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-nav-dropdown-item:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent-strong);
+}
+
+.app-nav-dropdown-item.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+  color: var(--accent-text);
+}
+
 .app-search-wrap {
   margin-left: auto;
   min-width: 280px;
@@ -179,6 +231,11 @@ textarea {
   .app-toolbar {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .app-nav-dropdown-menu {
+    right: auto;
+    left: 0;
   }
 
   .app-search-wrap {

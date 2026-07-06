@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "./contexts/AuthContext";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
@@ -15,11 +15,29 @@ function App() {
   const [currentPage, setCurrentPage] = useState("login");
   const [resetToken, setResetToken] = useState("");
   const [headerSearch, setHeaderSearch] = useState("");
+  const [isAdminDropdownOpen, setIsAdminDropdownOpen] = useState(false);
+  const adminDropdownRef = useRef(null);
 
   useEffect(() => {
     if (isAuthenticated) {
       setCurrentPage("dashboard");
     }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setIsAdminDropdownOpen(false);
+      return undefined;
+    }
+
+    const handleOutsideClick = (event) => {
+      if (!adminDropdownRef.current?.contains(event.target)) {
+        setIsAdminDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [isAuthenticated]);
 
   if (loading) {
@@ -79,6 +97,7 @@ function App() {
 
   const handleNavigate = (page) => {
     setHeaderSearch("");
+    setIsAdminDropdownOpen(false);
     setCurrentPage(page);
   };
 
@@ -120,24 +139,50 @@ function App() {
           >
             Campaigns
           </button>
-          <button
-            onClick={() => handleNavigate("inventory")}
-            className={`app-nav-button ${currentPage === "inventory" ? "is-active" : ""}`}
-          >
-            Ad Channels
-          </button>
-          <button
-            onClick={() => handleNavigate("users")}
-            className={`app-nav-button ${currentPage === "users" ? "is-active" : ""}`}
-          >
-            Users
-          </button>
-          <button
-            onClick={() => handleNavigate("accounts")}
-            className={`app-nav-button ${currentPage === "accounts" ? "is-active" : ""}`}
-          >
-            My Accounts
-          </button>
+          <div className="app-nav-dropdown" ref={adminDropdownRef}>
+            <button
+              type="button"
+              className={`app-nav-button app-nav-dropdown-toggle ${["inventory", "users", "accounts"].includes(currentPage) ? "is-active" : ""}`}
+              aria-expanded={isAdminDropdownOpen}
+              aria-haspopup="menu"
+              onClick={() =>
+                setIsAdminDropdownOpen((prev) => !prev)
+              }
+            >
+              Admin
+              <span aria-hidden="true" className="app-nav-dropdown-icon">
+                {isAdminDropdownOpen ? "▾" : "▸"}
+              </span>
+            </button>
+            {isAdminDropdownOpen && (
+              <div className="app-nav-dropdown-menu" role="menu" aria-label="Admin menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`app-nav-dropdown-item ${currentPage === "inventory" ? "is-active" : ""}`}
+                  onClick={() => handleNavigate("inventory")}
+                >
+                  Ad Channels
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`app-nav-dropdown-item ${currentPage === "users" ? "is-active" : ""}`}
+                  onClick={() => handleNavigate("users")}
+                >
+                  Users
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`app-nav-dropdown-item ${currentPage === "accounts" ? "is-active" : ""}`}
+                  onClick={() => handleNavigate("accounts")}
+                >
+                  My Accounts
+                </button>
+              </div>
+            )}
+          </div>
           <button onClick={logout} className="app-logout-button">
             Logout
           </button>
