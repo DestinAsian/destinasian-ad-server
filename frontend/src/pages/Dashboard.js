@@ -44,6 +44,53 @@ const formatNumber = (value) => {
   return new Intl.NumberFormat('en-US').format(Number(value) || 0);
 };
 
+const getCampaignAdChannelNames = (campaign) => {
+  const channelMap = new Map();
+  const adUnits = Array.isArray(campaign?.adUnits) ? campaign.adUnits : [];
+
+  adUnits.forEach((adUnit) => {
+    const linkedChannels = [
+      ...(Array.isArray(adUnit?.inventories) ? adUnit.inventories : []),
+      adUnit?.inventory
+    ];
+
+    linkedChannels.forEach((channel) => {
+      if (!channel || typeof channel !== 'object' || !channel.name) {
+        return;
+      }
+
+      const key = String(channel._id || channel.id || channel.name).toLowerCase();
+      if (!channelMap.has(key)) {
+        channelMap.set(key, channel.name);
+      }
+    });
+  });
+
+  return Array.from(channelMap.values());
+};
+
+function CampaignTableNameCell({ campaign, onOpen }) {
+  const adChannelNames = getCampaignAdChannelNames(campaign);
+
+  return (
+    <td className="campaign-table-name">
+      <button
+        type="button"
+        className="campaign-table-name-button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen(campaign);
+        }}
+      >
+        {campaign.name}
+      </button>
+      <span className="campaign-table-channel-line">
+        Ad Channels: {adChannelNames.length > 0 ? adChannelNames.join(', ') : 'None'}
+      </span>
+    </td>
+  );
+}
+
 const CAMPAIGN_PAGE_SIZE = 5;
 
 function Dashboard({ view = 'overview', searchQuery = '' }) {
@@ -67,7 +114,7 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
   const [isAdChannelFilterOpen, setIsAdChannelFilterOpen] = useState(false);
   const [selectedInventoryId, setSelectedInventoryId] = useState('');
   const [campaignSort, setCampaignSort] = useState('recent');
-  const [expandedCampaignIds, setExpandedCampaignIds] = useState(() => new Set());
+  const [campaignEditorId, setCampaignEditorId] = useState(null);
   const [dateRange, setDateRange] = useState(defaultDateRange);
   const [analytics, setAnalytics] = useState({
     impressions: 0,
@@ -110,7 +157,6 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
 
       if (reset) {
         setLoading(true);
-        setExpandedCampaignIds(new Set());
       } else {
         setCampaignsLoadingMore(true);
       }
@@ -284,24 +330,10 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
     setIsAdChannelFilterOpen(false);
     setSelectedInventoryId('');
     setCampaignSort('recent');
-    setExpandedCampaignIds(new Set());
+    setCampaignEditorId(null);
     setDateRange(getDefaultDateRange());
     loadInventories();
   }, [currentAccount?.id]);
-
-  const toggleCampaignExpanded = useCallback((campaignId) => {
-    const normalizedId = String(campaignId || '');
-    if (!normalizedId) return;
-    setExpandedCampaignIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(normalizedId)) {
-        next.delete(normalizedId);
-      } else {
-        next.add(normalizedId);
-      }
-      return next;
-    });
-  }, []);
 
   useEffect(() => {
     const loadOverviewCampaignOptions = async () => {
@@ -400,14 +432,23 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
     setError(null);
   };
 
-  const handleOpenEditModal = (campaign) => {
+  const handleOpenCampaignEditor = (campaign) => {
+    selectedCampaignRef.current = campaign._id;
+    setSelectedCampaign(campaign._id);
     setEditingCampaign(campaign);
-    setShowCampaignModal(true);
+    setCampaignEditorId(campaign._id);
+    setError(null);
+  };
+
+  const handleCloseCampaignEditor = () => {
+    setCampaignEditorId(null);
+    setEditingCampaign(null);
     setError(null);
   };
 
   const handleCloseCampaignModal = () => {
     setShowCampaignModal(false);
+    setCampaignEditorId(null);
     setEditingCampaign(null);
     setError(null);
   };
@@ -614,6 +655,11 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
         return campaignList.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     }
   }, [campaignSort, campaigns]);
+
+  const campaignEditorCampaign = useMemo(
+    () => campaigns.find((campaign) => campaign._id === campaignEditorId) || null,
+    [campaignEditorId, campaigns]
+  );
 
   const analyticsChartData = useMemo(() => ({
     labels: analytics.daily.map((entry) => new Date(entry.date).toLocaleDateString('en-US', {
@@ -997,179 +1043,51 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
           </div>
 
           <div className="campaigns-section-panel">
-            <div className="campaign-list campaigns-main-list">
-              {sortedCampaigns.map((campaign) => {
-                const normalizedSearchToken = normalizedSearchQuery.toLowerCase();
-                const isExpanded = expandedCampaignIds.has(String(campaign._id));
-                const campaignMatchesSearch = normalizedSearchToken
-                  ? [campaign.name, campaign.description, campaign.status]
-                    .filter(Boolean)
-                    .some((value) => String(value).toLowerCase().includes(normalizedSearchToken))
-                  : false;
-                const campaignAdUnits = Array.isArray(campaign.adUnits) ? campaign.adUnits : [];
-                const matchingAdUnits = normalizedSearchToken
-                  ? campaignAdUnits.filter((adUnit) => {
-                    const linkedInventoryNames = [
-                      ...(Array.isArray(adUnit?.inventories) ? adUnit.inventories : []),
-                      adUnit?.inventory
-                    ]
-                      .filter(Boolean)
-                      .map((inventoryEntry) => inventoryEntry?.name || inventoryEntry?.key || '')
-                      .filter(Boolean);
-                    const searchableFields = [
-                      adUnit?.name,
-                      adUnit?.description,
-                      adUnit?.adCode,
-                      adUnit?.status,
-                      ...linkedInventoryNames
-                    ];
-                    return searchableFields
-                      .filter(Boolean)
-                      .some((value) => String(value).toLowerCase().includes(normalizedSearchToken));
-                  })
-                  : campaignAdUnits;
-
-                const visibleAdUnits = (!normalizedSearchToken || campaignMatchesSearch)
-                  ? campaignAdUnits
-                  : matchingAdUnits;
-
-                return (
-                  <div
-                    key={campaign._id}
-                    className={`campaign-item campaign-item-expanded ${selectedCampaign === campaign._id ? 'active' : ''} ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}
-                  >
-                    <div className="campaign-stats">
-                      <button
-                        type="button"
-                        className="campaign-stats-toggle"
-                        aria-expanded={isExpanded}
-                        aria-label={isExpanded ? 'Collapse campaign' : 'Expand campaign'}
-                        onClick={() => toggleCampaignExpanded(campaign._id)}
-                      >
-                        <span className="campaign-stats-toggle-icon" aria-hidden="true">
-                          {isExpanded ? '▾' : '▸'}
-                        </span>
-                      </button>
-                      <div className="campaign-stats-heading">
-                        <h2>{campaign.name}</h2>
-                        <p>
-                          {new Date(campaign.startDate).toLocaleDateString()} - {new Date(campaign.endDate).toLocaleDateString()} | {campaign.status}
-                        </p>
-                      </div>
-                      <div className="stats-grid campaign-stats-summary">
-                        <div className="stat-card">
-                          <h4>Impressions</h4>
-                          <p className="stat-value">{formatNumber(campaign.totalImpressions)}</p>
-                        </div>
-                        <div className="stat-card">
-                          <h4>Clicks</h4>
-                          <p className="stat-value">{formatNumber(campaign.totalClicks)}</p>
-                        </div>
-                        <div className="stat-card">
-                          <h4>CTR</h4>
-                          <p className="stat-value">{Number(campaign.ctr || 0).toFixed(2)}%</p>
-                        </div>
-                      </div>
-                      <div className="campaign-actions">
-                        <button
-                          className={`btn-icon btn-status ${campaign.status}`}
-                          onClick={() => handleToggleCampaignStatus(campaign._id, campaign.status)}
-                          title={campaign.status === 'active' ? 'Pause' : 'Activate'}
-                          aria-label={campaign.status === 'active' ? 'Pause campaign' : 'Activate campaign'}
-                        >
-                          {campaign.status === 'active' ? '⏸' : '▶'}
-                        </button>
-                        <button
-                          className="btn-icon btn-edit"
-                          onClick={() => handleDuplicateCampaign(campaign)}
-                          title="Duplicate"
-                          aria-label="Duplicate campaign"
-                        >
-                          📄
-                        </button>
-                        <button
-                          className="btn-icon btn-edit"
-                          onClick={() => handleOpenEditModal(campaign)}
-                          title="Edit"
-                          aria-label="Edit campaign"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          className="btn-icon btn-delete"
-                          onClick={() => handleDeleteCampaign(campaign._id)}
-                          title="Delete"
-                          aria-label="Delete campaign"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-
-                    {isExpanded && (
-                    <div className="ad-units-section">
-                      <div className="ad-units-header">
-                        <h3>Ad Units</h3>
-                        <button
-                          className="btn btn-primary btn-sm new-ad-unit-button"
-                          onClick={() => handleOpenCreateAdUnitModal(campaign._id)}
-                        >
-                          + New Ad Unit
-                        </button>
-                      </div>
-                      <div className="ad-units-grid">
-                        {visibleAdUnits.map((adUnit) => (
-                          <div key={adUnit._id} className="ad-unit-card">
-                            <AdUnitChart adUnit={adUnit} />
-                            <div className="ad-unit-actions">
-                              <button
-                                className={`btn-icon btn-status ${adUnit.status}`}
-                                onClick={() => handleToggleAdUnitStatus(adUnit._id, adUnit.status)}
-                                title={adUnit.status === 'active' ? 'Pause' : 'Activate'}
-                                aria-label={adUnit.status === 'active' ? 'Pause ad unit' : 'Activate ad unit'}
-                              >
-                                {adUnit.status === 'active' ? '⏸' : '▶'}
-                              </button>
-                              <button
-                                className="btn-icon btn-edit"
-                                onClick={() => handleDuplicateAdUnit(adUnit)}
-                                title="Duplicate"
-                                aria-label="Duplicate ad unit"
-                              >
-                                📄
-                              </button>
-                              <button
-                                className="btn-icon btn-edit"
-                                onClick={() => handleOpenEditAdUnitModal(adUnit, campaign._id)}
-                                title="Edit"
-                                aria-label="Edit ad unit"
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                className="btn-icon btn-delete"
-                                onClick={() => handleDeleteAdUnit(adUnit._id)}
-                                title="Delete"
-                                aria-label="Delete ad unit"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {visibleAdUnits.length === 0 && (
-                        <p className="no-data">
-                          {normalizedSearchQuery
-                            ? 'No ad units match your search.'
-                            : <>No ad units in this campaign. <button className="link-btn" onClick={() => handleOpenCreateAdUnitModal(campaign._id)}>Create one</button></>}
-                          </p>
-                      )}
-                    </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="campaign-table-wrap">
+              <table className="campaign-table">
+                <thead>
+                  <tr>
+                    <th aria-label="Select campaign">
+                      <input type="checkbox" disabled />
+                    </th>
+                    <th>ID</th>
+                    <th>Start / End</th>
+                    <th>Name</th>
+                    <th>Impressions</th>
+                    <th>Impressions Today</th>
+                    <th>Clicks</th>
+                    <th>Clicks Today</th>
+                    <th>CTR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedCampaigns.map((campaign) => (
+                    <tr
+                      key={campaign._id}
+                      className="campaign-table-row"
+                      onClick={() => handleOpenCampaignEditor(campaign)}
+                    >
+                      <td onClick={(event) => event.stopPropagation()}>
+                        <input type="checkbox" aria-label={`Select ${campaign.name}`} />
+                      </td>
+                      <td className="campaign-table-id">{campaign._id?.slice(-6) || '-'}</td>
+                      <td>
+                        <span>{new Date(campaign.startDate).toLocaleDateString()}</span>
+                        <span className="campaign-table-end-date">{new Date(campaign.endDate).toLocaleDateString()}</span>
+                      </td>
+                      <CampaignTableNameCell
+                        campaign={campaign}
+                        onOpen={handleOpenCampaignEditor}
+                      />
+                      <td>{formatNumber(campaign.totalImpressions)}</td>
+                      <td>{formatNumber(campaign.impressionsToday)}</td>
+                      <td>{formatNumber(campaign.totalClicks)}</td>
+                      <td>{formatNumber(campaign.clicksToday)}</td>
+                      <td>{Number(campaign.ctr || 0).toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             {campaignHasMore && (
@@ -1188,6 +1106,111 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
           </div>
         </div>
       </div>
+      )}
+
+      {isCampaignView && (
+      <Modal
+        isOpen={Boolean(campaignEditorCampaign)}
+        title={campaignEditorCampaign ? `Edit ${campaignEditorCampaign.name}` : 'Edit Campaign'}
+        onClose={handleCloseCampaignEditor}
+        contentClassName="campaign-editor-modal"
+      >
+        {campaignEditorCampaign && (
+          <div className="campaign-editor-content">
+            <div className="campaign-editor-actions">
+              <button
+                className={`btn-icon btn-status ${campaignEditorCampaign.status}`}
+                onClick={() => handleToggleCampaignStatus(campaignEditorCampaign._id, campaignEditorCampaign.status)}
+                title={campaignEditorCampaign.status === 'active' ? 'Pause' : 'Activate'}
+                aria-label={campaignEditorCampaign.status === 'active' ? 'Pause campaign' : 'Activate campaign'}
+              >
+                {campaignEditorCampaign.status === 'active' ? '⏸' : '▶'}
+              </button>
+              <button
+                className="btn-icon btn-edit"
+                onClick={() => handleDuplicateCampaign(campaignEditorCampaign)}
+                title="Duplicate"
+                aria-label="Duplicate campaign"
+              >
+                📄
+              </button>
+              <button
+                className="btn-icon btn-delete"
+                onClick={() => handleDeleteCampaign(campaignEditorCampaign._id)}
+                title="Delete"
+                aria-label="Delete campaign"
+              >
+                🗑️
+              </button>
+            </div>
+
+            <CampaignForm
+              campaign={campaignEditorCampaign}
+              submitting={submitting}
+              onSubmit={handleSubmitCampaign}
+              onCancel={handleCloseCampaignEditor}
+            />
+
+            <div className="ad-units-section campaign-editor-ad-units">
+              <div className="ad-units-header">
+                <h3>Ad Units</h3>
+                <button
+                  className="btn btn-primary btn-sm new-ad-unit-button"
+                  onClick={() => handleOpenCreateAdUnitModal(campaignEditorCampaign._id)}
+                >
+                  + New Ad Unit
+                </button>
+              </div>
+              <div className="ad-units-grid">
+                {(campaignEditorCampaign.adUnits || []).map((adUnit) => (
+                  <div key={adUnit._id} className="ad-unit-card">
+                    <AdUnitChart adUnit={adUnit} />
+                    <div className="ad-unit-actions">
+                      <button
+                        className={`btn-icon btn-status ${adUnit.status}`}
+                        onClick={() => handleToggleAdUnitStatus(adUnit._id, adUnit.status)}
+                        title={adUnit.status === 'active' ? 'Pause' : 'Activate'}
+                        aria-label={adUnit.status === 'active' ? 'Pause ad unit' : 'Activate ad unit'}
+                      >
+                        {adUnit.status === 'active' ? '⏸' : '▶'}
+                      </button>
+                      <button
+                        className="btn-icon btn-edit"
+                        onClick={() => handleDuplicateAdUnit(adUnit)}
+                        title="Duplicate"
+                        aria-label="Duplicate ad unit"
+                      >
+                        📄
+                      </button>
+                      <button
+                        className="btn-icon btn-edit"
+                        onClick={() => handleOpenEditAdUnitModal(adUnit, campaignEditorCampaign._id)}
+                        title="Edit"
+                        aria-label="Edit ad unit"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        className="btn-icon btn-delete"
+                        onClick={() => handleDeleteAdUnit(adUnit._id)}
+                        title="Delete"
+                        aria-label="Delete ad unit"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {(campaignEditorCampaign.adUnits || []).length === 0 && (
+                <p className="no-data">
+                  No ad units in this campaign. <button className="link-btn" onClick={() => handleOpenCreateAdUnitModal(campaignEditorCampaign._id)}>Create one</button>
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
       )}
 
       {isCampaignView && (

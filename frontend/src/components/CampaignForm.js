@@ -1,6 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { campaignAPI, inventoryAPI } from '../services/api';
 
+const getInventoryId = (inventory) => {
+  if (!inventory) return null;
+  if (typeof inventory === 'object') return inventory._id || inventory.id || null;
+  return inventory;
+};
+
+const buildMappingsFromCampaign = (campaign) => {
+  const adUnits = Array.isArray(campaign?.adUnits) ? campaign.adUnits : [];
+  return adUnits.map((adUnit) => {
+    const inventoryIds = [
+      ...(Array.isArray(adUnit?.inventories) ? adUnit.inventories : []),
+      adUnit?.inventory
+    ]
+      .map(getInventoryId)
+      .filter(Boolean)
+      .map(String);
+
+    return {
+      adUnitId: String(adUnit._id || adUnit.id || ''),
+      adUnitName: adUnit.name || 'Untitled Ad Unit',
+      inventoryIds: [...new Set(inventoryIds)]
+    };
+  }).filter((mapping) => mapping.adUnitId);
+};
+
+const normalizeMappings = (mappings = []) => mappings.map((mapping) => ({
+  adUnitId: String(mapping.adUnitId || ''),
+  adUnitName: mapping.adUnitName || 'Untitled Ad Unit',
+  inventoryIds: Array.isArray(mapping.inventoryIds)
+    ? mapping.inventoryIds.map(String)
+    : []
+})).filter((mapping) => mapping.adUnitId);
+
 function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -50,34 +83,68 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
   }, [campaign]);
 
   useEffect(() => {
+    let isActive = true;
+
+    const applyMappings = (mappings) => {
+      if (!isActive) return;
+      setMappingRows(mappings);
+
+      const nextMappingState = {};
+      mappings.forEach((mapping) => {
+        nextMappingState[mapping.adUnitId] = [...mapping.inventoryIds];
+      });
+      setInventoryMappings(nextMappingState);
+    };
+
     const loadSupportData = async () => {
+      const fallbackMappings = campaign ? buildMappingsFromCampaign(campaign) : [];
+
       try {
-        const [inventoryResponse, mappingResponse] = await Promise.all([
-          inventoryAPI.getAll(),
-          campaign ? campaignAPI.getAdUnitInventories(campaign._id) : Promise.resolve({ data: { mappings: [] } })
-        ]);
-
-        setInventories(inventoryResponse.data || []);
-
-        const mappings = (mappingResponse.data?.mappings || []).map((mapping) => ({
-          adUnitId: mapping.adUnitId,
-          adUnitName: mapping.adUnitName,
-          inventoryIds: Array.isArray(mapping.inventoryIds) ? mapping.inventoryIds : []
-        }));
-        setMappingRows(mappings);
-
-        const nextMappingState = {};
-        mappings.forEach((mapping) => {
-          nextMappingState[mapping.adUnitId] = [...mapping.inventoryIds];
-        });
-        setInventoryMappings(nextMappingState);
-        setMappingError(null);
+        const inventoryResponse = await inventoryAPI.getAll();
+        if (!isActive) return;
+        setInventories(Array.isArray(inventoryResponse.data) ? inventoryResponse.data : []);
       } catch (error) {
+        if (!isActive) return;
+        setInventories([]);
         setMappingError('Failed to load ad channel assignment data.');
+        applyMappings(fallbackMappings);
+        return;
+      }
+
+      if (!campaign) {
+        applyMappings([]);
+        setMappingError(null);
+        return;
+      }
+
+      if (!campaign._id) {
+        applyMappings(fallbackMappings);
+        setMappingError(null);
+        return;
+      }
+
+      try {
+        const mappingResponse = await campaignAPI.getAdUnitInventories(campaign._id);
+        const mappings = normalizeMappings(mappingResponse.data?.mappings || []);
+        applyMappings(mappings);
+        if (isActive) setMappingError(null);
+      } catch (error) {
+        applyMappings(fallbackMappings);
+        if (isActive) {
+          setMappingError(
+            fallbackMappings.length > 0
+              ? null
+              : 'Failed to load ad channel assignment data.'
+          );
+        }
       }
     };
 
     loadSupportData();
+
+    return () => {
+      isActive = false;
+    };
   }, [campaign]);
 
   const validateForm = () => {

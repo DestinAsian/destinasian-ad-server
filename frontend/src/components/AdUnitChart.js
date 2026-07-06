@@ -36,7 +36,7 @@ function AdUnitChart({ adUnit }) {
       ) : null}
       <div className="ad-unit-info">
         <h4>{adUnit.name}</h4>
-        <p className="ad-code">Code: {adUnit.adCode}</p>
+        <p className="ad-code">AD ID: {adUnit.crmAdId || 'Pending'}</p>
         {adUnit.inventory && (
           <p className="ad-code">Ad Channel: {adUnit.inventory.name}</p>
         )}

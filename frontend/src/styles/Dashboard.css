@@ -1678,6 +1678,103 @@
   gap: 0;
 }
 
+.campaign-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(255, 253, 249, 0.72);
+}
+
+.campaign-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.campaign-table th,
+.campaign-table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.campaign-table th {
+  color: var(--ink-body);
+  font-weight: 600;
+  background: rgba(246, 243, 237, 0.72);
+  white-space: nowrap;
+}
+
+.campaign-table-row {
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.campaign-table-row:hover {
+  background: rgba(223, 236, 240, 0.35);
+}
+
+.campaign-table-id {
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.campaign-table-end-date {
+  display: block;
+  margin-top: 4px;
+  color: #4f9a56;
+  font-weight: 500;
+}
+
+.campaign-table-name {
+  min-width: 300px;
+}
+
+.campaign-table-name-button {
+  display: block;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--accent-text);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.campaign-table-channel-line {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
+.campaign-editor-modal {
+  width: 75vw;
+  height: 75vh;
+  max-width: 75vw;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+.campaign-editor-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.campaign-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.campaign-editor-ad-units {
+  margin-top: 0;
+}
+
 .campaigns-main-list .campaign-item.campaign-item-expanded {
   margin: 0 0 16px;
   border: 1px solid #d1d5db;
@@ -2458,6 +2555,13 @@
 
   .campaigns-section-panel {
     padding: 18px;
+  }
+
+  .campaign-editor-modal {
+    width: 75vw;
+    height: 75vh;
+    max-width: 75vw;
+    max-height: 75vh;
   }
 
   .dashboard-filter-options {
