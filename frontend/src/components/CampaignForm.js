@@ -312,7 +312,7 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
       </div>
 
       {campaign && (
-        <div className="form-group">
+        <div className="form-group form-full-width">
           <label>Ad Unit Ad Channel Assignments</label>
           <div className="campaign-mapping-section">
             {mappingError && <span className="error-message">{mappingError}</span>}

@@ -250,6 +250,69 @@ const calculateCampaignTodayStats = async (campaignId) => {
   return { impressionsToday, clicksToday };
 };
 
+const getAdUnitTableStatsById = async (adUnitIds = []) => {
+  if (!Array.isArray(adUnitIds) || adUnitIds.length === 0) {
+    return new Map();
+  }
+
+  const { start, end } = getTodayRange();
+  const [
+    impressionTotals,
+    clickTotals,
+    impressionTodayTotals,
+    clickTodayTotals
+  ] = await Promise.all([
+    Impression.aggregate([
+      { $match: { adUnit: { $in: adUnitIds } } },
+      { $group: { _id: '$adUnit', count: { $sum: 1 } } }
+    ]),
+    Click.aggregate([
+      { $match: { adUnit: { $in: adUnitIds } } },
+      { $group: { _id: '$adUnit', count: { $sum: 1 } } }
+    ]),
+    Impression.aggregate([
+      { $match: { adUnit: { $in: adUnitIds }, timestamp: { $gte: start, $lt: end } } },
+      { $group: { _id: '$adUnit', count: { $sum: 1 } } }
+    ]),
+    Click.aggregate([
+      { $match: { adUnit: { $in: adUnitIds }, timestamp: { $gte: start, $lt: end } } },
+      { $group: { _id: '$adUnit', count: { $sum: 1 } } }
+    ])
+  ]);
+
+  const statsById = new Map(adUnitIds.map((adUnitId) => [
+    String(adUnitId),
+    {
+      impressions: 0,
+      impressionsToday: 0,
+      clicks: 0,
+      clicksToday: 0,
+      ctr: 0
+    }
+  ]));
+
+  const applyCounts = (rows, fieldName) => {
+    rows.forEach((row) => {
+      const key = String(row._id);
+      const current = statsById.get(key);
+      if (current) {
+        current[fieldName] = row.count || 0;
+      }
+    });
+  };
+
+  applyCounts(impressionTotals, 'impressions');
+  applyCounts(clickTotals, 'clicks');
+  applyCounts(impressionTodayTotals, 'impressionsToday');
+  applyCounts(clickTodayTotals, 'clicksToday');
+
+  statsById.forEach((stats) => {
+    stats.ctr = stats.impressions > 0 ? ((stats.clicks / stats.impressions) * 100).toFixed(2) : 0;
+  });
+
+  return statsById;
+};
+
 exports.createCampaign = async (req, res) => {
   try {
     const { name, description } = req.body;
@@ -432,11 +495,16 @@ exports.getAllCampaigns = async (req, res) => {
         .populate('inventories')
       : [];
 
+    const adUnitStatsById = await getAdUnitTableStatsById(campaignAdUnits.map((adUnitDoc) => adUnitDoc._id));
     const adUnitsByCampaignId = campaignAdUnits.reduce((acc, adUnitDoc) => {
       const campaignId = adUnitDoc.campaign?.toString();
       if (!campaignId) return acc;
       if (!acc.has(campaignId)) acc.set(campaignId, []);
-      acc.get(campaignId).push(adUnitDoc.toObject());
+      const adUnitObj = adUnitDoc.toObject();
+      acc.get(campaignId).push({
+        ...adUnitObj,
+        ...(adUnitStatsById.get(String(adUnitDoc._id)) || {})
+      });
       return acc;
     }, new Map());
 

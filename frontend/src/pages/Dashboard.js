@@ -12,7 +12,6 @@ import {
 } from 'chart.js';
 import { campaignAPI, adUnitAPI, inventoryAPI, trackingAPI } from '../services/api';
 import '../styles/Dashboard.css';
-import AdUnitChart from '../components/AdUnitChart';
 import CampaignForm from '../components/CampaignForm';
 import AdUnitForm from '../components/AdUnitForm';
 import AccountSelector from '../components/AccountSelector';
@@ -44,11 +43,28 @@ const formatNumber = (value) => {
   return new Intl.NumberFormat('en-US').format(Number(value) || 0);
 };
 
-const getCampaignAdChannelNames = (campaign) => {
-  const channelMap = new Map();
-  const adUnits = Array.isArray(campaign?.adUnits) ? campaign.adUnits : [];
+const formatTableDate = (date) => {
+  if (!date) return '—';
+  const dateValue = new Date(date);
+  return Number.isNaN(dateValue.getTime()) ? '—' : dateValue.toLocaleDateString();
+};
 
-  adUnits.forEach((adUnit) => {
+const parseTableDate = (startDate, endDate) => {
+  const startValue = startDate ? new Date(startDate).getTime() : NaN;
+  if (Number.isFinite(startValue)) return startValue;
+  const endValue = endDate ? new Date(endDate).getTime() : NaN;
+  return Number.isFinite(endValue) ? endValue : null;
+};
+
+const getNumericMetric = (value) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+};
+
+const getAdChannelNamesFromAdUnits = (adUnits = []) => {
+  const channelMap = new Map();
+
+  (Array.isArray(adUnits) ? adUnits : []).forEach((adUnit) => {
     const linkedChannels = [
       ...(Array.isArray(adUnit?.inventories) ? adUnit.inventories : []),
       adUnit?.inventory
@@ -69,11 +85,18 @@ const getCampaignAdChannelNames = (campaign) => {
   return Array.from(channelMap.values());
 };
 
+const getCampaignAdChannelNames = (campaign) => (
+  getAdChannelNamesFromAdUnits(Array.isArray(campaign?.adUnits) ? campaign.adUnits : [])
+);
+
+const getAdUnitAdChannelNames = (adUnit) => getAdChannelNamesFromAdUnits([adUnit]);
+
 function CampaignTableNameCell({ campaign, onOpen }) {
   const adChannelNames = getCampaignAdChannelNames(campaign);
 
   return (
     <td className="campaign-table-name">
+      <span className="campaign-table-row-label">Campaign</span>
       <button
         type="button"
         className="campaign-table-name-button"
@@ -90,6 +113,53 @@ function CampaignTableNameCell({ campaign, onOpen }) {
     </td>
   );
 }
+
+function AdUnitTableNameCell({ adUnit, campaignId, onOpen }) {
+  const adChannelNames = getAdUnitAdChannelNames(adUnit);
+
+  return (
+    <td className="campaign-table-name campaign-table-adunit-name">
+      <div className="campaign-table-adunit-cell">
+        {adUnit.imageUrl ? (
+          <img
+            className="campaign-table-adunit-preview"
+            src={adUnit.imageUrl}
+            alt=""
+            aria-hidden="true"
+          />
+        ) : (
+          <span className="campaign-table-adunit-preview-empty">No preview</span>
+        )}
+        <div className="campaign-table-adunit-copy">
+          <span className="campaign-table-row-label">AdUnit</span>
+          <button
+            type="button"
+            className="campaign-table-name-button campaign-table-adunit-name-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpen(adUnit, campaignId);
+            }}
+          >
+            {adUnit.name || 'Untitled Ad Unit'}
+          </button>
+          <span className="campaign-table-channel-line">
+            Ad Channels: {adChannelNames.length > 0 ? adChannelNames.join(', ') : 'None'}
+          </span>
+        </div>
+      </div>
+    </td>
+  );
+}
+
+const CAMPAIGN_TABLE_SORT_COLUMNS = [
+  { key: 'startDate', label: 'Start / End' },
+  { key: 'name', label: 'Name' },
+  { key: 'impressions', label: 'Impressions' },
+  { key: 'impressionsToday', label: 'Impressions Today' },
+  { key: 'clicks', label: 'Clicks' },
+  { key: 'clicksToday', label: 'Clicks Today' },
+  { key: 'ctr', label: 'CTR' }
+];
 
 const CAMPAIGN_PAGE_SIZE = 5;
 
@@ -113,7 +183,7 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
   const [isCampaignFilterOpen, setIsCampaignFilterOpen] = useState(false);
   const [isAdChannelFilterOpen, setIsAdChannelFilterOpen] = useState(false);
   const [selectedInventoryId, setSelectedInventoryId] = useState('');
-  const [campaignSort, setCampaignSort] = useState('recent');
+  const [campaignSort, setCampaignSort] = useState({ key: 'startDate', direction: 'desc', userSelected: false });
   const [campaignEditorId, setCampaignEditorId] = useState(null);
   const [dateRange, setDateRange] = useState(defaultDateRange);
   const [analytics, setAnalytics] = useState({
@@ -138,7 +208,6 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
-  const hasMountedCampaignSortRef = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchQuery(normalizedSearchQuery), 300);
@@ -209,17 +278,6 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
 
     fetchCampaigns({ page: 1, reset: true });
   }, [fetchCampaigns, isCampaignView]);
-
-  useEffect(() => {
-    if (!isCampaignView) {
-      return;
-    }
-    if (!hasMountedCampaignSortRef.current) {
-      hasMountedCampaignSortRef.current = true;
-      return;
-    }
-    fetchCampaigns({ page: 1, reset: true });
-  }, [campaignSort, isCampaignView, fetchCampaigns]);
 
   const loadMoreCampaigns = useCallback(() => {
     if (loading || campaignsLoadingMore || !campaignHasMore || !isCampaignView) {
@@ -329,7 +387,7 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
     setIsCampaignFilterOpen(false);
     setIsAdChannelFilterOpen(false);
     setSelectedInventoryId('');
-    setCampaignSort('recent');
+    setCampaignSort({ key: 'startDate', direction: 'desc', userSelected: false });
     setCampaignEditorId(null);
     setDateRange(getDefaultDateRange());
     loadInventories();
@@ -461,6 +519,11 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
     setEditingAdUnit(null);
     setShowAdUnitModal(true);
     setError(null);
+  };
+
+  const handleOpenCreateAdUnitFromCampaignEditor = (campaignId) => {
+    handleCloseCampaignEditor();
+    handleOpenCreateAdUnitModal(campaignId);
   };
 
   const handleOpenEditAdUnitModal = (adUnit, campaignId = null) => {
@@ -639,22 +702,62 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
   };
 
   const sortedCampaigns = useMemo(() => {
-    const campaignList = [...campaigns];
+    const directionMultiplier = campaignSort.direction === 'asc' ? 1 : -1;
 
-    switch (campaignSort) {
-      case 'name':
-        return campaignList.sort((a, b) => a.name.localeCompare(b.name));
-      case 'impressions':
-        return campaignList.sort((a, b) => (b.totalImpressions || 0) - (a.totalImpressions || 0));
-      case 'clicks':
-        return campaignList.sort((a, b) => (b.totalClicks || 0) - (a.totalClicks || 0));
-      case 'ctr':
-        return campaignList.sort((a, b) => Number(b.ctr || 0) - Number(a.ctr || 0));
-      case 'recent':
-      default:
-        return campaignList.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-    }
+    const getSortValue = (row, key, isCampaign = false) => {
+      switch (key) {
+        case 'startDate':
+          return parseTableDate(row.startDate, row.endDate);
+        case 'name':
+          return String(row.name || '').toLowerCase();
+        case 'impressions':
+          return getNumericMetric(isCampaign ? row.totalImpressions : row.impressions);
+        case 'impressionsToday':
+          return getNumericMetric(row.impressionsToday);
+        case 'clicks':
+          return getNumericMetric(isCampaign ? row.totalClicks : row.clicks);
+        case 'clicksToday':
+          return getNumericMetric(row.clicksToday);
+        case 'ctr':
+          return getNumericMetric(row.ctr);
+        default:
+          return parseTableDate(row.startDate || row.createdAt, row.endDate);
+      }
+    };
+
+    const compareRows = (a, b, isCampaign = false) => {
+      const aValue = getSortValue(a, campaignSort.key, isCampaign);
+      const bValue = getSortValue(b, campaignSort.key, isCampaign);
+
+      if (campaignSort.key === 'startDate') {
+        if (aValue === null && bValue === null) return 0;
+        if (aValue === null) return 1;
+        if (bValue === null) return -1;
+      }
+
+      if (typeof aValue === 'string' || typeof bValue === 'string') {
+        return String(aValue).localeCompare(String(bValue), undefined, { sensitivity: 'base' }) * directionMultiplier;
+      }
+
+      return ((aValue || 0) - (bValue || 0)) * directionMultiplier;
+    };
+
+    return [...campaigns]
+      .map((campaign) => ({
+        ...campaign,
+        adUnits: [...(Array.isArray(campaign.adUnits) ? campaign.adUnits : [])]
+          .sort((a, b) => compareRows(a, b, false))
+      }))
+      .sort((a, b) => compareRows(a, b, true));
   }, [campaignSort, campaigns]);
+
+  const handleCampaignTableSort = useCallback((key) => {
+    setCampaignSort((prev) => ({
+      key,
+      direction: prev.key === key && prev.userSelected && prev.direction === 'asc' ? 'desc' : 'asc',
+      userSelected: true
+    }));
+  }, []);
 
   const campaignEditorCampaign = useMemo(
     () => campaigns.find((campaign) => campaign._id === campaignEditorId) || null,
@@ -1005,11 +1108,11 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
       {isCampaignView && (
       <div className="main-content campaigns-main-content">
         <div className="campaigns-page">
-          <div className="campaigns-section-panel">
+          <div className="campaigns-section-panel campaigns-section-panel-campaigns">
             <h2>List of Campaign</h2>
             <div className="dashboard-sidebar-filters campaigns-top-filters">
               <div className="dashboard-filter-field">
-                <label htmlFor="campaign-inventory-filter" className="account-list-label">Ad Channel</label>
+                <label htmlFor="campaign-inventory-filter" className="account-list-label">Ad Channel Filter</label>
                 <select
                   id="campaign-inventory-filter"
                   className="account-select dashboard-filter-select"
@@ -1024,21 +1127,6 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
                   ))}
                 </select>
               </div>
-              <div className="dashboard-filter-field">
-                <label htmlFor="campaign-sort" className="account-list-label">Sort Campaigns</label>
-                <select
-                  id="campaign-sort"
-                  className="account-select dashboard-filter-select"
-                  value={campaignSort}
-                  onChange={(e) => setCampaignSort(e.target.value)}
-                >
-                  <option value="recent">Newest First</option>
-                  <option value="name">Name A-Z</option>
-                  <option value="impressions">Most Impressions</option>
-                  <option value="clicks">Most Clicks</option>
-                  <option value="ctr">Highest CTR</option>
-                </select>
-              </div>
             </div>
           </div>
 
@@ -1047,44 +1135,75 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
               <table className="campaign-table">
                 <thead>
                   <tr>
-                    <th aria-label="Select campaign">
-                      <input type="checkbox" disabled />
-                    </th>
-                    <th>ID</th>
-                    <th>Start / End</th>
-                    <th>Name</th>
-                    <th>Impressions</th>
-                    <th>Impressions Today</th>
-                    <th>Clicks</th>
-                    <th>Clicks Today</th>
-                    <th>CTR</th>
+                    {CAMPAIGN_TABLE_SORT_COLUMNS.map((column) => {
+                      const isActiveSort = campaignSort.key === column.key;
+                      return (
+                        <th
+                          key={column.key}
+                          aria-sort={isActiveSort ? (campaignSort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+                        >
+                          <button
+                            type="button"
+                            className={`campaign-table-sort-button ${isActiveSort ? 'is-active' : ''}`}
+                            onClick={() => handleCampaignTableSort(column.key)}
+                          >
+                            <span>{column.label}</span>
+                            <span className="campaign-table-sort-icon" aria-hidden="true">
+                              {isActiveSort ? (campaignSort.direction === 'asc' ? '▲' : '▼') : '↕'}
+                            </span>
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
                   {sortedCampaigns.map((campaign) => (
-                    <tr
-                      key={campaign._id}
-                      className="campaign-table-row"
-                      onClick={() => handleOpenCampaignEditor(campaign)}
-                    >
-                      <td onClick={(event) => event.stopPropagation()}>
-                        <input type="checkbox" aria-label={`Select ${campaign.name}`} />
-                      </td>
-                      <td className="campaign-table-id">{campaign._id?.slice(-6) || '-'}</td>
-                      <td>
-                        <span>{new Date(campaign.startDate).toLocaleDateString()}</span>
-                        <span className="campaign-table-end-date">{new Date(campaign.endDate).toLocaleDateString()}</span>
-                      </td>
-                      <CampaignTableNameCell
-                        campaign={campaign}
-                        onOpen={handleOpenCampaignEditor}
-                      />
-                      <td>{formatNumber(campaign.totalImpressions)}</td>
-                      <td>{formatNumber(campaign.impressionsToday)}</td>
-                      <td>{formatNumber(campaign.totalClicks)}</td>
-                      <td>{formatNumber(campaign.clicksToday)}</td>
-                      <td>{Number(campaign.ctr || 0).toFixed(2)}%</td>
-                    </tr>
+                    <React.Fragment key={campaign._id}>
+                      <tr
+                        className="campaign-table-row campaign-table-campaign-row"
+                        onClick={() => handleOpenCampaignEditor(campaign)}
+                      >
+                        <td>
+                          <span>{formatTableDate(campaign.startDate)}</span>
+                          <span className="campaign-table-end-date">{formatTableDate(campaign.endDate)}</span>
+                        </td>
+                        <CampaignTableNameCell
+                          campaign={campaign}
+                          onOpen={handleOpenCampaignEditor}
+                        />
+                        <td>{formatNumber(campaign.totalImpressions)}</td>
+                        <td>{formatNumber(campaign.impressionsToday)}</td>
+                        <td>{formatNumber(campaign.totalClicks)}</td>
+                        <td>{formatNumber(campaign.clicksToday)}</td>
+                        <td>{Number(campaign.ctr || 0).toFixed(2)}%</td>
+                      </tr>
+                      {(Array.isArray(campaign.adUnits) ? campaign.adUnits : []).map((adUnit) => (
+                        <tr
+                          key={`${campaign._id}-${adUnit._id}`}
+                          className="campaign-table-row campaign-table-adunit-row"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleOpenEditAdUnitModal(adUnit, campaign._id);
+                          }}
+                        >
+                          <td>
+                            <span>{formatTableDate(adUnit.startDate)}</span>
+                            <span className="campaign-table-end-date">{formatTableDate(adUnit.endDate)}</span>
+                          </td>
+                          <AdUnitTableNameCell
+                            adUnit={adUnit}
+                            campaignId={campaign._id}
+                            onOpen={handleOpenEditAdUnitModal}
+                          />
+                          <td>{formatNumber(adUnit.impressions)}</td>
+                          <td>{formatNumber(adUnit.impressionsToday)}</td>
+                          <td>{formatNumber(adUnit.clicks)}</td>
+                          <td>{formatNumber(adUnit.clicksToday)}</td>
+                          <td>{Number(adUnit.ctr || 0).toFixed(2)}%</td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
@@ -1154,18 +1273,24 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
             <div className="ad-units-section campaign-editor-ad-units">
               <div className="ad-units-header">
                 <h3>Ad Units</h3>
+              </div>
+              <div className="form-group form-full-width">
                 <button
+                  type="button"
                   className="btn btn-primary btn-sm new-ad-unit-button"
-                  onClick={() => handleOpenCreateAdUnitModal(campaignEditorCampaign._id)}
+                  onClick={() => handleOpenCreateAdUnitFromCampaignEditor(campaignEditorCampaign._id)}
                 >
                   + New Ad Unit
                 </button>
               </div>
-              <div className="ad-units-grid">
+              <div className="campaign-editor-adunit-list">
                 {(campaignEditorCampaign.adUnits || []).map((adUnit) => (
-                  <div key={adUnit._id} className="ad-unit-card">
-                    <AdUnitChart adUnit={adUnit} />
-                    <div className="ad-unit-actions">
+                  <div key={adUnit._id} className="campaign-editor-adunit-row">
+                    <div className="campaign-editor-adunit-summary">
+                      <strong>{adUnit.name || 'Untitled Ad Unit'}</strong>
+                      <span>{adUnit.status || 'active'}</span>
+                    </div>
+                    <div className="campaign-editor-adunit-actions">
                       <button
                         className={`btn-icon btn-status ${adUnit.status}`}
                         onClick={() => handleToggleAdUnitStatus(adUnit._id, adUnit.status)}
@@ -1204,7 +1329,7 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
               </div>
               {(campaignEditorCampaign.adUnits || []).length === 0 && (
                 <p className="no-data">
-                  No ad units in this campaign. <button className="link-btn" onClick={() => handleOpenCreateAdUnitModal(campaignEditorCampaign._id)}>Create one</button>
+                  No ad units in this campaign. <button className="link-btn" onClick={() => handleOpenCreateAdUnitFromCampaignEditor(campaignEditorCampaign._id)}>Create one</button>
                 </p>
               )}
             </div>
@@ -1233,6 +1358,7 @@ function Dashboard({ view = 'overview', searchQuery = '' }) {
         isOpen={showAdUnitModal}
         title={editingAdUnit ? 'Edit Ad Unit' : 'Create New Ad Unit'}
         onClose={handleCloseAdUnitModal}
+        contentClassName="campaign-editor-modal"
       >
         <AdUnitForm
           adUnit={editingAdUnit}
