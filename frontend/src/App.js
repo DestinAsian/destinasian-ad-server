@@ -10,19 +10,50 @@ import Inventory from "./pages/Inventory";
 import Users from "./pages/Users";
 import TwoFactorSetup from "./pages/TwoFactorSetup";
 
+const pageRoutes = {
+  dashboard: "/dashboard",
+  campaigns: "/campaigns",
+  inventory: "/inventory",
+  users: "/users",
+  accounts: "/accounts",
+};
+
+const routePages = Object.entries(pageRoutes).reduce((acc, [page, path]) => {
+  acc[path] = page;
+  return acc;
+}, { "/": "dashboard" });
+
+const authPages = new Set(["login", "signup", "forgot", "reset"]);
+
+const getPageFromPath = () => {
+  if (typeof window === "undefined") return "login";
+  return routePages[window.location.pathname] || "dashboard";
+};
+
 function App() {
   const { isAuthenticated, loading, ownerExists, user, logout } = useAuth();
-  const [currentPage, setCurrentPage] = useState("login");
+  const [currentPage, setCurrentPage] = useState(() => getPageFromPath());
   const [resetToken, setResetToken] = useState("");
   const [headerSearch, setHeaderSearch] = useState("");
   const [isAdminDropdownOpen, setIsAdminDropdownOpen] = useState(false);
   const adminDropdownRef = useRef(null);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && authPages.has(currentPage)) {
       setCurrentPage("dashboard");
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, currentPage]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setHeaderSearch("");
+      setIsAdminDropdownOpen(false);
+      setCurrentPage(getPageFromPath());
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -99,6 +130,10 @@ function App() {
     setHeaderSearch("");
     setIsAdminDropdownOpen(false);
     setCurrentPage(page);
+    const nextPath = pageRoutes[page];
+    if (nextPath && window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
   };
 
   if (ownerNeedsTwoFactorSetup) {

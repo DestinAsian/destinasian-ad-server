@@ -699,16 +699,6 @@
   font-weight: 500;
 }
 
-.campaign-mapping-section {
-  border: 1px solid #e6e9f0;
-  border-radius: 8px;
-  padding: 12px;
-  background: #fafbfd;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .campaign-mapping-row {
   display: flex;
   flex-direction: column;
@@ -844,6 +834,10 @@
   border-radius: 8px;
 }
 
+.inventory-selector-summary-panel .inventory-selector-toggle {
+  cursor: pointer;
+}
+
 .inventory-selector-title-wrap {
   display: flex;
   flex-direction: column;
@@ -859,16 +853,6 @@
 .inventory-selector-summary {
   font-size: 12px;
   color: #6b7280;
-}
-
-.inventory-selector-icon {
-  font-size: 14px;
-  color: #4b5563;
-}
-
-.inventory-selector-body {
-  border-top: 1px solid #e5e7eb;
-  padding: 10px;
 }
 
 .inventory-selector-search-wrap {
@@ -1850,14 +1834,14 @@
 }
 
 .campaign-editor-modal .modal-body {
-  padding: 16px 18px 18px;
+  padding: 12px 14px 14px;
 }
 
 .campaign-editor-modal .campaign-form,
 .campaign-editor-modal .ad-unit-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 16px;
+  gap: 10px 14px;
 }
 
 .campaign-editor-modal .campaign-form > .form-row,
@@ -1875,23 +1859,17 @@
 }
 
 .campaign-editor-modal .campaign-form textarea {
-  min-height: 84px;
+  min-height: 64px;
   resize: vertical;
 }
 
-.campaign-editor-modal .campaign-mapping-section,
-.campaign-editor-modal .inventory-selector-body {
-  max-height: 220px;
-  overflow-y: auto;
-}
-
 .campaign-editor-modal .image-upload-box {
-  min-height: 150px;
-  padding: 24px 16px;
+  min-height: 120px;
+  padding: 16px 14px;
 }
 
 .campaign-editor-modal .image-preview {
-  max-width: 180px;
+  max-width: 150px;
 }
 
 .campaign-editor-content {
@@ -1906,8 +1884,63 @@
   gap: 10px;
 }
 
-.campaign-editor-ad-units {
-  margin-top: 0;
+.assignment-editor-modal {
+  width: 75vw;
+  max-width: 75vw;
+  max-height: 75vh;
+}
+
+.assignment-editor-modal .modal-body {
+  padding: 14px;
+}
+
+.assignment-popup-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.assignment-popup-list {
+  display: grid;
+  gap: 12px;
+  max-height: none;
+  overflow: visible;
+}
+
+.assignment-popup-list.is-scrollable,
+.campaign-editor-adunit-list.is-scrollable {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.assignment-editor-modal .selectable-checkbox-list {
+  max-height: none;
+  overflow: visible;
+}
+
+.form-popup-summary,
+.campaign-editor-section-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.form-popup-summary span,
+.campaign-editor-section-summary span {
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
+.campaign-editor-section-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .campaign-editor-adunit-list {

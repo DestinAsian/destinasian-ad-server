@@ -1,5 +1,23 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { inventoryAPI } from "../services/api";
+import Modal from "./Modal";
+
+const formatToLocalDateTime = (date) => {
+  if (!date) return "";
+  const parsedDate = date instanceof Date ? date : new Date(date);
+  const year = parsedDate.getFullYear();
+  const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+  const day = String(parsedDate.getDate()).padStart(2, "0");
+  const hours = String(parsedDate.getHours()).padStart(2, "0");
+  const minutes = String(parsedDate.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const getRecommendedStartDate = () => {
+  const recommended = new Date();
+  recommended.setMinutes(recommended.getMinutes() + 5);
+  return formatToLocalDateTime(recommended);
+};
 
 function AdUnitForm({
   adUnit,
@@ -24,22 +42,11 @@ function AdUnitForm({
   const [inventories, setInventories] = useState([]);
   const [inventoryError, setInventoryError] = useState(null);
   const [inventoryLoading, setInventoryLoading] = useState(true);
-  const [isInventoriesExpanded, setIsInventoriesExpanded] = useState(false);
+  const [isInventoriesModalOpen, setIsInventoriesModalOpen] = useState(false);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
 
   useEffect(() => {
-    const formatToLocalDateTime = (isoDate) => {
-      if (!isoDate) return "";
-      const date = new Date(isoDate);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      const hours = String(date.getHours()).padStart(2, "0");
-      const minutes = String(date.getMinutes()).padStart(2, "0");
-      return `${year}-${month}-${day}T${hours}:${minutes}`;
-    };
-
     if (adUnit) {
       const formattedStart = formatToLocalDateTime(adUnit.startDate);
       const multiInventories = Array.isArray(adUnit.inventories)
@@ -66,9 +73,7 @@ function AdUnitForm({
       setInitialStartDateValue(formattedStart);
       setImagePreview(adUnit.imageUrl || null);
     } else {
-      const defaultStartDate = campaign?.startDate
-        ? formatToLocalDateTime(campaign.startDate)
-        : "";
+      const defaultStartDate = getRecommendedStartDate();
       const defaultEndDate = campaign?.endDate
         ? formatToLocalDateTime(campaign.endDate)
         : "";
@@ -84,7 +89,7 @@ function AdUnitForm({
       setInitialStartDateValue(defaultStartDate);
       setImagePreview(null);
     }
-    setIsInventoriesExpanded(false);
+    setIsInventoriesModalOpen(false);
     setInventorySearchQuery("");
     setErrors({});
     setImageError(null);
@@ -106,6 +111,7 @@ function AdUnitForm({
     loadInventories();
   }, []);
 
+  const isEditingAdUnit = Boolean(adUnit);
   const isEditingActiveAdUnit = Boolean(adUnit && adUnit.status === "active");
 
   const validateForm = () => {
@@ -131,15 +137,19 @@ function AdUnitForm({
       newErrors.endDate = "End date and time is required";
     }
 
+    const startDateChanged =
+      isEditingAdUnit &&
+      initialStartDateValue &&
+      formData.startDate !== initialStartDateValue;
+
     if (formData.startDate) {
       const startDateTime = new Date(formData.startDate);
-      if (!isEditingActiveAdUnit && startDateTime < now) {
+      if (!isEditingAdUnit && startDateTime < now) {
         newErrors.startDate = "Start date and time cannot be in the past";
       }
       if (
         isEditingActiveAdUnit &&
-        initialStartDateValue &&
-        formData.startDate !== initialStartDateValue
+        startDateChanged
       ) {
         newErrors.startDate =
           "Active ad units cannot change start date. Pause the ad unit first.";
@@ -148,7 +158,7 @@ function AdUnitForm({
 
     if (formData.endDate) {
       const endDateTime = new Date(formData.endDate);
-      if (!isEditingActiveAdUnit && endDateTime < now) {
+      if (!isEditingAdUnit && endDateTime < now) {
         newErrors.endDate = "End date and time cannot be in the past";
       }
     }
@@ -164,20 +174,12 @@ function AdUnitForm({
 
     if (campaign) {
       const campaignStart = new Date(campaign.startDate);
-      const campaignEnd = new Date(campaign.endDate);
 
       if (formData.startDate) {
         const startDateTime = new Date(formData.startDate);
         if (startDateTime < campaignStart) {
           newErrors.startDate =
             "Start date and time cannot be before campaign start";
-        }
-      }
-
-      if (formData.endDate) {
-        const endDateTime = new Date(formData.endDate);
-        if (endDateTime > campaignEnd) {
-          newErrors.endDate = "End date and time cannot be after campaign end";
         }
       }
     }
@@ -336,7 +338,7 @@ function AdUnitForm({
       };
 
       if (
-        !isEditingActiveAdUnit ||
+        !isEditingAdUnit ||
         formData.startDate !== initialStartDateValue
       ) {
         submitData.startDate = formData.startDate
@@ -347,7 +349,80 @@ function AdUnitForm({
     }
   };
 
+  const inventorySelectorContent = (
+    <div className={`assignment-popup-list ${visibleInventories.length > 20 ? "is-scrollable" : ""}`}>
+      <div className="inventory-selector-search-wrap">
+        <input
+          type="search"
+          className="inventory-selector-search"
+          placeholder="Search ad channels..."
+          value={inventorySearchQuery}
+          onChange={(event) => setInventorySearchQuery(event.target.value)}
+        />
+      </div>
+      {inventoryLoading ? (
+        <p className="inventory-selection-state">
+          Loading ad channels...
+        </p>
+      ) : inventories.length === 0 ? (
+        <p className="inventory-selection-state">
+          No ad channels available.
+        </p>
+      ) : visibleInventories.length === 0 ? (
+        <p className="inventory-selection-state">
+          No Ad Channels found.
+        </p>
+      ) : (
+        <div
+          className="selectable-checkbox-list inventory-checkbox-list"
+          role="group"
+          aria-label="Select ad channels"
+        >
+          {visibleInventories.map((inventory) => {
+            const inventoryId = String(inventory._id);
+            const isSelected =
+              formData.inventoryIds.includes(inventoryId);
+            const checkboxId = `adunit-inventory-${inventoryId}`;
+            const metaItems = [];
+            if (inventory.key) metaItems.push(`Key: ${inventory.key}`);
+            if (inventory.isActive !== undefined)
+              metaItems.push(
+                inventory.isActive ? "Active" : "Inactive",
+              );
+
+            return (
+              <label
+                key={inventoryId}
+                htmlFor={checkboxId}
+                className={`selectable-checkbox-item inventory-checkbox-item ${isSelected ? "selected" : ""}`}
+              >
+                <input
+                  id={checkboxId}
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleInventory(inventoryId)}
+                  disabled={submitting}
+                />
+                <span className="inventory-checkbox-content">
+                  <span className="inventory-checkbox-title">
+                    {inventory.name}
+                  </span>
+                  {metaItems.length > 0 && (
+                    <span className="inventory-checkbox-meta">
+                      {metaItems.join(" • ")}
+                    </span>
+                  )}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   return (
+    <>
     <form onSubmit={handleSubmit} className="ad-unit-form">
       <div className="form-group">
         <label htmlFor="name">Ad Unit Name *</label>
@@ -361,111 +436,6 @@ function AdUnitForm({
           className={errors.name ? "error" : ""}
         />
         {errors.name && <span className="error-message">{errors.name}</span>}
-      </div>
-
-      <div className="form-group">
-        <div
-          className={`inventory-selector-panel ${isInventoriesExpanded ? "is-expanded" : ""}`}
-        >
-          <button
-            type="button"
-            className="inventory-selector-toggle"
-            onClick={() => setIsInventoriesExpanded((prev) => !prev)}
-            aria-expanded={isInventoriesExpanded}
-            aria-controls="adunit-inventory-selector-body"
-          >
-            <span className="inventory-selector-title-wrap">
-              <span className="inventory-selector-title">Ad Channels *</span>
-              <span className="inventory-selector-summary">
-                {inventorySummaryLabel}
-              </span>
-            </span>
-            <span className="inventory-selector-icon" aria-hidden="true">
-              {isInventoriesExpanded ? "▾" : "▸"}
-            </span>
-          </button>
-
-          {isInventoriesExpanded && (
-            <div
-              id="adunit-inventory-selector-body"
-              className="inventory-selector-body"
-            >
-              <div className="inventory-selector-search-wrap">
-                <input
-                  type="search"
-                  className="inventory-selector-search"
-                  placeholder="Search ad channels..."
-                  value={inventorySearchQuery}
-                  onChange={(event) => setInventorySearchQuery(event.target.value)}
-                />
-              </div>
-              {inventoryLoading ? (
-                <p className="inventory-selection-state">
-                  Loading ad channels...
-                </p>
-              ) : inventories.length === 0 ? (
-                <p className="inventory-selection-state">
-                  No ad channels available.
-                </p>
-              ) : visibleInventories.length === 0 ? (
-                <p className="inventory-selection-state">
-                  No Ad Channels found.
-                </p>
-              ) : (
-                <div
-                  className="selectable-checkbox-list inventory-checkbox-list"
-                  role="group"
-                  aria-label="Select ad channels"
-                >
-                  {visibleInventories.map((inventory) => {
-                    const inventoryId = String(inventory._id);
-                    const isSelected =
-                      formData.inventoryIds.includes(inventoryId);
-                    const checkboxId = `adunit-inventory-${inventoryId}`;
-                    const metaItems = [];
-                    if (inventory.key) metaItems.push(`Key: ${inventory.key}`);
-                    if (inventory.isActive !== undefined)
-                      metaItems.push(
-                        inventory.isActive ? "Active" : "Inactive",
-                      );
-
-                    return (
-                      <label
-                        key={inventoryId}
-                        htmlFor={checkboxId}
-                        className={`selectable-checkbox-item inventory-checkbox-item ${isSelected ? "selected" : ""}`}
-                      >
-                        <input
-                          id={checkboxId}
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleInventory(inventoryId)}
-                          disabled={submitting}
-                        />
-                        <span className="inventory-checkbox-content">
-                          <span className="inventory-checkbox-title">
-                            {inventory.name}
-                          </span>
-                          {metaItems.length > 0 && (
-                            <span className="inventory-checkbox-meta">
-                              {metaItems.join(" • ")}
-                            </span>
-                          )}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        {inventoryError && (
-          <span className="error-message">{inventoryError}</span>
-        )}
-        {errors.inventoryIds && (
-          <span className="error-message">{errors.inventoryIds}</span>
-        )}
       </div>
 
       <div className="form-row">
@@ -557,6 +527,30 @@ function AdUnitForm({
         </div>
       </div>
 
+      <div className="form-group form-full-width">
+        <div className="inventory-selector-panel inventory-selector-summary-panel">
+          <button
+            type="button"
+            className="inventory-selector-toggle"
+            onClick={() => setIsInventoriesModalOpen(true)}
+          >
+            <span className="inventory-selector-title-wrap">
+              <span className="inventory-selector-title">Ad Channels *</span>
+              <span className="inventory-selector-summary">
+                {inventorySummaryLabel}
+              </span>
+            </span>
+            <span className="btn btn-secondary btn-sm">Manage</span>
+          </button>
+        </div>
+        {inventoryError && (
+          <span className="error-message">{inventoryError}</span>
+        )}
+        {errors.inventoryIds && (
+          <span className="error-message">{errors.inventoryIds}</span>
+        )}
+      </div>
+
       <div className="form-actions">
         <button type="submit" className="btn btn-primary" disabled={submitting}>
           {submitting
@@ -575,6 +569,26 @@ function AdUnitForm({
         </button>
       </div>
     </form>
+    <Modal
+      isOpen={isInventoriesModalOpen}
+      title="Ad Channel Assignments"
+      onClose={() => setIsInventoriesModalOpen(false)}
+      contentClassName="assignment-editor-modal"
+    >
+      <div className="assignment-popup-content">
+        {inventorySelectorContent}
+        <div className="form-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setIsInventoriesModalOpen(false)}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </Modal>
+    </>
   );
 }
 

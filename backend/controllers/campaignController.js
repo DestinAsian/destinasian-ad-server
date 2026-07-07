@@ -110,12 +110,16 @@ const normalizeAdUnitInventoryIds = (adUnit) => {
 const validateCampaignCreateDates = (payload = {}) => {
   const startDate = parseDateInput(payload.startDate);
   const endDate = parseDateInput(payload.endDate);
+  const now = new Date();
 
   if (!startDate.provided || !startDate.value) {
     return { valid: false, statusCode: 400, error: 'Start date is required' };
   }
   if (!endDate.provided || !endDate.value) {
     return { valid: false, statusCode: 400, error: 'End date is required' };
+  }
+  if (startDate.value.getTime() < now.getTime()) {
+    return { valid: false, statusCode: 400, error: 'Start date cannot be in the past for new campaigns' };
   }
   if (endDate.value <= startDate.value) {
     return { valid: false, statusCode: 400, error: 'End date must be after start date' };
@@ -584,6 +588,18 @@ exports.updateCampaign = async (req, res) => {
     const dateValidation = validateCampaignUpdateDates({ payload: req.body, campaign });
     if (!dateValidation.valid) {
       return res.status(dateValidation.statusCode).json({ error: dateValidation.error });
+    }
+
+    const latestAdUnit = await AdUnit.findOne({
+      account: req.user.accountId,
+      campaign: campaign._id,
+      endDate: { $gt: dateValidation.endDate }
+    }).sort({ endDate: -1 }).select('endDate');
+
+    if (latestAdUnit) {
+      return res.status(400).json({
+        error: 'Campaign end date cannot be earlier than an existing ad unit end date'
+      });
     }
 
     const updatePayload = { ...req.body };

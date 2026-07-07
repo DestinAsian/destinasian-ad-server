@@ -78,6 +78,15 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ad-server')
 
 const PORT = process.env.PORT || 5001;
 const HOST = process.env.HOST || '0.0.0.0';
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`Ad Server backend running on ${HOST}:${PORT}`);
+});
+
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Stop the existing backend process or set PORT to another value.`);
+    process.exit(1);
+  }
+
+  throw error;
 });

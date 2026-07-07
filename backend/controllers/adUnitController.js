@@ -220,6 +220,7 @@ const calculateAdUnitStats = async (adUnitId) => {
 const validateDateWindowForCreate = (payload = {}) => {
   const startDate = parseDateInput(payload.startDate);
   const endDate = parseDateInput(payload.endDate);
+  const now = new Date();
 
   if (!startDate.provided || !startDate.value) {
     return { valid: false, statusCode: 400, error: 'Start date is required' };
@@ -227,6 +228,10 @@ const validateDateWindowForCreate = (payload = {}) => {
 
   if (!endDate.provided || !endDate.value) {
     return { valid: false, statusCode: 400, error: 'End date is required' };
+  }
+
+  if (startDate.value.getTime() < now.getTime()) {
+    return { valid: false, statusCode: 400, error: 'Start date cannot be in the past for new ad units' };
   }
 
   if (endDate.value <= startDate.value) {
@@ -458,6 +463,23 @@ exports.updateAdUnit = async (req, res) => {
       if (nextCampaignDoc.account.toString() !== req.user.accountId) {
         return res.status(403).json({ error: 'Not authorized to use this campaign' });
       }
+    }
+
+    const parentCampaignDoc = nextCampaignDoc || await Campaign.findById(adUnit.campaign);
+    if (!parentCampaignDoc) {
+      return res.status(404).json({ error: 'Parent campaign not found' });
+    }
+
+    if (parentCampaignDoc.account.toString() !== req.user.accountId) {
+      return res.status(403).json({ error: 'Not authorized to update parent campaign' });
+    }
+
+    if (
+      parentCampaignDoc.endDate &&
+      new Date(dateValidation.endDate).getTime() > new Date(parentCampaignDoc.endDate).getTime()
+    ) {
+      parentCampaignDoc.endDate = dateValidation.endDate;
+      await parentCampaignDoc.save();
     }
 
     updatePayload.startDate = dateValidation.startDate;

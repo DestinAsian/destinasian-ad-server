@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { campaignAPI, inventoryAPI } from '../services/api';
+import Modal from './Modal';
 
 const getInventoryId = (inventory) => {
   if (!inventory) return null;
@@ -34,6 +35,23 @@ const normalizeMappings = (mappings = []) => mappings.map((mapping) => ({
     : []
 })).filter((mapping) => mapping.adUnitId);
 
+const formatToLocalDateTime = (date) => {
+  if (!date) return '';
+  const parsedDate = date instanceof Date ? date : new Date(date);
+  const year = parsedDate.getFullYear();
+  const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+  const day = String(parsedDate.getDate()).padStart(2, '0');
+  const hours = String(parsedDate.getHours()).padStart(2, '0');
+  const minutes = String(parsedDate.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const getRecommendedStartDate = () => {
+  const recommended = new Date();
+  recommended.setMinutes(recommended.getMinutes() + 5);
+  return formatToLocalDateTime(recommended);
+};
+
 function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -47,21 +65,17 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
   const [mappingRows, setMappingRows] = useState([]);
   const [mappingError, setMappingError] = useState(null);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
+  const [isAssignmentsModalOpen, setIsAssignmentsModalOpen] = useState(false);
 
+  const isEditingCampaign = Boolean(campaign);
   const isEditingActiveCampaign = Boolean(campaign && campaign.status === 'active');
+  const assignmentOptionCount = mappingRows.length * Math.max(inventories.length, 1);
+  const assignedAdUnitCount = mappingRows.filter((row) => (inventoryMappings[row.adUnitId] || []).length > 0).length;
+  const assignmentSummary = mappingRows.length > 0
+    ? `${assignedAdUnitCount} of ${mappingRows.length} ad units assigned`
+    : 'No ad units to assign';
 
   useEffect(() => {
-    const formatToLocalDateTime = (isoDate) => {
-      if (!isoDate) return '';
-      const date = new Date(isoDate);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `${year}-${month}-${day}T${hours}:${minutes}`;
-    };
-
     if (campaign) {
       const formattedStart = formatToLocalDateTime(campaign.startDate);
       setFormData({
@@ -75,7 +89,7 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
       setFormData({
         name: '',
         description: '',
-        startDate: '',
+        startDate: getRecommendedStartDate(),
         endDate: ''
       });
       setInitialStartDateValue("");
@@ -155,19 +169,21 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
     if (!formData.startDate) newErrors.startDate = 'Start date and time is required';
     if (!formData.endDate) newErrors.endDate = 'End date and time is required';
 
+    const startDateChanged = isEditingCampaign && initialStartDateValue && formData.startDate !== initialStartDateValue;
+
     if (formData.startDate) {
       const startDateTime = new Date(formData.startDate);
-      if (!isEditingActiveCampaign && startDateTime < now) {
+      if (!isEditingCampaign && startDateTime < now) {
         newErrors.startDate = 'Start date and time cannot be in the past';
       }
-      if (isEditingActiveCampaign && initialStartDateValue && formData.startDate !== initialStartDateValue) {
+      if (isEditingActiveCampaign && startDateChanged) {
           newErrors.startDate = 'Active campaigns cannot change start date. Pause the campaign first.';
       }
     }
 
     if (formData.endDate) {
       const endDateTime = new Date(formData.endDate);
-      if (!isEditingActiveCampaign && endDateTime < now) {
+      if (!isEditingCampaign && endDateTime < now) {
         newErrors.endDate = 'End date and time cannot be in the past';
       }
     }
@@ -245,7 +261,7 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
         adUnitInventoryMappings: mappings
       };
 
-      if (!isEditingActiveCampaign || formData.startDate !== initialStartDateValue) {
+      if (!isEditingCampaign || formData.startDate !== initialStartDateValue) {
         submitData.startDate = formData.startDate ? new Date(formData.startDate).toISOString() : '';
       }
 
@@ -253,7 +269,37 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
     }
   };
 
+  const assignmentContent = (
+    <div className={`assignment-popup-list ${assignmentOptionCount > 20 ? 'is-scrollable' : ''}`}>
+      {mappingError && <span className="error-message">{mappingError}</span>}
+      {!mappingError && mappingRows.length === 0 && (
+        <p className="no-data">No ad units in this campaign yet.</p>
+      )}
+      {mappingRows.map((row) => (
+        <div key={row.adUnitId} className="campaign-mapping-row">
+          <div className="campaign-mapping-title">{row.adUnitName}</div>
+          <div className="inventory-mapping-grid">
+            {inventories.map((inventory) => {
+              const checked = (inventoryMappings[row.adUnitId] || []).includes(inventory._id);
+              return (
+                <label key={`${row.adUnitId}-${inventory._id}`} className={`inventory-mapping-pill ${checked ? 'selected' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleInventoryMapping(row.adUnitId, inventory._id)}
+                  />
+                  <span>{inventory.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
+    <>
     <form className="campaign-form" onSubmit={handleSubmit}>
       <div className="form-group">
         <label htmlFor="name">Campaign Name *</label>
@@ -314,31 +360,15 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
       {campaign && (
         <div className="form-group form-full-width">
           <label>Ad Unit Ad Channel Assignments</label>
-          <div className="campaign-mapping-section">
-            {mappingError && <span className="error-message">{mappingError}</span>}
-            {!mappingError && mappingRows.length === 0 && (
-              <p className="no-data">No ad units in this campaign yet.</p>
-            )}
-            {mappingRows.map((row) => (
-              <div key={row.adUnitId} className="campaign-mapping-row">
-                <div className="campaign-mapping-title">{row.adUnitName}</div>
-                <div className="inventory-mapping-grid">
-                  {inventories.map((inventory) => {
-                    const checked = (inventoryMappings[row.adUnitId] || []).includes(inventory._id);
-                    return (
-                      <label key={`${row.adUnitId}-${inventory._id}`} className={`inventory-mapping-pill ${checked ? 'selected' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleInventoryMapping(row.adUnitId, inventory._id)}
-                        />
-                        <span>{inventory.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+          <div className="form-popup-summary">
+            <span>{assignmentSummary}</span>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setIsAssignmentsModalOpen(true)}
+            >
+              Manage Assignments
+            </button>
           </div>
           {errors.adUnitInventoryMappings && <span className="error-message">{errors.adUnitInventoryMappings}</span>}
         </div>
@@ -353,6 +383,26 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
         </button>
       </div>
     </form>
+    <Modal
+      isOpen={isAssignmentsModalOpen}
+      title="Ad Unit Ad Channel Assignments"
+      onClose={() => setIsAssignmentsModalOpen(false)}
+      contentClassName="assignment-editor-modal"
+    >
+      <div className="assignment-popup-content">
+        {assignmentContent}
+        <div className="form-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setIsAssignmentsModalOpen(false)}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </Modal>
+    </>
   );
 }
 
