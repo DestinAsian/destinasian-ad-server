@@ -56,6 +56,21 @@ const toObjectId = (value) => {
   return new mongoose.Types.ObjectId(normalized);
 };
 
+const buildAdUnitAssignmentUpdate = (adUnit) => {
+  const update = {
+    inventory: adUnit.inventory,
+    inventories: adUnit.inventories
+  };
+
+  ['sourceCode', 'inventoryCode', 'campaignCode', 'adUnitCode', 'crmAdId'].forEach((field) => {
+    if (adUnit[field] !== undefined) {
+      update[field] = adUnit[field];
+    }
+  });
+
+  return update;
+};
+
 const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) => {
   const inventoryObjectId = toObjectId(inventoryId);
   if (!inventoryObjectId) {
@@ -79,7 +94,7 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
     ? await AdUnit.find({
         _id: { $in: selectedObjectIds },
         account: accountId
-      }).select('_id inventory inventories')
+      }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode')
     : [];
 
   if (selectedAdUnits.length !== selectedObjectIds.length) {
@@ -96,7 +111,7 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
       { inventory: inventoryObjectId },
       { inventories: inventoryObjectId }
     ]
-  }).select('_id inventory inventories');
+  }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode');
 
   for (const adUnit of linkedAdUnits) {
     const adUnitId = String(adUnit._id);
@@ -132,18 +147,24 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
       throw error;
     }
 
+    const previousInventoryId = adUnit.inventory;
     adUnit.inventories = remainingInventories;
     adUnit.inventory = remainingInventories[0] || null;
-    if (adUnit.inventory) {
-      await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId: inventoryObjectId });
+    const primaryInventoryChanged = String(previousInventoryId || '') !== String(adUnit.inventory || '');
+    if (adUnit.inventory && primaryInventoryChanged) {
+      await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId });
     }
-    await adUnit.save();
+    await AdUnit.updateOne(
+      { _id: adUnit._id, account: accountId },
+      { $set: buildAdUnitAssignmentUpdate(adUnit) }
+    );
   }
 
   for (const adUnit of selectedAdUnits) {
     const existingInventoryIds = (Array.isArray(adUnit.inventories) ? adUnit.inventories : [])
       .map((entry) => String(entry));
 
+    const previousInventoryId = adUnit.inventory;
     if (!existingInventoryIds.includes(String(inventoryObjectId))) {
       adUnit.inventories = [
         ...((Array.isArray(adUnit.inventories) ? adUnit.inventories : [])),
@@ -155,8 +176,14 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
       adUnit.inventory = inventoryObjectId;
     }
 
-    await assignCrmAdIdToAdUnit(adUnit);
-    await adUnit.save();
+    const primaryInventoryChanged = String(previousInventoryId || '') !== String(adUnit.inventory || '');
+    if (primaryInventoryChanged || !adUnit.crmAdId) {
+      await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId });
+    }
+    await AdUnit.updateOne(
+      { _id: adUnit._id, account: accountId },
+      { $set: buildAdUnitAssignmentUpdate(adUnit) }
+    );
   }
 };
 
