@@ -777,7 +777,7 @@ function Inventory({ searchQuery = "" }) {
             aria-expanded={isAdChannelsExpanded}
             onClick={() => setIsAdChannelsExpanded((prev) => !prev)}
           >
-            <h3>Ad Channels</h3>
+            <h3>List of Ad Channel</h3>
             <span className="ad-unit-cms-toggle-icon" aria-hidden="true">
               {isAdChannelsExpanded ? "▾" : "▸"}
             </span>

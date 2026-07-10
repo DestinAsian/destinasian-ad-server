@@ -39,6 +39,7 @@ function AdUnitForm({
   const [errors, setErrors] = useState({});
   const [imagePreview, setImagePreview] = useState(null);
   const [imageError, setImageError] = useState(null);
+  const [isImageDragActive, setIsImageDragActive] = useState(false);
   const [inventories, setInventories] = useState([]);
   const [inventoryError, setInventoryError] = useState(null);
   const [inventoryLoading, setInventoryLoading] = useState(true);
@@ -255,8 +256,7 @@ function AdUnitForm({
     );
   }, [inventories, normalizedInventorySearch]);
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
+  const processImageFile = (file, resetInput) => {
     setImageError(null);
 
     if (!file) return;
@@ -265,12 +265,13 @@ function AdUnitForm({
     if (file.size > maxFileSize) {
       const fileSizeMB = (file.size / 1048576).toFixed(1);
       setImageError(`Image must be under 1MB. Your file is ${fileSizeMB}MB.`);
-      e.target.value = "";
+      if (resetInput) resetInput();
       return;
     }
 
     if (!file.type.startsWith("image/")) {
       setImageError("Please upload an image file");
+      if (resetInput) resetInput();
       return;
     }
 
@@ -295,20 +296,46 @@ function AdUnitForm({
           setImageError(
             `Image must be 1:1 (square). Your image is ${img.width}x${img.height}. Please crop it to a square.`,
           );
-          e.target.value = "";
+          if (resetInput) resetInput();
         }
       };
       img.onerror = () => {
         setImageError("Failed to load image. Please try another image.");
-        e.target.value = "";
+        if (resetInput) resetInput();
       };
       img.src = event.target.result;
     };
     reader.onerror = () => {
       setImageError("Failed to read image file");
-      e.target.value = "";
+      if (resetInput) resetInput();
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleImageUpload = (e) => {
+    processImageFile(e.target.files[0], () => {
+      e.target.value = "";
+    });
+  };
+
+  const handleImageDragOver = (event) => {
+    event.preventDefault();
+    if (!submitting) {
+      setIsImageDragActive(true);
+    }
+  };
+
+  const handleImageDragLeave = () => {
+    setIsImageDragActive(false);
+  };
+
+  const handleImageDrop = (event) => {
+    event.preventDefault();
+    setIsImageDragActive(false);
+
+    if (submitting) return;
+
+    processImageFile(event.dataTransfer.files[0]);
   };
 
   const removeImage = () => {
@@ -489,9 +516,15 @@ function AdUnitForm({
                 </button>
               </div>
             ) : (
-              <label htmlFor="image" className="image-upload-box">
+              <label
+                htmlFor="image"
+                className={`image-upload-box${isImageDragActive ? " is-drag-active" : ""}`}
+                onDragOver={handleImageDragOver}
+                onDragLeave={handleImageDragLeave}
+                onDrop={handleImageDrop}
+              >
                 <div className="upload-icon">📸</div>
-                <div className="upload-text">Click to upload 1:1 image</div>
+                <div className="upload-text">Drag and drop image here, or click to upload</div>
                 <div className="upload-hint">PNG, JPG up to 1MB</div>
               </label>
             )}

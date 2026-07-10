@@ -1017,6 +1017,11 @@
   background-color: #f0f7ff;
 }
 
+.image-upload-box.is-drag-active {
+  border-color: #007bff;
+  background-color: #eef6ff;
+}
+
 .upload-icon {
   font-size: 40px;
   margin-bottom: 10px;
@@ -1497,6 +1502,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
   gap: 14px;
+  width: 100%;
 }
 
 .dashboard-filter-field {
@@ -2672,6 +2678,11 @@
 .image-upload-box:hover {
   border-color: rgba(124, 170, 184, 0.7);
   background: rgba(238, 245, 246, 0.88);
+}
+
+.image-upload-box.is-drag-active {
+  border-color: rgba(124, 170, 184, 0.9);
+  background: rgba(229, 242, 244, 0.95);
 }
 
 .upload-text {

@@ -1076,8 +1076,13 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         className={`dashboard-header${isCampaignView ? " campaigns-header-row" : ""}`}
       >
         <div>
-          <h1>{isCampaignView ? "List of Campaign" : "Dashboard"}</h1>
-          {!isCampaignView && (
+          <h1>{isCampaignView ? "List of Campaign" : "Overview"}</h1>
+          {!isCampaignView ? (
+            <p className="dashboard-header-copy">
+              Check performance, narrow the date range, and keep campaign
+              browsing straightforward.
+            </p>
+          ) : (
             <p className="dashboard-header-copy">
               Overview of delivery, engagement, and account-level performance.
             </p>
@@ -1115,28 +1120,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             <AccountSelector />
           </div>
         ) : (
-          <div className="dashboard-header-actions">
-            <AccountSelector />
-          </div>
-        )}
-      </header>
-
-      {successMessage && (
-        <div className="alert alert-success">{successMessage}</div>
-      )}
-
-      {error && <div className="alert alert-error">{error}</div>}
-
-      {isOverviewView && (
-        <section className="dashboard-overview">
-          <div className="dashboard-overview-header">
-            <div>
-              <h2>Overview</h2>
-              <p>
-                Check performance, narrow the date range, and keep campaign
-                browsing straightforward.
-              </p>
-            </div>
+          <>
             <div className="dashboard-filter-grid">
               <div className="dashboard-filter-field">
                 <label
@@ -1353,8 +1337,21 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 </small>
               </div>
             </div>
-          </div>
+            <div className="dashboard-header-actions">
+              <AccountSelector />
+            </div>
+          </>
+        )}
+      </header>
 
+      {successMessage && (
+        <div className="alert alert-success">{successMessage}</div>
+      )}
+
+      {error && <div className="alert alert-error">{error}</div>}
+
+      {isOverviewView && (
+        <section className="dashboard-overview">
           {hasSearchNoDashboardData && (
             <p className="no-data">No dashboard data found for this search.</p>
           )}
@@ -1645,24 +1642,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 submitting={submitting}
                 onSubmit={handleSubmitCampaign}
                 onCancel={handleCloseCampaignEditor}
+                onManageAdUnits={() => setIsCampaignAdUnitsModalOpen(true)}
               />
-
-              <div className="campaign-editor-section-summary">
-                <div>
-                  <strong>Ad Units</strong>
-                  <span>
-                    {(campaignEditorCampaign.adUnits || []).length} ad units in
-                    this campaign
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setIsCampaignAdUnitsModalOpen(true)}
-                >
-                  Manage Ad Units
-                </button>
-              </div>
             </div>
           )}
         </Modal>

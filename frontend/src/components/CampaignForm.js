@@ -52,7 +52,7 @@ const getRecommendedStartDate = () => {
   return formatToLocalDateTime(recommended);
 };
 
-function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
+function CampaignForm({ campaign, onSubmit, onCancel, onManageAdUnits, submitting = false }) {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -358,6 +358,24 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
       </div>
 
       {campaign && (
+        <>
+        <div className="campaign-editor-section-summary form-full-width">
+          <div>
+            <strong>Ad Units</strong>
+            <span>
+              {(campaign.adUnits || []).length} ad units in this campaign
+            </span>
+          </div>
+          {onManageAdUnits && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onManageAdUnits}
+            >
+              Manage Ad Units
+            </button>
+          )}
+        </div>
         <div className="form-group form-full-width">
           <label>Ad Unit Ad Channel Assignments</label>
           <div className="form-popup-summary">
@@ -372,6 +390,7 @@ function CampaignForm({ campaign, onSubmit, onCancel, submitting = false }) {
           </div>
           {errors.adUnitInventoryMappings && <span className="error-message">{errors.adUnitInventoryMappings}</span>}
         </div>
+        </>
       )}
 
       <div className="form-actions">
