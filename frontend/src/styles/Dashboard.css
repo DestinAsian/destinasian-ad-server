@@ -1883,8 +1883,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 58px;
-  height: 42px;
+  width: 75px;
+  height: 75px;
   border: 1px dashed var(--line-soft);
   border-radius: 8px;
   color: var(--ink-muted);
@@ -2010,6 +2010,7 @@
 .form-popup-summary,
 .campaign-editor-section-summary {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -2017,6 +2018,10 @@
   border: 1px solid #d1d5db;
   border-radius: 8px;
   background: #fff;
+}
+
+.form-popup-summary > div {
+  width: 50%;
 }
 
 .form-popup-summary span,
@@ -2029,6 +2034,7 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+  width: 50%;
 }
 
 .campaign-editor-adunit-list {
