@@ -2,7 +2,6 @@ const User = require('../models/User');
 const Account = require('../models/Account');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const mongoose = require('mongoose');
 const {
   generateTwoFactorSecret,
   verifyTotpToken,
@@ -164,7 +163,8 @@ exports.getSetupStatus = async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
-  const session = await mongoose.startSession();
+  let user;
+  let account;
   try {
     const { name, email, password, passwordConfirm, accountName } = req.body;
     const normalizedEmail = normalizeEmail(email);
@@ -207,34 +207,22 @@ exports.register = async (req, res) => {
       });
     }
 
-    let user;
-    let account;
-    await session.withTransaction(async () => {
-      const users = await User.create(
-        [{
-          name,
-          email: normalizedEmail,
-          password,
-          role: 'owner',
-          twoFactorEnabled: false
-        }],
-        { session }
-      );
-      user = users[0];
-
-      const accounts = await Account.create(
-        [{
-          name: accountName || `${name}'s Account`,
-          owner: user._id,
-          email: normalizedEmail
-        }],
-        { session }
-      );
-      account = accounts[0];
-
-      user.accounts.push(account._id);
-      await user.save({ session });
+    user = await User.create({
+      name,
+      email: normalizedEmail,
+      password,
+      role: 'owner',
+      twoFactorEnabled: false
     });
+
+    account = await Account.create({
+      name: accountName || `${name}'s Account`,
+      owner: user._id,
+      email: normalizedEmail
+    });
+
+    user.accounts.push(account._id);
+    await user.save();
 
     const token = generateOwnerSetupToken(user._id, account._id, user.tokenVersion);
     res.status(201).json(buildAuthResponse({
@@ -260,12 +248,17 @@ exports.register = async (req, res) => {
       }
     }
 
+    if (account?._id) {
+      await Account.deleteOne({ _id: account._id }).catch(() => {});
+    }
+    if (user?._id) {
+      await User.deleteOne({ _id: user._id }).catch(() => {});
+    }
+
     res.status(500).json({
       success: false,
       message: error.message || 'Server error during registration'
     });
-  } finally {
-    await session.endSession();
   }
 };
 
