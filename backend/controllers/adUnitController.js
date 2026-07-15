@@ -622,7 +622,7 @@ exports.getAdUnitByCampaign = async (req, res) => {
  */
 exports.serveAd = async (req, res) => {
   try {
-    const { inventory, adCode } = req.query;
+    const { inventory, adCode, exclude } = req.query;
 
     if (!inventory && !adCode) {
       return res.status(400).json({ error: 'inventory or adCode is required' });
@@ -664,7 +664,19 @@ exports.serveAd = async (req, res) => {
 
       const candidates = await AdUnit.find(adQuery).populate('campaign');
       if (candidates.length > 0) {
-        adUnit = candidates[Math.floor(Math.random() * candidates.length)];
+        const excludedAdCodes = new Set(
+          (Array.isArray(exclude) ? exclude.join(',') : String(exclude || ''))
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean)
+        );
+        const availableCandidates =
+          excludedAdCodes.size > 0 && candidates.length > 1
+            ? candidates.filter((candidate) => !excludedAdCodes.has(candidate.adCode))
+            : candidates;
+        const candidatePool = availableCandidates.length > 0 ? availableCandidates : candidates;
+
+        adUnit = candidatePool[Math.floor(Math.random() * candidatePool.length)];
       }
     }
 

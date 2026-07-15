@@ -89,6 +89,8 @@
 
   const API_BASE = resolveApiBase();
   const ads = {};
+  const usedAdCodesByInventory = {};
+  const loadQueuesByInventory = {};
 
   function setContainerStyles(container, width) {
     container.style.width = width;
@@ -314,25 +316,23 @@
     };
   }
 
-  async function loadAd(containerId) {
-    const container = root.document.getElementById(containerId);
-    if (!container) {
-      console.error(`[AdServer] Container #${containerId} not found`);
-      return;
-    }
-
-    const adCode = container.dataset.adCode;
-    const inventory = container.dataset.inventory;
-    const width = container.dataset.width || '100%';
-
-    if (!adCode && !inventory) {
-      console.error('[AdServer] data-ad-code or data-inventory attribute required');
-      return;
-    }
-
+  async function loadAdIntoContainer(container, options) {
+    const { adCode, inventory, width, containerId } = options;
     try {
-      const query = adCode ? `adCode=${encodeURIComponent(adCode)}` : `inventory=${encodeURIComponent(inventory)}`;
-      const response = await root.fetch(`${API_BASE}/serve?${query}`);
+      const queryParams = new URLSearchParams();
+
+      if (adCode) {
+        queryParams.set('adCode', adCode);
+      } else {
+        queryParams.set('inventory', inventory);
+
+        const usedAdCodes = Array.from(usedAdCodesByInventory[inventory] || []);
+        if (usedAdCodes.length > 0) {
+          queryParams.set('exclude', usedAdCodes.join(','));
+        }
+      }
+
+      const response = await root.fetch(`${API_BASE}/serve?${queryParams.toString()}`);
       if (!response.ok) {
         console.error('[AdServer] Ad server response error');
         return;
@@ -386,11 +386,57 @@
       }
 
       ads[containerId] = adUnit;
+      if (inventory && adUnit.adCode) {
+        usedAdCodesByInventory[inventory] = usedAdCodesByInventory[inventory] || new Set();
+        usedAdCodesByInventory[inventory].add(adUnit.adCode);
+      }
 
       console.log(`[AdServer] Ad loaded: ${adUnit.name}`);
     } catch (error) {
       console.error('[AdServer] Error loading ad:', error);
     }
+  }
+
+  async function loadAd(containerId) {
+    const container = root.document.getElementById(containerId);
+    if (!container) {
+      console.error(`[AdServer] Container #${containerId} not found`);
+      return;
+    }
+
+    const adCode = container.dataset.adCode;
+    const inventory = container.dataset.inventory;
+    const width = container.dataset.width || '100%';
+
+    if (!adCode && !inventory) {
+      console.error('[AdServer] data-ad-code or data-inventory attribute required');
+      return;
+    }
+
+    const loadOptions = {
+      adCode,
+      inventory,
+      width,
+      containerId
+    };
+
+    if (inventory && !adCode) {
+      const previousLoad = loadQueuesByInventory[inventory] || Promise.resolve();
+      const nextLoad = previousLoad
+        .catch(() => {})
+        .then(() => loadAdIntoContainer(container, loadOptions));
+      const queuedLoad = nextLoad.finally(() => {
+        if (loadQueuesByInventory[inventory] === queuedLoad) {
+          delete loadQueuesByInventory[inventory];
+        }
+      });
+
+      loadQueuesByInventory[inventory] = queuedLoad;
+
+      return queuedLoad;
+    }
+
+    return loadAdIntoContainer(container, loadOptions);
   }
 
   async function recordImpression(adCode) {
