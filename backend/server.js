@@ -20,8 +20,8 @@ app.use(cors({
   credentials: false
 }));
 
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ limit: '15mb', extended: true }));
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
 app.get('/ad-client.js', (req, res) => {
   res.sendFile(path.resolve(__dirname, '..', 'ad-client.js'));
@@ -64,6 +64,16 @@ app.get('/', (req, res) => {
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'Ad Server is running' });
+});
+
+app.use((error, req, res, next) => {
+  if (error?.type === 'entity.too.large') {
+    return res.status(413).json({
+      error: 'Upload payload is too large. GIF files must be 10MB or smaller; PNG, JPG, JPEG, and WebP files must be 1MB or smaller.'
+    });
+  }
+
+  return next(error);
 });
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ad-server')
