@@ -474,7 +474,7 @@
 .inventory-adunit-list {
   border: 1px solid #d1d5db;
   border-radius: 8px;
-  max-height: 220px;
+  max-height: min(75vh, 780px);
   overflow: auto;
   padding: 8px;
   display: grid;

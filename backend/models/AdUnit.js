@@ -1,5 +1,27 @@
 const mongoose = require('mongoose');
 
+const STATIC_IMAGE_MAX_BYTES = 1 * 1024 * 1024;
+const GIF_MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+const getImageDataUrlMeta = (value) => {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^data:([^;,]+);base64,(.*)$/i);
+  if (!match) return null;
+  return {
+    mimeType: match[1].toLowerCase(),
+    base64Data: match[2]
+  };
+};
+
+const getBase64ByteLength = (base64Data = '') => {
+  try {
+    return Buffer.byteLength(base64Data, 'base64');
+  } catch (error) {
+    return null;
+  }
+};
+
 const adUnitSchema = new mongoose.Schema(
   {
     user: {
@@ -116,6 +138,28 @@ const adUnitSchema = new mongoose.Schema(
 adUnitSchema.pre('validate', function(next) {
   if (!this.imageUrl && !this.htmlCreative && !this.iframeUrl) {
     this.invalidate('imageUrl', 'At least one creative is required');
+  }
+
+  if (this.imageUrl) {
+    const imageMeta = getImageDataUrlMeta(this.imageUrl);
+    if (!imageMeta && this.imageUrl.startsWith('data:')) {
+      this.invalidate('imageUrl', 'Only PNG, JPG, JPEG, WebP, and GIF files are allowed.');
+    } else if (imageMeta) {
+      if (!ALLOWED_IMAGE_TYPES.includes(imageMeta.mimeType)) {
+        this.invalidate('imageUrl', 'Only PNG, JPG, JPEG, WebP, and GIF files are allowed.');
+      } else {
+        const byteLength = getBase64ByteLength(imageMeta.base64Data);
+        const maxBytes = imageMeta.mimeType === 'image/gif' ? GIF_MAX_BYTES : STATIC_IMAGE_MAX_BYTES;
+        if (byteLength === null || byteLength > maxBytes) {
+          this.invalidate(
+            'imageUrl',
+            imageMeta.mimeType === 'image/gif'
+              ? 'GIF files must be 10MB or smaller.'
+              : 'PNG, JPG, JPEG, and WebP files must be 1MB or smaller.'
+          );
+        }
+      }
+    }
   }
 
   if (Array.isArray(this.inventories) && this.inventories.length > 0) {

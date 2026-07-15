@@ -19,6 +19,16 @@ const getRecommendedStartDate = () => {
   return formatToLocalDateTime(recommended);
 };
 
+const STATIC_IMAGE_MAX_BYTES = 1 * 1024 * 1024;
+const GIF_MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const ALLOWED_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+
+const getFileExtension = (fileName = "") => {
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : "";
+};
+
 function AdUnitForm({
   adUnit,
   submitting,
@@ -118,6 +128,7 @@ function AdUnitForm({
   const validateForm = () => {
     const newErrors = {};
     const now = new Date();
+    const oldStartCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     if (!formData.name.trim()) {
       newErrors.name = "Ad unit name is required";
@@ -145,8 +156,9 @@ function AdUnitForm({
 
     if (formData.startDate) {
       const startDateTime = new Date(formData.startDate);
-      if (!isEditingAdUnit && startDateTime < now) {
-        newErrors.startDate = "Start date and time cannot be in the past";
+      if (!isEditingAdUnit && startDateTime < oldStartCutoff) {
+        newErrors.startDate =
+          "Start date cannot be more than 1 day in the past";
       }
       if (
         isEditingActiveAdUnit &&
@@ -160,7 +172,7 @@ function AdUnitForm({
     if (formData.endDate) {
       const endDateTime = new Date(formData.endDate);
       if (!isEditingAdUnit && endDateTime < now) {
-        newErrors.endDate = "End date and time cannot be in the past";
+        newErrors.endDate = "End date and time must be in the future";
       }
     }
 
@@ -261,16 +273,25 @@ function AdUnitForm({
 
     if (!file) return;
 
-    const maxFileSize = 1048576;
-    if (file.size > maxFileSize) {
-      const fileSizeMB = (file.size / 1048576).toFixed(1);
-      setImageError(`Image must be under 1MB. Your file is ${fileSizeMB}MB.`);
+    const fileExtension = getFileExtension(file.name);
+    const isAllowedType = ALLOWED_IMAGE_TYPES.includes(file.type);
+    const isAllowedExtension = ALLOWED_IMAGE_EXTENSIONS.includes(fileExtension);
+
+    if (!isAllowedType && !isAllowedExtension) {
+      setImageError("Only PNG, JPG, JPEG, WebP, and GIF files are allowed.");
       if (resetInput) resetInput();
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      setImageError("Please upload an image file");
+    const isGif = file.type === "image/gif" || fileExtension === ".gif";
+    const maxFileSize = isGif ? GIF_MAX_BYTES : STATIC_IMAGE_MAX_BYTES;
+    if (file.size > maxFileSize) {
+      const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+      setImageError(
+        isGif
+          ? `GIF files must be 10MB or smaller. Your file is ${fileSizeMB}MB.`
+          : `PNG, JPG, JPEG, and WebP files must be 1MB or smaller. Your file is ${fileSizeMB}MB.`,
+      );
       if (resetInput) resetInput();
       return;
     }
@@ -525,13 +546,13 @@ function AdUnitForm({
               >
                 <div className="upload-icon">📸</div>
                 <div className="upload-text">Drag and drop image here, or click to upload</div>
-                <div className="upload-hint">PNG, JPG up to 1MB</div>
+                <div className="upload-hint">PNG, JPG, WebP up to 1MB. GIF up to 10MB.</div>
               </label>
             )}
             <input
               type="file"
               id="image"
-              accept="image/*"
+              accept="image/png,image/jpeg,image/webp,image/gif"
               onChange={handleImageUpload}
               disabled={submitting}
               style={{ display: "none" }}

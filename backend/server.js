@@ -20,8 +20,8 @@ app.use(cors({
   credentials: false
 }));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
 app.get('/ad-client.js', (req, res) => {
   res.sendFile(path.resolve(__dirname, '..', 'ad-client.js'));

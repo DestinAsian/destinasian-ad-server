@@ -804,6 +804,32 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     return `${clean} (Copy ${i})`;
   };
 
+  const getDuplicateAdUnitDateWindow = (adUnit) => {
+    const startDate = new Date();
+    startDate.setMinutes(startDate.getMinutes() + 5);
+
+    const sourceStart = new Date(adUnit.startDate);
+    const sourceEnd = new Date(adUnit.endDate);
+    const sourceDurationMs =
+      Number.isNaN(sourceStart.getTime()) || Number.isNaN(sourceEnd.getTime())
+        ? 24 * 60 * 60 * 1000
+        : Math.max(sourceEnd.getTime() - sourceStart.getTime(), 24 * 60 * 60 * 1000);
+
+    const campaignId = adUnit.campaign?._id || adUnit.campaign || selectedCampaign;
+    const parentCampaign = campaigns.find((campaign) => campaign._id === campaignId);
+    const campaignEnd = parentCampaign?.endDate ? new Date(parentCampaign.endDate) : null;
+    const fallbackEnd = new Date(startDate.getTime() + sourceDurationMs);
+    const endDate =
+      campaignEnd && !Number.isNaN(campaignEnd.getTime()) && campaignEnd > startDate
+        ? campaignEnd
+        : fallbackEnd;
+
+    return {
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString()
+    };
+  };
+
   const handleDuplicateCampaign = async (campaign) => {
     try {
       const existing = new Set(campaigns.map((c) => c.name));
@@ -824,6 +850,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
 
   const handleDuplicateAdUnit = async (adUnit) => {
     try {
+      const duplicateDateWindow = getDuplicateAdUnitDateWindow(adUnit);
       await adUnitAPI.create({
         name: adUnit.name,
         campaign: adUnit.campaign?._id || adUnit.campaign || selectedCampaign,
@@ -833,8 +860,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
               .map((inventory) => inventory?._id || inventory)
               .filter(Boolean)
           : undefined,
-        startDate: adUnit.startDate,
-        endDate: adUnit.endDate,
+        startDate: duplicateDateWindow.startDate,
+        endDate: duplicateDateWindow.endDate,
         imageUrl: adUnit.imageUrl,
         htmlCreative: adUnit.htmlCreative,
         iframeUrl: adUnit.iframeUrl,

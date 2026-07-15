@@ -221,24 +221,29 @@ const validateDateWindowForCreate = (payload = {}) => {
   const startDate = parseDateInput(payload.startDate);
   const endDate = parseDateInput(payload.endDate);
   const now = new Date();
-
-  if (!startDate.provided || !startDate.value) {
-    return { valid: false, statusCode: 400, error: 'Start date is required' };
-  }
+  const oldStartCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   if (!endDate.provided || !endDate.value) {
     return { valid: false, statusCode: 400, error: 'End date is required' };
   }
 
-  if (startDate.value.getTime() < now.getTime()) {
-    return { valid: false, statusCode: 400, error: 'Start date cannot be in the past for new ad units' };
+  if (startDate.provided && startDate.error) {
+    return { valid: false, statusCode: 400, error: 'Invalid start date' };
   }
 
-  if (endDate.value <= startDate.value) {
+  if (startDate.value && startDate.value < oldStartCutoff) {
+    return { valid: false, statusCode: 400, error: 'Start date cannot be more than 1 day in the past for new ad units' };
+  }
+
+  const normalizedStartDate = (!startDate.value || startDate.value < now)
+    ? now
+    : startDate.value;
+
+  if (endDate.value <= normalizedStartDate) {
     return { valid: false, statusCode: 400, error: 'End date must be after start date' };
   }
 
-  return { valid: true, startDate: startDate.value, endDate: endDate.value };
+  return { valid: true, startDate: normalizedStartDate, endDate: endDate.value };
 };
 
 const validateDateWindowForUpdate = ({ payload = {}, adUnit }) => {

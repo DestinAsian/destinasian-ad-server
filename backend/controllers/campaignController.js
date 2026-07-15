@@ -558,7 +558,7 @@ exports.getCampaign = async (req, res) => {
     });
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    if (campaign.account.toString() !== req.user.accountId) {
+    if (!campaign.account || campaign.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to access this campaign' });
     }
 
@@ -581,7 +581,7 @@ exports.updateCampaign = async (req, res) => {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    if (campaign.account.toString() !== req.user.accountId) {
+    if (!campaign.account || campaign.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to update this campaign' });
     }
 
@@ -682,7 +682,12 @@ exports.getCampaignStats = async (req, res) => {
 
 exports.getCampaignAdUnitInventories = async (req, res) => {
   try {
-    const campaign = await Campaign.findById(req.params.id);
+    const campaignId = toObjectId(req.params.id);
+    if (!campaignId) {
+      return res.status(400).json({ error: 'Invalid campaign id' });
+    }
+
+    const campaign = await Campaign.findById(campaignId);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
     if (campaign.account.toString() !== req.user.accountId) {
@@ -709,7 +714,12 @@ exports.getCampaignAdUnitInventories = async (req, res) => {
 
 exports.updateCampaignAdUnitInventories = async (req, res) => {
   try {
-    const campaign = await Campaign.findById(req.params.id);
+    const campaignId = toObjectId(req.params.id);
+    if (!campaignId) {
+      return res.status(400).json({ error: 'Invalid campaign id' });
+    }
+
+    const campaign = await Campaign.findById(campaignId);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
     if (campaign.account.toString() !== req.user.accountId) {
