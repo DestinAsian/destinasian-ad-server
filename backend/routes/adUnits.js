@@ -5,6 +5,7 @@ const router = express.Router();
 
 router.post('/', protect, requireAccountAccess, adUnitController.createAdUnit);
 router.get('/', protect, requireAccountAccess, adUnitController.getAllAdUnits);
+router.get('/library/banners', protect, requireAccountAccess, adUnitController.getBannerLibrary);
 router.get('/:id', protect, requireAccountAccess, adUnitController.getAdUnit);
 router.put('/:id', protect, requireAccountAccess, adUnitController.updateAdUnit);
 router.delete('/:id', protect, requireAccountAccess, adUnitController.deleteAdUnit);

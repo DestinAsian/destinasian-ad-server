@@ -45,6 +45,7 @@ export const campaignAPI = {
 
 export const adUnitAPI = {
   getAll: (params) => axiosInstance.get('/ad-units', { params }),
+  getBannerLibrary: () => axiosInstance.get('/ad-units/library/banners'),
   create: (data) => axiosInstance.post('/ad-units', data),
   update: (id, data) => axiosInstance.put(`/ad-units/${id}`, data),
   delete: (id) => axiosInstance.delete(`/ad-units/${id}`),

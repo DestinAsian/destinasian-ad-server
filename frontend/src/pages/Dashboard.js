@@ -734,7 +734,11 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       }
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to save ad unit");
+      setError(
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        "Failed to save ad unit"
+      );
     } finally {
       setSubmitting(false);
     }

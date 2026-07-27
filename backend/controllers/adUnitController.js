@@ -30,6 +30,12 @@ const normalizeString = (value) => {
   return trimmed || null;
 };
 
+const getImageMimeType = (value) => {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^data:([^;,]+);base64,/i);
+  return match ? match[1].toLowerCase() : null;
+};
+
 const parseDateInput = (value) => {
   if (value === undefined) {
     return { provided: false, value: null, error: null };
@@ -388,6 +394,50 @@ exports.getAllAdUnits = async (req, res) => {
     res.json(enrichedAdUnits);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getBannerLibrary = async (req, res) => {
+  try {
+    const adUnits = await AdUnit.find({
+      account: req.user.accountId,
+      imageUrl: { $exists: true, $ne: '' }
+    })
+      .sort({ updatedAt: -1 })
+      .limit(100)
+      .select('_id name imageUrl campaign updatedAt createdAt')
+      .populate('campaign', 'name status');
+
+    const seenImageUrls = new Set();
+    const banners = [];
+
+    adUnits.forEach((adUnit) => {
+      const imageUrl = normalizeString(adUnit.imageUrl);
+      if (!imageUrl || seenImageUrls.has(imageUrl)) {
+        return;
+      }
+
+      seenImageUrls.add(imageUrl);
+      banners.push({
+        _id: adUnit._id,
+        name: adUnit.name || 'Untitled banner',
+        imageUrl,
+        mimeType: getImageMimeType(imageUrl),
+        campaign: adUnit.campaign
+          ? {
+              _id: adUnit.campaign._id,
+              name: adUnit.campaign.name,
+              status: adUnit.campaign.status
+            }
+          : null,
+        updatedAt: adUnit.updatedAt,
+        createdAt: adUnit.createdAt
+      });
+    });
+
+    res.json({ banners });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to load banner library' });
   }
 };
 

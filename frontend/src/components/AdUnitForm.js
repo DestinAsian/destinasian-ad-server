@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { inventoryAPI } from "../services/api";
+import { adUnitAPI, inventoryAPI } from "../services/api";
 import Modal from "./Modal";
 
 const formatToLocalDateTime = (date) => {
@@ -54,8 +54,14 @@ function AdUnitForm({
   const [inventoryError, setInventoryError] = useState(null);
   const [inventoryLoading, setInventoryLoading] = useState(true);
   const [isInventoriesModalOpen, setIsInventoriesModalOpen] = useState(false);
+  const [isBannerLibraryModalOpen, setIsBannerLibraryModalOpen] = useState(false);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
+  const [startDateTouched, setStartDateTouched] = useState(false);
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
+  const [bannerLibrary, setBannerLibrary] = useState([]);
+  const [bannerLibraryLoading, setBannerLibraryLoading] = useState(false);
+  const [bannerLibraryError, setBannerLibraryError] = useState(null);
+  const [bannerLibrarySearch, setBannerLibrarySearch] = useState("");
 
   useEffect(() => {
     if (adUnit) {
@@ -101,7 +107,10 @@ function AdUnitForm({
       setImagePreview(null);
     }
     setIsInventoriesModalOpen(false);
+    setIsBannerLibraryModalOpen(false);
     setInventorySearchQuery("");
+    setBannerLibrarySearch("");
+    setStartDateTouched(false);
     setErrors({});
     setImageError(null);
   }, [adUnit, campaignId, campaign]);
@@ -120,6 +129,34 @@ function AdUnitForm({
       }
     };
     loadInventories();
+  }, []);
+
+  useEffect(() => {
+    let isCurrentRequest = true;
+
+    const loadBannerLibrary = async () => {
+      try {
+        setBannerLibraryLoading(true);
+        const response = await adUnitAPI.getBannerLibrary();
+        if (!isCurrentRequest) return;
+        setBannerLibrary(response.data?.banners || []);
+        setBannerLibraryError(null);
+      } catch (err) {
+        if (!isCurrentRequest) return;
+        setBannerLibrary([]);
+        setBannerLibraryError("Failed to load banner library.");
+      } finally {
+        if (isCurrentRequest) {
+          setBannerLibraryLoading(false);
+        }
+      }
+    };
+
+    loadBannerLibrary();
+
+    return () => {
+      isCurrentRequest = false;
+    };
   }, []);
 
   const isEditingAdUnit = Boolean(adUnit);
@@ -151,10 +188,12 @@ function AdUnitForm({
 
     const startDateChanged =
       isEditingAdUnit &&
+      startDateTouched &&
       initialStartDateValue &&
       formData.startDate !== initialStartDateValue;
+    const shouldValidateStartDate = !isEditingAdUnit || startDateTouched;
 
-    if (formData.startDate) {
+    if (formData.startDate && shouldValidateStartDate) {
       const startDateTime = new Date(formData.startDate);
       if (!isEditingAdUnit && startDateTime < oldStartCutoff) {
         newErrors.startDate =
@@ -188,7 +227,7 @@ function AdUnitForm({
     if (campaign) {
       const campaignStart = new Date(campaign.startDate);
 
-      if (formData.startDate) {
+      if (formData.startDate && shouldValidateStartDate) {
         const startDateTime = new Date(formData.startDate);
         if (startDateTime < campaignStart) {
           newErrors.startDate =
@@ -218,6 +257,10 @@ function AdUnitForm({
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === "startDate") {
+      setStartDateTouched(true);
+    }
 
     setFormData((prev) => ({
       ...prev,
@@ -267,6 +310,35 @@ function AdUnitForm({
       String(inventory?.name || "").toLowerCase().includes(normalizedInventorySearch)
     );
   }, [inventories, normalizedInventorySearch]);
+  const normalizedBannerLibrarySearch = String(bannerLibrarySearch || "").trim().toLowerCase();
+  const visibleBannerLibrary = useMemo(() => {
+    if (!normalizedBannerLibrarySearch) return bannerLibrary;
+    return bannerLibrary.filter((banner) => {
+      const searchableText = [
+        banner?.name,
+        banner?.campaign?.name,
+        banner?.mimeType
+      ].filter(Boolean).join(" ").toLowerCase();
+      return searchableText.includes(normalizedBannerLibrarySearch);
+    });
+  }, [bannerLibrary, normalizedBannerLibrarySearch]);
+
+  const applyImageSelection = (imageUrl) => {
+    setFormData((prev) => ({
+      ...prev,
+      imageUrl,
+    }));
+    setImagePreview(imageUrl);
+    setIsBannerLibraryModalOpen(false);
+    setImageError(null);
+    if (errors.imageUrl) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.imageUrl;
+        return next;
+      });
+    }
+  };
 
   const processImageFile = (file, resetInput) => {
     setImageError(null);
@@ -301,18 +373,7 @@ function AdUnitForm({
       const img = new Image();
       img.onload = () => {
         if (img.width === img.height) {
-          setFormData((prev) => ({
-            ...prev,
-            imageUrl: event.target.result,
-          }));
-          setImagePreview(event.target.result);
-          if (errors.imageUrl) {
-            setErrors((prev) => {
-              const next = { ...prev };
-              delete next.imageUrl;
-              return next;
-            });
-          }
+          applyImageSelection(event.target.result);
         } else {
           setImageError(
             `Image must be 1:1 (square). Your image is ${img.width}x${img.height}. Please crop it to a square.`,
@@ -387,7 +448,7 @@ function AdUnitForm({
 
       if (
         !isEditingAdUnit ||
-        formData.startDate !== initialStartDateValue
+        (startDateTouched && formData.startDate !== initialStartDateValue)
       ) {
         submitData.startDate = formData.startDate
           ? new Date(formData.startDate).toISOString()
@@ -469,6 +530,73 @@ function AdUnitForm({
     </div>
   );
 
+  const bannerLibraryContent = (
+    <div className="banner-library-panel" aria-label="Banner Ads Library">
+      <div className="banner-library-header">
+        <div>
+          <span className="banner-library-title">Banner Ads Library</span>
+          <span className="banner-library-helper">
+            Choose an existing uploaded banner, or close this window and upload new material.
+          </span>
+        </div>
+        {bannerLibrary.length > 0 && (
+          <input
+            type="search"
+            className="banner-library-search"
+            placeholder="Search banners..."
+            value={bannerLibrarySearch}
+            onChange={(event) => setBannerLibrarySearch(event.target.value)}
+            disabled={submitting}
+          />
+        )}
+      </div>
+      {bannerLibraryLoading ? (
+        <p className="banner-library-state">Loading banner library...</p>
+      ) : bannerLibraryError ? (
+        <p className="banner-library-state banner-library-state-error">
+          {bannerLibraryError}
+        </p>
+      ) : bannerLibrary.length === 0 ? (
+        <p className="banner-library-state">
+          No saved banners yet. Upload a new banner to add one.
+        </p>
+      ) : visibleBannerLibrary.length === 0 ? (
+        <p className="banner-library-state">No banners found.</p>
+      ) : (
+        <div className="banner-library-list">
+          {visibleBannerLibrary.map((banner) => {
+            const bannerId = String(banner._id || banner.imageUrl);
+            const isSelected = formData.imageUrl === banner.imageUrl;
+            return (
+              <button
+                key={bannerId}
+                type="button"
+                className={`banner-library-item${isSelected ? " is-selected" : ""}`}
+                onClick={() => applyImageSelection(banner.imageUrl)}
+                disabled={submitting}
+              >
+                <span className="banner-library-thumb">
+                  <img
+                    src={banner.imageUrl}
+                    alt={banner.name ? `${banner.name} banner` : "Saved banner"}
+                  />
+                </span>
+                <span className="banner-library-info">
+                  <span className="banner-library-name">
+                    {banner.name || "Untitled banner"}
+                  </span>
+                  <span className="banner-library-meta">
+                    {banner.campaign?.name || "No campaign"}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
     <form onSubmit={handleSubmit} className="ad-unit-form">
@@ -524,6 +652,16 @@ function AdUnitForm({
         <div className="form-group">
           <label htmlFor="image">Ad Image (1:1 Square) *</label>
           <div className="image-upload-container">
+            <div className="image-upload-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm banner-library-open-button"
+                onClick={() => setIsBannerLibraryModalOpen(true)}
+                disabled={submitting}
+              >
+                Library
+              </button>
+            </div>
             {imagePreview ? (
               <div className="image-preview">
                 <img src={imagePreview} alt="Ad preview" />
@@ -641,6 +779,14 @@ function AdUnitForm({
           </button>
         </div>
       </div>
+    </Modal>
+    <Modal
+      isOpen={isBannerLibraryModalOpen}
+      title="Banner Ads Library"
+      onClose={() => setIsBannerLibraryModalOpen(false)}
+      contentClassName="banner-library-modal"
+    >
+      {bannerLibraryContent}
     </Modal>
     </>
   );
