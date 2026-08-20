@@ -20,7 +20,7 @@
   if (root) {
     root.AdServer = exported;
 
-    if (root.document) {
+    if (root.document && exported.isAutoLoadEnabled()) {
       if (root.document.readyState === 'loading') {
         root.document.addEventListener('DOMContentLoaded', exported.autoLoad);
       } else {
@@ -57,6 +57,58 @@
 
     const scripts = Array.from(root.document.getElementsByTagName('script'));
     return scripts.reverse().find((script) => typeof script.src === 'string' && script.src.includes('ad-client.js')) || null;
+  }
+
+  function getBooleanScriptOption(name, defaultValue) {
+    const value = getCurrentScript()?.dataset?.[name];
+    if (value === undefined) {
+      return defaultValue;
+    }
+
+    const normalizedValue = String(value).trim().toLowerCase();
+    if (normalizedValue === 'true') {
+      return true;
+    }
+
+    if (normalizedValue === 'false') {
+      return false;
+    }
+
+    return defaultValue;
+  }
+
+  const debugEnabled = getBooleanScriptOption('debug', false);
+  const autoLoadEnabled = getBooleanScriptOption('autoLoad', true);
+
+  function debugLog(...args) {
+    if (debugEnabled) {
+      console.log(...args);
+    }
+  }
+
+  async function parseJsonResponse(response, context) {
+    try {
+      return {
+        value: await response.json(),
+        malformed: false
+      };
+    } catch (error) {
+      console.error(`[AdServer] Malformed ${context} response:`, error);
+      return {
+        value: null,
+        malformed: true
+      };
+    }
+  }
+
+  async function reportTrackingFailure(response, eventName) {
+    const parsed = await parseJsonResponse(response, `${eventName} tracking`);
+    if (parsed.malformed) {
+      return;
+    }
+
+    const message = parsed.value?.error || response.statusText || 'Unknown error';
+    console.error(`[AdServer] ${eventName} tracking failed (${response.status}): ${message}`);
   }
 
   function resolveApiBase() {
@@ -334,10 +386,26 @@
 
       const response = await root.fetch(`${API_BASE}/serve?${queryParams.toString()}`);
       if (!response.ok) {
-        console.error('[AdServer] Ad server response error');
+        const parsed = await parseJsonResponse(response, 'ad server');
+        if (parsed.malformed) {
+          return;
+        }
+
+        const message = parsed.value?.error || response.statusText || 'Unknown error';
+        if (response.status === 404 && message === 'No active ad available') {
+          return;
+        }
+
+        console.error(`[AdServer] Ad server response error (${response.status}): ${message}`);
         return;
       }
-      const adUnit = await response.json();
+
+      const parsed = await parseJsonResponse(response, 'ad server');
+      if (parsed.malformed) {
+        return;
+      }
+
+      const adUnit = parsed.value;
 
       if (!adUnit) {
         console.error('[AdServer] Ad unit not found');
@@ -391,7 +459,7 @@
         usedAdCodesByInventory[inventory].add(adUnit.adCode);
       }
 
-      console.log(`[AdServer] Ad loaded: ${adUnit.name}`);
+      debugLog(`[AdServer] Ad loaded: ${adUnit.name}`);
     } catch (error) {
       console.error('[AdServer] Error loading ad:', error);
     }
@@ -441,14 +509,20 @@
 
   async function recordImpression(adCode) {
     try {
-      await root.fetch(`${API_BASE}/tracking/${adCode}/impression`, {
+      const response = await root.fetch(`${API_BASE}/tracking/${adCode}/impression`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         keepalive: true
       });
-      console.log(`[AdServer] Impression recorded: ${adCode}`);
+
+      if (!response.ok) {
+        await reportTrackingFailure(response, 'Impression');
+        return;
+      }
+
+      debugLog(`[AdServer] Impression recorded: ${adCode}`);
     } catch (error) {
       console.error('[AdServer] Error recording impression:', error);
     }
@@ -456,14 +530,20 @@
 
   async function recordClick(adCode) {
     try {
-      await root.fetch(`${API_BASE}/tracking/${adCode}/click`, {
+      const response = await root.fetch(`${API_BASE}/tracking/${adCode}/click`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         keepalive: true
       });
-      console.log(`[AdServer] Click recorded: ${adCode}`);
+
+      if (!response.ok) {
+        await reportTrackingFailure(response, 'Click');
+        return;
+      }
+
+      debugLog(`[AdServer] Click recorded: ${adCode}`);
     } catch (error) {
       console.error('[AdServer] Error recording click:', error);
     }
@@ -507,6 +587,8 @@
     getCreativeType,
     renderAdCreative,
     resolveApiBase,
+    isDebugEnabled: () => debugEnabled,
+    isAutoLoadEnabled: () => autoLoadEnabled,
     version: '1.2.0'
   };
 });
