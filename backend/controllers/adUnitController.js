@@ -691,7 +691,7 @@ exports.serveAd = async (req, res) => {
     } else {
       const inventoryDoc = await Inventory.findOne({ key: String(inventory).toLowerCase(), isActive: true });
       if (!inventoryDoc) {
-        return res.status(404).json({ error: 'Inventory not found' });
+        return res.status(204).end();
       }
 
       const activeCampaignIds = await Campaign.find({
@@ -731,7 +731,7 @@ exports.serveAd = async (req, res) => {
     }
 
     if (!adUnit) {
-      return res.status(404).json({ error: 'No active ad available' });
+      return res.status(204).end();
     }
 
     res.json({
@@ -747,6 +747,7 @@ exports.serveAd = async (req, res) => {
       campaignId: adUnit.campaign?._id
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[AdServer] Failed to serve ad:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 };

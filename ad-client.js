@@ -86,6 +86,15 @@
     }
   }
 
+  function reportError(message, details) {
+    if (debugEnabled && details !== undefined) {
+      console.error(message, details);
+      return;
+    }
+
+    console.error(message);
+  }
+
   async function parseJsonResponse(response, context) {
     try {
       return {
@@ -93,7 +102,7 @@
         malformed: false
       };
     } catch (error) {
-      console.error(`[AdServer] Malformed ${context} response:`, error);
+      reportError(`[AdServer] Malformed ${context} response`, error);
       return {
         value: null,
         malformed: true
@@ -108,7 +117,10 @@
     }
 
     const message = parsed.value?.error || response.statusText || 'Unknown error';
-    console.error(`[AdServer] ${eventName} tracking failed (${response.status}): ${message}`);
+    reportError(
+      `[AdServer] ${eventName} tracking failed (${response.status})`,
+      message
+    );
   }
 
   function resolveApiBase() {
@@ -128,7 +140,7 @@
         const scriptUrl = new URL(currentScript.src, root.location?.href);
         return `${scriptUrl.origin}/api`;
       } catch (error) {
-        console.error('[AdServer] Error resolving API base from script URL:', error);
+        reportError('[AdServer] Error resolving API base from script URL', error);
       }
     }
 
@@ -335,7 +347,7 @@
         }
 
         trackOnce().catch((error) => {
-          console.error('[AdServer] Error recording impression:', error);
+          reportError('[AdServer] Error recording impression', error);
         });
       }
     };
@@ -353,7 +365,7 @@
 
       if (!observer || typeof observer.observe !== 'function') {
         trackOnce().catch((error) => {
-          console.error('[AdServer] Error recording impression:', error);
+          reportError('[AdServer] Error recording impression', error);
         });
         return null;
       }
@@ -385,6 +397,15 @@
       }
 
       const response = await root.fetch(`${API_BASE}/serve?${queryParams.toString()}`);
+      if (response.status === 204) {
+        if (inventory) {
+          usedAdCodesByInventory[inventory]?.clear();
+        }
+
+        debugLog(`[AdServer] No ad available for ${inventory || adCode}`);
+        return;
+      }
+
       if (!response.ok) {
         const parsed = await parseJsonResponse(response, 'ad server');
         if (parsed.malformed) {
@@ -392,11 +413,22 @@
         }
 
         const message = parsed.value?.error || response.statusText || 'Unknown error';
-        if (response.status === 404 && message === 'No active ad available') {
+        if (
+          response.status === 404 &&
+          ['No active ad available', 'Inventory not found'].includes(message)
+        ) {
+          if (inventory) {
+            usedAdCodesByInventory[inventory]?.clear();
+          }
+
+          debugLog(`[AdServer] No ad available for ${inventory || adCode}`);
           return;
         }
 
-        console.error(`[AdServer] Ad server response error (${response.status}): ${message}`);
+        reportError(
+          `[AdServer] Ad server response error (${response.status})`,
+          message
+        );
         return;
       }
 
@@ -408,7 +440,7 @@
       const adUnit = parsed.value;
 
       if (!adUnit) {
-        console.error('[AdServer] Ad unit not found');
+        reportError('[AdServer] Invalid empty ad response');
         return;
       }
 
@@ -461,14 +493,14 @@
 
       debugLog(`[AdServer] Ad loaded: ${adUnit.name}`);
     } catch (error) {
-      console.error('[AdServer] Error loading ad:', error);
+      reportError('[AdServer] Error loading ad', error);
     }
   }
 
   async function loadAd(containerId) {
     const container = root.document.getElementById(containerId);
     if (!container) {
-      console.error(`[AdServer] Container #${containerId} not found`);
+      reportError(`[AdServer] Container #${containerId} not found`);
       return;
     }
 
@@ -477,7 +509,7 @@
     const width = container.dataset.width || '100%';
 
     if (!adCode && !inventory) {
-      console.error('[AdServer] data-ad-code or data-inventory attribute required');
+      reportError('[AdServer] data-ad-code or data-inventory attribute required');
       return;
     }
 
@@ -524,7 +556,7 @@
 
       debugLog(`[AdServer] Impression recorded: ${adCode}`);
     } catch (error) {
-      console.error('[AdServer] Error recording impression:', error);
+      reportError('[AdServer] Error recording impression', error);
     }
   }
 
@@ -545,7 +577,7 @@
 
       debugLog(`[AdServer] Click recorded: ${adCode}`);
     } catch (error) {
-      console.error('[AdServer] Error recording click:', error);
+      reportError('[AdServer] Error recording click', error);
     }
   }
 
@@ -562,7 +594,7 @@
           : 0
       };
     } catch (error) {
-      console.error('[AdServer] Error getting stats:', error);
+      reportError('[AdServer] Error getting stats', error);
       return null;
     }
   }

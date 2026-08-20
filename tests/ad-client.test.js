@@ -369,7 +369,7 @@ test('404 No active ad available is an expected silent state', async () => {
   assert.deepEqual(harness.logs.error, []);
 });
 
-test('404 Inventory not found remains a configuration error', async () => {
+test('legacy 404 Inventory not found is treated as an expected empty state', async () => {
   const slot = createAdSlot();
   const harness = createClientHarness({
     elements: [slot],
@@ -378,7 +378,20 @@ test('404 Inventory not found remains a configuration error', async () => {
 
   await harness.client.loadAd(slot.id);
 
-  assert.ok(harness.logs.error.some((message) => message.includes('Ad server response error (404): Inventory not found')));
+  assert.deepEqual(harness.logs.error, []);
+});
+
+test('204 no-content serve response is an expected silent state', async () => {
+  const slot = createAdSlot();
+  const harness = createClientHarness({
+    elements: [slot],
+    fetchImpl: async () => createResponse({ status: 204 })
+  });
+
+  await harness.client.loadAd(slot.id);
+
+  assert.deepEqual(harness.logs.log, []);
+  assert.deepEqual(harness.logs.error, []);
 });
 
 test('400 serve response remains a request error', async () => {
@@ -390,7 +403,8 @@ test('400 serve response remains a request error', async () => {
 
   await harness.client.loadAd(slot.id);
 
-  assert.ok(harness.logs.error.some((message) => message.includes('Ad server response error (400): inventory or adCode is required')));
+  assert.ok(harness.logs.error.some((message) => message.includes('Ad server response error (400)')));
+  assert.equal(harness.logs.error.some((message) => message.includes('inventory or adCode is required')), false);
 });
 
 test('500 serve response remains a real error', async () => {
@@ -402,7 +416,8 @@ test('500 serve response remains a real error', async () => {
 
   await harness.client.loadAd(slot.id);
 
-  assert.ok(harness.logs.error.some((message) => message.includes('Ad server response error (500): Database unavailable')));
+  assert.ok(harness.logs.error.some((message) => message.includes('Ad server response error (500)')));
+  assert.equal(harness.logs.error.some((message) => message.includes('Database unavailable')), false);
 });
 
 test('network failure remains a real error', async () => {
@@ -416,7 +431,8 @@ test('network failure remains a real error', async () => {
 
   await harness.client.loadAd(slot.id);
 
-  assert.ok(harness.logs.error.some((message) => message.includes('Error loading ad: Error: Network unavailable')));
+  assert.ok(harness.logs.error.some((message) => message.includes('Error loading ad')));
+  assert.equal(harness.logs.error.some((message) => message.includes('Network unavailable')), false);
 });
 
 test('malformed serve response remains a real error', async () => {
@@ -443,6 +459,19 @@ test('impression and click non-2xx responses are not logged as success', async (
   assert.ok(harness.logs.error.some((message) => message.includes('Impression tracking failed (500)')));
   assert.ok(harness.logs.error.some((message) => message.includes('Click tracking failed (500)')));
   assert.equal(harness.logs.log.some((message) => message.includes('recorded')), false);
+});
+
+test('debug=true includes diagnostic details for unexpected failures', async () => {
+  const slot = createAdSlot();
+  const harness = createClientHarness({
+    dataset: { debug: 'true' },
+    elements: [slot],
+    fetchImpl: async () => createResponse({ status: 500, body: { error: 'Database unavailable' } })
+  });
+
+  await harness.client.loadAd(slot.id);
+
+  assert.ok(harness.logs.error.some((message) => message.includes('Database unavailable')));
 });
 
 test('data-auto-load=false prevents automatic loading', async () => {
