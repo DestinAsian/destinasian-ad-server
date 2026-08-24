@@ -28,6 +28,8 @@ import AdUnitForm from "../components/AdUnitForm";
 import AccountSelector from "../components/AccountSelector";
 import Modal from "../components/Modal";
 import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
+import { useConfirm } from "../contexts/ConfirmContext";
 
 ChartJS.register(
   CategoryScale,
@@ -267,8 +269,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const [editingCampaign, setEditingCampaign] = useState(null);
   const [editingAdUnit, setEditingAdUnit] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
+  const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
+  const confirmAction = useConfirm();
 
   useEffect(() => {
     const timer = setTimeout(
@@ -688,7 +690,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       }
       handleCloseCampaignModal();
       await fetchCampaigns({ page: 1, reset: true });
-      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to save campaign");
     } finally {
@@ -697,23 +698,23 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleDeleteCampaign = async (campaignId) => {
-    if (
-      window.confirm(
-        "Are you sure you want to delete this campaign? This action cannot be undone.",
-      )
-    ) {
-      try {
-        await campaignAPI.delete(campaignId);
-        setSuccessMessage("Campaign deleted successfully!");
-        await fetchCampaigns({ page: 1, reset: true });
-        if (selectedCampaign === campaignId) {
-          selectedCampaignRef.current = null;
-          setSelectedCampaign(null);
-        }
-        setTimeout(() => setSuccessMessage(null), 3000);
-      } catch (err) {
-        setError(err.response?.data?.message || "Failed to delete campaign");
+    const confirmed = await confirmAction({
+      title: "Delete campaign?",
+      message: "This campaign will be permanently deleted. This action cannot be undone.",
+      confirmLabel: "Delete campaign",
+    });
+    if (!confirmed) return;
+
+    try {
+      await campaignAPI.delete(campaignId);
+      setSuccessMessage("Campaign deleted successfully!");
+      await fetchCampaigns({ page: 1, reset: true });
+      if (selectedCampaign === campaignId) {
+        selectedCampaignRef.current = null;
+        setSelectedCampaign(null);
       }
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to delete campaign");
     }
   };
 
@@ -732,7 +733,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       if (isCampaignView) {
         await fetchCampaigns({ page: 1, reset: true });
       }
-      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(
         err.response?.data?.message ||
@@ -745,21 +745,21 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleDeleteAdUnit = async (adUnitId) => {
-    if (
-      window.confirm(
-        "Are you sure you want to delete this ad unit? This action cannot be undone.",
-      )
-    ) {
-      try {
-        await adUnitAPI.delete(adUnitId);
-        setSuccessMessage("Ad unit deleted successfully!");
-        if (isCampaignView) {
-          await fetchCampaigns({ page: 1, reset: true });
-        }
-        setTimeout(() => setSuccessMessage(null), 3000);
-      } catch (err) {
-        setError(err.response?.data?.message || "Failed to delete ad unit");
+    const confirmed = await confirmAction({
+      title: "Delete ad unit?",
+      message: "This ad unit will be permanently deleted. This action cannot be undone.",
+      confirmLabel: "Delete ad unit",
+    });
+    if (!confirmed) return;
+
+    try {
+      await adUnitAPI.delete(adUnitId);
+      setSuccessMessage("Ad unit deleted successfully!");
+      if (isCampaignView) {
+        await fetchCampaigns({ page: 1, reset: true });
       }
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to delete ad unit");
     }
   };
 
@@ -771,7 +771,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         `Campaign ${newStatus === "active" ? "activated" : "paused"} successfully!`,
       );
       await fetchCampaigns({ page: 1, reset: true });
-      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(
         err.response?.data?.message || "Failed to update campaign status",
@@ -789,7 +788,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       if (isCampaignView) {
         await fetchCampaigns({ page: 1, reset: true });
       }
-      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(
         err.response?.data?.message || "Failed to update ad unit status",
@@ -846,7 +844,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       });
       setSuccessMessage("Campaign duplicated successfully!");
       await fetchCampaigns({ page: 1, reset: true });
-      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err.response?.data?.error || "Failed to duplicate campaign");
     }
@@ -876,7 +873,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       if (isCampaignView) {
         await fetchCampaigns({ page: 1, reset: true });
       }
-      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err.response?.data?.error || "Failed to duplicate ad unit");
     }
@@ -1374,12 +1370,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           </>
         )}
       </header>
-
-      {successMessage && (
-        <div className="alert alert-success">{successMessage}</div>
-      )}
-
-      {error && <div className="alert alert-error">{error}</div>}
 
       {isOverviewView && (
         <section className="dashboard-overview">

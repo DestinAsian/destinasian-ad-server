@@ -1,0 +1,109 @@
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482900;
+  display: grid;
+  padding: max(32px, env(safe-area-inset-top)) 24px 24px;
+  place-items: start center;
+  background: rgba(25, 24, 22, 0.54);
+  backdrop-filter: blur(4px);
+  animation: confirmBackdropIn 0.16s ease-out;
+}
+
+.confirm-dialog {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  width: min(480px, 100%);
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid rgba(25, 24, 22, 0.12);
+  border-radius: 18px;
+  background: #fffdf9;
+  box-shadow: 0 24px 70px rgba(17, 24, 28, 0.28);
+  animation: confirmDialogIn 0.18s ease-out;
+}
+
+.confirm-dialog-marker {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  place-items: center;
+  background: #f6e4df;
+  color: #8a4d44;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.confirm-dialog-content {
+  min-width: 0;
+}
+
+.confirm-dialog-content h2 {
+  margin: 0 0 7px;
+  color: #191816;
+  font-family: "Rubik", sans-serif;
+  font-size: 1.08rem;
+  font-weight: 600;
+}
+
+.confirm-dialog-content p {
+  margin: 0;
+  color: #6f6b66;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+@keyframes confirmBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes confirmDialogIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 520px) {
+  .confirm-dialog-backdrop {
+    padding: max(16px, env(safe-area-inset-top)) 16px 16px;
+  }
+
+  .confirm-dialog {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 20px;
+  }
+
+  .confirm-dialog-marker {
+    width: 36px;
+    height: 36px;
+  }
+
+  .confirm-dialog-actions {
+    grid-column: 1;
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog-backdrop,
+  .confirm-dialog {
+    animation: none;
+  }
+}

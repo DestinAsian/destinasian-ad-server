@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { adUnitAPI, inventoryAPI } from "../services/api";
 import AccountSelector from "../components/AccountSelector";
 import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
+import { useConfirm } from "../contexts/ConfirmContext";
 import "../styles/Inventory.css";
 
 const isAdUnitLinkedToChannel = (adUnit, channelId) => {
@@ -23,8 +25,8 @@ function Inventory({ searchQuery = "" }) {
   const [inventories, setInventories] = useState([]);
   const [adUnits, setAdUnits] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
+  const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
+  const confirmAction = useConfirm();
   const [runningAdsOnly, setRunningAdsOnly] = useState(false);
   const [sortMode, setSortMode] = useState("name");
   const [isCmsSetupExpanded, setIsCmsSetupExpanded] = useState(false);
@@ -106,7 +108,7 @@ function Inventory({ searchQuery = "" }) {
       setError("Failed to load ad channel data");
       setLoading(false);
     }
-  }, [currentAccount?.id, runningAdsOnly]);
+  }, [currentAccount?.id, runningAdsOnly, setError]);
 
   useEffect(() => {
     loadData();
@@ -137,7 +139,7 @@ function Inventory({ searchQuery = "" }) {
       adUnitIds: [],
     });
     setIsCreateCardExpanded(false);
-  }, [currentAccount?.id]);
+  }, [currentAccount?.id, setError]);
 
   useEffect(() => {
     if (!isInventoryFilterOpen) return undefined;
@@ -363,7 +365,6 @@ function Inventory({ searchQuery = "" }) {
 
   const showCopiedFeedback = () => {
     setSuccessMessage("Copied to the clipboard");
-    setTimeout(() => setSuccessMessage(null), 2500);
   };
 
   const toggleSnippetExpanded = (inventoryId) => {
@@ -512,7 +513,6 @@ function Inventory({ searchQuery = "" }) {
         adUnitIds: [],
       });
       setSuccessMessage("Ad Channel created");
-      setTimeout(() => setSuccessMessage(null), 2500);
       await loadData();
     } catch (err) {
       setError(err.response?.data?.error || "Failed to create ad channel");
@@ -551,7 +551,6 @@ function Inventory({ searchQuery = "" }) {
       await inventoryAPI.update(editingId, editForm);
       setEditingId(null);
       setSuccessMessage("Ad Channel updated");
-      setTimeout(() => setSuccessMessage(null), 2500);
       await loadData();
     } catch (err) {
       setError(err.response?.data?.error || "Failed to update ad channel");
@@ -559,13 +558,17 @@ function Inventory({ searchQuery = "" }) {
   };
 
   const handleDelete = async (inventory) => {
-    if (!window.confirm(`Delete ad channel "${inventory.name}"?`)) return;
+    const confirmed = await confirmAction({
+      title: "Delete ad channel?",
+      message: `The ad channel "${inventory.name}" will be permanently deleted.`,
+      confirmLabel: "Delete channel",
+    });
+    if (!confirmed) return;
     setError(null);
 
     try {
       await inventoryAPI.delete(inventory._id);
       setSuccessMessage("Ad Channel deleted");
-      setTimeout(() => setSuccessMessage(null), 2500);
       await loadData();
     } catch (err) {
       setError(err.response?.data?.error || "Failed to delete ad channel");
@@ -588,7 +591,6 @@ function Inventory({ searchQuery = "" }) {
       });
 
       setSuccessMessage("Ad Channel duplicated");
-      setTimeout(() => setSuccessMessage(null), 2500);
       await loadData();
     } catch (err) {
       setError(err.response?.data?.error || "Failed to duplicate ad channel");
@@ -630,17 +632,6 @@ function Inventory({ searchQuery = "" }) {
         <AccountSelector />
       </header>
 
-      {successMessage && (
-        <div className="alert alert-success">{successMessage}</div>
-      )}
-      {error && (
-        <div className="alert alert-error">
-          {error}
-          <button onClick={() => setError(null)} className="alert-close">
-            ✕
-          </button>
-        </div>
-      )}
       <div className={`ad-unit-cms ${isCmsSetupExpanded ? "is-expanded" : ""}`}>
         <button
           type="button"

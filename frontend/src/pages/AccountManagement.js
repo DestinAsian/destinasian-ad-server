@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
 import { accountAPI, userAPI } from '../services/api';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import '../styles/Users.css';
 import '../styles/AccountManagement.css';
 
@@ -9,8 +11,8 @@ function AccountManagement() {
   const { user, selectAccount } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
+  const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
+  const confirmAction = useConfirm();
 
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
@@ -35,7 +37,7 @@ function AccountManagement() {
     });
   }, [accounts]);
 
-  const fetchAccounts = async () => {
+  const fetchAccounts = useCallback(async () => {
     try {
       setLoading(true);
       const response = await accountAPI.getAll();
@@ -48,15 +50,14 @@ function AccountManagement() {
       setError(err.response?.data?.error || 'Failed to load accounts');
       setLoading(false);
     }
-  };
+  }, [setError]);
 
   useEffect(() => {
     fetchAccounts();
-  }, []);
+  }, [fetchAccounts]);
 
   const showSuccess = (message) => {
     setSuccessMessage(message);
-    setTimeout(() => setSuccessMessage(null), 2500);
   };
 
   const handleSwitchAccount = async (accountId) => {
@@ -110,7 +111,12 @@ function AccountManagement() {
   };
 
   const handleDeleteAccount = async (account) => {
-    if (!window.confirm(`Delete account "${account.name}"?`)) return;
+    const confirmed = await confirmAction({
+      title: 'Delete account?',
+      message: `The account "${account.name}" will be permanently deleted.`,
+      confirmLabel: 'Delete account'
+    });
+    if (!confirmed) return;
 
     try {
       await accountAPI.delete(account._id);
@@ -197,14 +203,6 @@ function AccountManagement() {
           <p>Manage account access, sharing, and account-level campaign and ad channel overview.</p>
         </div>
       </header>
-
-      {successMessage && <div className="alert alert-success">{successMessage}</div>}
-      {error && (
-        <div className="alert alert-error">
-          {error}
-          <button onClick={() => setError(null)} className="alert-close">✕</button>
-        </div>
-      )}
 
       {isOwner && (
         <section className="account-create-card users-card">

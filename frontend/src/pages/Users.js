@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { userAPI } from '../services/api';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import '../styles/Users.css';
 
 const emptyCreateForm = {
@@ -14,8 +16,8 @@ function Users() {
   const { user, updateCurrentUser, logout } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
+  const confirmAction = useConfirm();
 
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [profileForm, setProfileForm] = useState({ name: '', email: '' });
@@ -45,7 +47,7 @@ function Users() {
     }
   }, [user]);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
       const response = await userAPI.getAll();
@@ -55,11 +57,11 @@ function Users() {
       setError(err.response?.data?.message || 'Failed to load users');
       setLoading(false);
     }
-  };
+  }, [setError]);
 
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [loadUsers]);
 
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => {
@@ -75,7 +77,6 @@ function Users() {
 
   const showSuccess = (message) => {
     setSuccessMessage(message);
-    setTimeout(() => setSuccessMessage(''), 2500);
   };
 
   const handleCreateEditor = async (e) => {
@@ -171,7 +172,12 @@ function Users() {
   };
 
   const handleDeleteUser = async (targetUser) => {
-    if (!window.confirm(`Delete user "${targetUser.name}"?`)) return;
+    const confirmed = await confirmAction({
+      title: 'Delete user?',
+      message: `The user "${targetUser.name}" will be permanently deleted.`,
+      confirmLabel: 'Delete user'
+    });
+    if (!confirmed) return;
     setError('');
     try {
       await userAPI.delete(targetUser.id, { twoFactorToken: ownerActionTwoFactorToken });
@@ -224,14 +230,6 @@ function Users() {
         <h2>Users</h2>
         <p>{isOwner ? 'Manage editor access and user permissions.' : 'View users and update your own profile.'}</p>
       </header>
-
-      {successMessage && <div className="alert alert-success">{successMessage}</div>}
-      {error && (
-        <div className="alert alert-error">
-          {error}
-          <button onClick={() => setError('')} className="alert-close">✕</button>
-        </div>
-      )}
 
       <section className="users-card">
         <h3>My Profile</h3>
