@@ -99,14 +99,22 @@ const assignCrmAdIdToAdUnit = async (adUnit, options = {}) => {
 
   const sourceCode = inferSourceCodeFromAccount(accountDoc);
   const inventoryCode = await ensureInventoryCode(inventoryDoc);
-  const campaignCode = await ensureCampaignCode(campaignDoc);
+  const campaignCode = campaignDoc
+    ? await ensureCampaignCode(campaignDoc)
+    : options.allowStoredCampaignCode && adUnit.campaignCode
+      ? adUnit.campaignCode
+      : await ensureCampaignCode(campaignDoc);
+  const campaignId = campaignDoc?._id || (options.allowStoredCampaignCode ? adUnit.campaign : null);
   const inventoryChanged = String(adUnit.inventory || '') !== String(options.previousInventoryId || adUnit.inventory || '');
   const campaignChanged = String(adUnit.campaign || '') !== String(options.previousCampaignId || adUnit.campaign || '');
 
   if (!adUnit.adUnitCode || inventoryChanged || campaignChanged) {
+    if (!campaignId) {
+      throw new Error('Campaign is required to generate CRM AD ID');
+    }
     adUnit.adUnitCode = adUnit.adUnitCode || await getNextAdUnitCode({
       accountId: adUnit.account,
-      campaignId: campaignDoc._id,
+      campaignId,
       inventoryId: inventoryDoc._id
     });
   }
@@ -120,9 +128,12 @@ const assignCrmAdIdToAdUnit = async (adUnit, options = {}) => {
 
   const conflict = await findCrmAdIdConflict({ crmAdId, adUnitId: adUnit._id });
   if (conflict) {
+    if (!campaignId) {
+      throw new Error('Campaign is required to generate CRM AD ID');
+    }
     adUnit.adUnitCode = await getNextAdUnitCode({
       accountId: adUnit.account,
-      campaignId: campaignDoc._id,
+      campaignId,
       inventoryId: inventoryDoc._id
     });
 

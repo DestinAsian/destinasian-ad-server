@@ -121,38 +121,18 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
 
     const remainingInventories = (Array.isArray(adUnit.inventories) ? adUnit.inventories : [])
       .map((entry) => String(entry))
-      .filter((entry) => entry !== String(inventoryObjectId));
-
-    if (remainingInventories.length === 0) {
-      const error = new Error('At least one Ad Channel is required to generate CRM AD ID');
-      error.statusCode = 400;
-      throw error;
-    }
-  }
-
-  for (const adUnit of linkedAdUnits) {
-    const adUnitId = String(adUnit._id);
-    if (selectedIdSet.has(adUnitId)) {
-      continue;
-    }
-
-    const remainingInventories = (Array.isArray(adUnit.inventories) ? adUnit.inventories : [])
-      .map((entry) => String(entry))
       .filter((entry) => entry !== String(inventoryObjectId))
       .map((entry) => new mongoose.Types.ObjectId(entry));
-
-    if (remainingInventories.length === 0) {
-      const error = new Error('At least one Ad Channel is required to generate CRM AD ID');
-      error.statusCode = 400;
-      throw error;
-    }
 
     const previousInventoryId = adUnit.inventory;
     adUnit.inventories = remainingInventories;
     adUnit.inventory = remainingInventories[0] || null;
     const primaryInventoryChanged = String(previousInventoryId || '') !== String(adUnit.inventory || '');
     if (adUnit.inventory && primaryInventoryChanged) {
-      await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId });
+      await assignCrmAdIdToAdUnit(adUnit, {
+        previousInventoryId,
+        allowStoredCampaignCode: true
+      });
     }
     await AdUnit.updateOne(
       { _id: adUnit._id, account: accountId },
@@ -178,7 +158,10 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
 
     const primaryInventoryChanged = String(previousInventoryId || '') !== String(adUnit.inventory || '');
     if (primaryInventoryChanged || !adUnit.crmAdId) {
-      await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId });
+      await assignCrmAdIdToAdUnit(adUnit, {
+        previousInventoryId,
+        allowStoredCampaignCode: true
+      });
     }
     await AdUnit.updateOne(
       { _id: adUnit._id, account: accountId },
