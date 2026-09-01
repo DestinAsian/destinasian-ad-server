@@ -353,20 +353,15 @@ exports.deleteInventory = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to delete this inventory' });
     }
 
-    const adUnitCount = await AdUnit.countDocuments({
-      $or: [
-        { inventory: inventory._id },
-        { inventories: inventory._id }
-      ]
+    await syncInventoryAdUnits({
+      inventoryId: inventory._id,
+      accountId: req.user.accountId,
+      adUnitIds: []
     });
 
-    if (adUnitCount > 0) {
-      return res.status(400).json({ error: 'Inventory is in use by ad units' });
-    }
-
     await Inventory.findByIdAndDelete(inventory._id);
-    res.json({ message: 'Inventory deleted' });
+    res.json({ message: 'Inventory deleted and unlinked from ad units' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(error.statusCode || 500).json({ error: error.message });
   }
 };
