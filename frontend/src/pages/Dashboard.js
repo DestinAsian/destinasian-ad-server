@@ -31,6 +31,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { getApiErrorMessage } from "../utils/apiError";
+import { getCampaignIdsWithAdUnitSearchResults } from "../utils/campaignSearch";
 
 ChartJS.register(
   CategoryScale,
@@ -306,6 +307,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const [expandedCampaignIds, setExpandedCampaignIds] = useState(
     () => new Set(),
   );
+  const [searchExpandedCampaignIds, setSearchExpandedCampaignIds] = useState(
+    () => new Set(),
+  );
   const [dateRange, setDateRange] = useState(defaultDateRange);
   const [analytics, setAnalytics] = useState({
     impressions: 0,
@@ -390,6 +394,17 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         });
         setCampaignHasMore(Boolean(hasMore));
         setCampaignPage(page);
+
+        const searchResultCampaignIds = getCampaignIdsWithAdUnitSearchResults(
+          campaignRows,
+          debouncedSearchQuery,
+        );
+        setSearchExpandedCampaignIds((previousIds) => {
+          if (reset || !debouncedSearchQuery) {
+            return searchResultCampaignIds;
+          }
+          return new Set([...previousIds, ...searchResultCampaignIds]);
+        });
 
         const nextSelectedCampaignId = dedupedRows.some(
           (campaign) => campaign._id === selectedCampaignRef.current,
@@ -1112,10 +1127,16 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     }));
   }, []);
 
-  const toggleCampaignAdUnits = useCallback((campaignId) => {
+  const toggleCampaignAdUnits = useCallback((campaignId, isExpanded) => {
+    setSearchExpandedCampaignIds((prev) => {
+      if (!prev.has(campaignId)) return prev;
+      const next = new Set(prev);
+      next.delete(campaignId);
+      return next;
+    });
     setExpandedCampaignIds((prev) => {
       const next = new Set(prev);
-      if (next.has(campaignId)) {
+      if (isExpanded) {
         next.delete(campaignId);
       } else {
         next.add(campaignId);
@@ -1909,7 +1930,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                       const campaignAdUnits = Array.isArray(campaign.adUnits)
                         ? campaign.adUnits
                         : [];
-                      const isExpanded = expandedCampaignIds.has(campaign._id);
+                      const isExpanded =
+                        expandedCampaignIds.has(campaign._id) ||
+                        searchExpandedCampaignIds.has(campaign._id);
 
                       return (
                         <React.Fragment key={campaign._id}>
@@ -1945,7 +1968,10 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     if (campaignAdUnits.length > 0) {
-                                      toggleCampaignAdUnits(campaign._id);
+                                      toggleCampaignAdUnits(
+                                        campaign._id,
+                                        isExpanded,
+                                      );
                                     }
                                   }}
                                 >
