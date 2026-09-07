@@ -374,14 +374,34 @@ exports.deleteInventory = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to delete this inventory' });
     }
 
-    await syncInventoryAdUnits({
-      inventoryId: inventory._id,
-      accountId: req.user.accountId,
-      adUnitIds: []
-    });
+    const linkedAdUnitFilter = {
+      account: req.user.accountId,
+      $or: [
+        { inventory: inventory._id },
+        { inventories: inventory._id }
+      ]
+    };
+    const [linkedAdUnitCount, activeAdUnitCount] = await Promise.all([
+      AdUnit.countDocuments(linkedAdUnitFilter),
+      AdUnit.countDocuments({
+        ...linkedAdUnitFilter,
+        status: 'active'
+      })
+    ]);
+
+    if (linkedAdUnitCount > 0) {
+      const activeDetail = activeAdUnitCount > 0
+        ? `${activeAdUnitCount} active Ad Unit${activeAdUnitCount === 1 ? '' : 's'} still linked.`
+        : `${linkedAdUnitCount} Ad Unit${linkedAdUnitCount === 1 ? '' : 's'} still linked.`;
+      return res.status(409).json({
+        error: `Ad Channel cannot be deleted while it has linked Ad Units. ${activeDetail} Edit the Ad Channel, uncheck all Ad Units, and save before deleting it.`,
+        linkedAdUnitCount,
+        activeAdUnitCount
+      });
+    }
 
     await Inventory.findByIdAndDelete(inventory._id);
-    res.json({ message: 'Inventory deleted and unlinked from ad units' });
+    res.json({ message: 'Inventory deleted' });
   } catch (error) {
     res.status(error.statusCode || 500).json({ error: error.message });
   }

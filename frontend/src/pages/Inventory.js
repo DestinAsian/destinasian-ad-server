@@ -561,6 +561,22 @@ function Inventory({ searchQuery = "" }) {
   };
 
   const handleDelete = async (inventory) => {
+    const linkedAdUnits = adUnits.filter((adUnit) =>
+      isAdUnitLinkedToChannel(adUnit, inventory._id),
+    );
+    if (linkedAdUnits.length > 0) {
+      const activeAdUnitCount = linkedAdUnits.filter(
+        (adUnit) => String(adUnit?.status || "").toLowerCase() === "active",
+      ).length;
+      const activeDetail = activeAdUnitCount > 0
+        ? `${activeAdUnitCount} active Ad Unit${activeAdUnitCount === 1 ? " is" : "s are"} still linked.`
+        : `${linkedAdUnits.length} Ad Unit${linkedAdUnits.length === 1 ? " is" : "s are"} still linked.`;
+      setError(
+        `Ad Channel cannot be deleted while it has linked Ad Units. ${activeDetail} Edit the Ad Channel, uncheck all Ad Units, and save before deleting it.`,
+      );
+      return;
+    }
+
     const confirmed = await confirmAction({
       title: "Delete ad channel?",
       message: `The ad channel "${inventory.name}" will be permanently deleted.`,
