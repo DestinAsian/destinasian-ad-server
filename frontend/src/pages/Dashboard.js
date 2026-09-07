@@ -69,6 +69,37 @@ const formatNumber = (value) => {
   return new Intl.NumberFormat("en-US").format(Number(value) || 0);
 };
 
+const buildDailyChartData = (daily = []) => ({
+  labels: daily.map((entry) =>
+    new Date(entry.date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+  ),
+  datasets: [
+    {
+      label: "Impressions",
+      data: daily.map((entry) => entry.impressions || 0),
+      borderColor: "#6f98a6",
+      backgroundColor: "rgba(111, 152, 166, 0.14)",
+      tension: 0.35,
+      fill: true,
+      pointRadius: 2,
+      pointHoverRadius: 4,
+    },
+    {
+      label: "Clicks",
+      data: daily.map((entry) => entry.clicks || 0),
+      borderColor: "#1f2b32",
+      backgroundColor: "rgba(31, 43, 50, 0.08)",
+      tension: 0.35,
+      fill: false,
+      pointRadius: 2,
+      pointHoverRadius: 4,
+    },
+  ],
+});
+
 const getAdUnitInventoryIds = (adUnit) => {
   const ids = new Set();
   if (adUnit?.inventory) {
@@ -371,6 +402,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     clicks: 0,
     ctr: 0,
     daily: [],
+    adUnitDaily: [],
     topCampaigns: [],
     topAdUnits: [],
   });
@@ -541,6 +573,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           clicks: 0,
           ctr: 0,
           daily: [],
+          adUnitDaily: [],
           topCampaigns: [],
           topAdUnits: [],
         });
@@ -563,6 +596,10 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             : undefined,
         search: debouncedSearchQuery || undefined,
         searchScope: debouncedSearchQuery ? "adUnit" : undefined,
+        includeAdUnitDaily:
+          overviewMode === "campaign" && selectedOverviewCampaignId
+            ? true
+            : undefined,
         limit: 200,
       });
       setAnalytics({
@@ -570,6 +607,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         clicks: response.data?.clicks || 0,
         ctr: response.data?.ctr || 0,
         daily: response.data?.daily || [],
+        adUnitDaily: response.data?.adUnitDaily || [],
         topCampaigns: response.data?.topCampaigns || [],
         topAdUnits: response.data?.topAdUnits || [],
       });
@@ -580,6 +618,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         clicks: 0,
         ctr: 0,
         daily: [],
+        adUnitDaily: [],
         topCampaigns: [],
         topAdUnits: [],
       });
@@ -1225,38 +1264,67 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   );
 
   const analyticsChartData = useMemo(
-    () => ({
-      labels: analytics.daily.map((entry) =>
-        new Date(entry.date).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
-      ),
-      datasets: [
-        {
-          label: "Impressions",
-          data: analytics.daily.map((entry) => entry.impressions || 0),
-          borderColor: "#6f98a6",
-          backgroundColor: "rgba(111, 152, 166, 0.14)",
-          tension: 0.35,
-          fill: true,
-          pointRadius: 2,
-          pointHoverRadius: 4,
-        },
-        {
-          label: "Clicks",
-          data: analytics.daily.map((entry) => entry.clicks || 0),
-          borderColor: "#1f2b32",
-          backgroundColor: "rgba(31, 43, 50, 0.08)",
-          tension: 0.35,
-          fill: false,
-          pointRadius: 2,
-          pointHoverRadius: 4,
-        },
-      ],
-    }),
+    () => buildDailyChartData(analytics.daily),
     [analytics.daily],
   );
+
+  const selectedCampaignAdUnitDailyReports = useMemo(() => {
+    if (
+      overviewMode !== "campaign" ||
+      !selectedOverviewCampaignId ||
+      !selectedOverviewCampaign
+    ) {
+      return [];
+    }
+
+    const dailyByAdUnitId = new Map();
+    (Array.isArray(analytics.adUnitDaily) ? analytics.adUnitDaily : []).forEach(
+      (entry) => {
+        const adUnitId = String(entry.adUnitId || "");
+        if (!adUnitId) return;
+        if (!dailyByAdUnitId.has(adUnitId)) {
+          dailyByAdUnitId.set(adUnitId, []);
+        }
+        dailyByAdUnitId.get(adUnitId).push(entry);
+      },
+    );
+
+    return (Array.isArray(selectedOverviewCampaign.adUnits)
+      ? selectedOverviewCampaign.adUnits
+      : []
+    )
+      .map((adUnit) => {
+        const daily = dailyByAdUnitId.get(String(adUnit._id)) || [];
+        const totals = daily.reduce(
+          (result, entry) => ({
+            impressions: result.impressions + Number(entry.impressions || 0),
+            clicks: result.clicks + Number(entry.clicks || 0),
+          }),
+          { impressions: 0, clicks: 0 },
+        );
+
+        return {
+          adUnit,
+          daily,
+          impressions: totals.impressions,
+          clicks: totals.clicks,
+          ctr:
+            totals.impressions > 0
+              ? (totals.clicks / totals.impressions) * 100
+              : 0,
+        };
+      })
+      .sort((left, right) =>
+        String(left.adUnit?.name || "").localeCompare(
+          String(right.adUnit?.name || ""),
+        ),
+      );
+  }, [
+    analytics.adUnitDaily,
+    overviewMode,
+    selectedOverviewCampaign,
+    selectedOverviewCampaignId,
+  ]);
 
   const overviewBreakdownItems = useMemo(() => {
     const normalizedSearch = debouncedSearchQuery.toLowerCase();
@@ -1997,6 +2065,61 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
               )}
             </div>
           </div>
+
+          {selectedCampaignAdUnitDailyReports.length > 0 && (
+            <section className="dashboard-ad-unit-daily-section">
+              <div className="dashboard-ad-unit-daily-section-header">
+                <div>
+                  <h3>Ad Unit Daily Performance</h3>
+                  <p>
+                    Daily performance for every Ad Unit in {selectedOverviewCampaign.name}.
+                  </p>
+                </div>
+                <span>{selectedCampaignAdUnitDailyReports.length} Ad Units</span>
+              </div>
+              <div className="dashboard-ad-unit-daily-grid">
+                {selectedCampaignAdUnitDailyReports.map((report) => (
+                  <article
+                    key={report.adUnit._id}
+                    className="dashboard-ad-unit-daily-panel"
+                  >
+                    <div className="dashboard-ad-unit-daily-header">
+                      <div className="dashboard-ad-unit-daily-identity">
+                        <CampaignTablePreview
+                          adUnit={report.adUnit}
+                          className="dashboard-ad-unit-daily-preview"
+                          deferUntilVisible
+                        />
+                        <div>
+                          <h4>{report.adUnit.name || report.adUnit.adCode}</h4>
+                          <p>Daily Performance</p>
+                        </div>
+                      </div>
+                      <div className="dashboard-ad-unit-daily-metrics">
+                        <span>Impressions: {formatNumber(report.impressions)}</span>
+                        <span>Clicks: {formatNumber(report.clicks)}</span>
+                        <span>CTR: {report.ctr.toFixed(2)}%</span>
+                      </div>
+                    </div>
+                    <div className="dashboard-ad-unit-daily-chart">
+                      {analyticsLoading ? (
+                        <div className="no-data">Loading analytics...</div>
+                      ) : report.daily.length > 0 ? (
+                        <Line
+                          data={buildDailyChartData(report.daily)}
+                          options={analyticsChartOptions}
+                        />
+                      ) : (
+                        <div className="no-data">
+                          No analytics yet for this date range.
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
 
         </section>
       )}

@@ -636,6 +636,10 @@ exports.getAnalytics = async (req, res) => {
   try {
     const { limit } = req.query;
     const topLimit = Number(limit) > 0 ? Math.min(Number(limit), 500) : 5;
+    const includeAdUnitDaily = Boolean(normalizeString(req.query.campaignId))
+      && ['1', 'true'].includes(
+        String(req.query.includeAdUnitDaily || '').trim().toLowerCase()
+      );
     const { dailyMatch, eventMatch, noResults } = await buildScopedMatches(req.user.accountId, req.query);
 
     if (noResults) {
@@ -645,12 +649,13 @@ exports.getAnalytics = async (req, res) => {
         ctr: 0,
         revenue: 0,
         daily: [],
+        adUnitDaily: [],
         topAdUnits: [],
         topCampaigns: []
       });
     }
 
-    const [totalsResult, dailySeries, impressionRevenueDaily, clickRevenueDaily, impressionRevenueTotal, clickRevenueTotal, topAdUnits, topCampaigns] = await Promise.all([
+    const [totalsResult, dailySeries, impressionRevenueDaily, clickRevenueDaily, impressionRevenueTotal, clickRevenueTotal, topAdUnits, topCampaigns, adUnitDaily] = await Promise.all([
       AdDailyStat.aggregate([
         { $match: dailyMatch },
         {
@@ -769,7 +774,34 @@ exports.getAnalytics = async (req, res) => {
         },
         { $sort: { impressions: -1, clicks: -1 } },
         { $limit: topLimit }
-      ])
+      ]),
+      includeAdUnitDaily
+        ? AdDailyStat.aggregate([
+            { $match: dailyMatch },
+            { $match: { adUnit: { $ne: null } } },
+            {
+              $group: {
+                _id: {
+                  adUnit: '$adUnit',
+                  date: '$statDate'
+                },
+                impressions: { $sum: '$impressions' },
+                clicks: { $sum: '$clicks' }
+              }
+            },
+            { $sort: { '_id.adUnit': 1, '_id.date': 1 } },
+            {
+              $project: {
+                _id: 0,
+                adUnitId: '$_id.adUnit',
+                date: '$_id.date',
+                impressions: 1,
+                clicks: 1,
+                ctr: buildCtrProjection('$impressions', '$clicks')
+              }
+            }
+          ])
+        : Promise.resolve([])
     ]);
 
     const totals = totalsResult[0] || { impressions: 0, clicks: 0, ctr: 0, revenue: 0 };
@@ -781,6 +813,7 @@ exports.getAnalytics = async (req, res) => {
       ctr: totals.ctr,
       revenue: getMergedRevenueTotal(totals.revenue, impressionRevenueTotal, clickRevenueTotal),
       daily: mergedDailySeries,
+      adUnitDaily,
       topAdUnits,
       topCampaigns
     });
