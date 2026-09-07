@@ -66,6 +66,24 @@ const getAdUnitTextSearch = (searchRegex) => ({
   ]
 });
 
+const getCampaignSearchFilter = (searchRegex, searchScope) => (
+  searchScope === 'title'
+    ? { name: searchRegex }
+    : {
+        $or: [
+          { name: searchRegex },
+          { description: searchRegex },
+          { status: searchRegex }
+        ]
+      }
+);
+
+const getAdUnitSearchFilter = (searchRegex, searchScope) => (
+  searchScope === 'title'
+    ? { name: searchRegex }
+    : getAdUnitTextSearch(searchRegex)
+);
+
 const buildCampaignAdUnitFilter = ({
   accountId,
   campaignIds,
@@ -89,7 +107,7 @@ const buildCampaignAdUnitFilter = ({
   }
 
   if (searchRegex && searchScope === 'adunit') {
-    intersections.push(getAdUnitTextSearch(searchRegex));
+    intersections.push(getAdUnitSearchFilter(searchRegex, searchScope));
   }
 
   if (intersections.length > 0) {
@@ -100,6 +118,8 @@ const buildCampaignAdUnitFilter = ({
 };
 
 exports.buildCampaignAdUnitFilter = buildCampaignAdUnitFilter;
+exports.getCampaignSearchFilter = getCampaignSearchFilter;
+exports.getAdUnitSearchFilter = getAdUnitSearchFilter;
 
 const resolveInventoryFilterIds = async ({ accountId, query = {} }) => {
   const inventoryTokens = [];
@@ -318,7 +338,7 @@ exports.getAllCampaigns = async (req, res) => {
     const summaryView = isAdUnitSummaryView(req.query.view);
     const searchTerm = normalizeString(req.query.search);
     const requestedSearchScope = String(req.query.searchScope || 'all').trim().toLowerCase();
-    const searchScope = ['all', 'campaign', 'adunit', 'adchannel'].includes(requestedSearchScope)
+    const searchScope = ['all', 'campaign', 'adunit', 'adchannel', 'title'].includes(requestedSearchScope)
       ? requestedSearchScope
       : 'all';
     const pageProvided = req.query.page !== undefined;
@@ -369,24 +389,20 @@ exports.getAllCampaigns = async (req, res) => {
 
     if (searchTerm) {
       const searchRegex = new RegExp(escapeRegex(searchTerm), 'i');
-      const campaignMatches = searchScope === 'all' || searchScope === 'campaign'
+      const campaignMatches = searchScope === 'all' || searchScope === 'campaign' || searchScope === 'title'
         ? await Campaign.find({
             account: req.user.accountId,
-            $or: [
-              { name: searchRegex },
-              { description: searchRegex },
-              { status: searchRegex }
-            ]
+            ...getCampaignSearchFilter(searchRegex, searchScope)
           }).select('_id')
         : [];
 
       const adUnitSearchFilter = {
         account: req.user.accountId,
-        ...getAdUnitTextSearch(searchRegex)
+        ...getAdUnitSearchFilter(searchRegex, searchScope)
       };
       if (inventoryFilterIds) {
         adUnitSearchFilter.$and = [
-          getAdUnitTextSearch(searchRegex),
+          getAdUnitSearchFilter(searchRegex, searchScope),
           {
             $or: [
               { inventory: { $in: inventoryFilterIds } },
@@ -396,7 +412,7 @@ exports.getAllCampaigns = async (req, res) => {
         ];
         delete adUnitSearchFilter.$or;
       }
-      const adUnitMatches = searchScope === 'all' || searchScope === 'adunit'
+      const adUnitMatches = searchScope === 'all' || searchScope === 'adunit' || searchScope === 'title'
         ? await AdUnit.find(adUnitSearchFilter).select('campaign')
         : [];
 

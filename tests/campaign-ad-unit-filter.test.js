@@ -1,7 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildCampaignAdUnitFilter } = require('../backend/controllers/campaignController');
+const {
+  buildCampaignAdUnitFilter,
+  getCampaignSearchFilter,
+  getAdUnitSearchFilter
+} = require('../backend/controllers/campaignController');
 
 test('campaign child query intersects campaign, ad channel, and ad unit search', () => {
   const campaignIds = ['campaign-1'];
@@ -34,6 +38,27 @@ test('campaign child query stays backward compatible without explicit filters', 
     inventoryFilterIds: null,
     searchRegex: /ignored/i,
     searchScope: 'all'
+  });
+
+  assert.equal(filter.$and, undefined);
+});
+
+test('title search only matches campaign and ad unit names', () => {
+  const searchRegex = /bali/i;
+
+  assert.deepEqual(getCampaignSearchFilter(searchRegex, 'title'), {
+    name: searchRegex
+  });
+  assert.deepEqual(getAdUnitSearchFilter(searchRegex, 'title'), {
+    name: searchRegex
+  });
+
+  const filter = buildCampaignAdUnitFilter({
+    accountId: 'account-1',
+    campaignIds: ['campaign-1'],
+    inventoryFilterIds: null,
+    searchRegex,
+    searchScope: 'title'
   });
 
   assert.equal(filter.$and, undefined);

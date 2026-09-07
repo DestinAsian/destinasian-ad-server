@@ -31,7 +31,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { getApiErrorMessage } from "../utils/apiError";
-import { getCampaignIdsWithAdUnitSearchResults } from "../utils/campaignSearch";
+import {
+  getCampaignIdsWithAdUnitSearchResults,
+  getCampaignTitleSearchRows,
+} from "../utils/campaignSearch";
 
 ChartJS.register(
   CategoryScale,
@@ -368,7 +371,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         if (selectedInventoryId) params.inventoryId = selectedInventoryId;
         if (debouncedSearchQuery) {
           params.search = debouncedSearchQuery;
-          params.searchScope = "adUnit";
+          params.searchScope = "title";
         }
 
         const response = await campaignAPI.getAll(params);
@@ -1927,63 +1930,67 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                   </thead>
                   <tbody>
                     {sortedCampaigns.map((campaign) => {
-                      const campaignAdUnits = Array.isArray(campaign.adUnits)
-                        ? campaign.adUnits
-                        : [];
+                      const campaignSearchRows = getCampaignTitleSearchRows(
+                        campaign,
+                        debouncedSearchQuery,
+                      );
+                      const campaignAdUnits = campaignSearchRows.adUnits;
                       const isExpanded =
                         expandedCampaignIds.has(campaign._id) ||
                         searchExpandedCampaignIds.has(campaign._id);
 
                       return (
                         <React.Fragment key={campaign._id}>
-                          <tr
-                            className={`campaign-table-row campaign-table-campaign-row ${isExpanded ? "is-expanded" : ""}`}
-                            onClick={() => handleOpenCampaignEditor(campaign)}
-                          >
-                            <td>
-                              <span>{formatTableDate(campaign.startDate)}</span>
-                              <span className="campaign-table-end-date">
-                                {formatTableDate(campaign.endDate)}
-                              </span>
-                            </td>
-                            <CampaignTableNameCell
-                              campaign={campaign}
-                              onOpen={handleOpenCampaignEditor}
-                            />
-                            <td>{formatNumber(campaign.totalImpressions)}</td>
-                            <td>{formatNumber(campaign.impressionsToday)}</td>
-                            <td>{formatNumber(campaign.totalClicks)}</td>
-                            <td>{formatNumber(campaign.clicksToday)}</td>
-                            <td>
-                              <div className="campaign-table-row-end">
-                                <span>
-                                  {Number(campaign.ctr || 0).toFixed(2)}%
+                          {campaignSearchRows.showCampaign && (
+                            <tr
+                              className={`campaign-table-row campaign-table-campaign-row ${isExpanded ? "is-expanded" : ""}`}
+                              onClick={() => handleOpenCampaignEditor(campaign)}
+                            >
+                              <td>
+                                <span>{formatTableDate(campaign.startDate)}</span>
+                                <span className="campaign-table-end-date">
+                                  {formatTableDate(campaign.endDate)}
                                 </span>
-                                <button
-                                  type="button"
-                                  className="campaign-table-expand-toggle"
-                                  aria-expanded={isExpanded}
-                                  aria-label={`${isExpanded ? "Hide" : "Show"} ad units for ${campaign.name}`}
-                                  disabled={campaignAdUnits.length === 0}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    if (campaignAdUnits.length > 0) {
-                                      toggleCampaignAdUnits(
-                                        campaign._id,
-                                        isExpanded,
-                                      );
-                                    }
-                                  }}
-                                >
-                                  {campaignAdUnits.length > 0
-                                    ? isExpanded
-                                      ? "−"
-                                      : "+"
-                                    : "·"}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
+                              </td>
+                              <CampaignTableNameCell
+                                campaign={campaign}
+                                onOpen={handleOpenCampaignEditor}
+                              />
+                              <td>{formatNumber(campaign.totalImpressions)}</td>
+                              <td>{formatNumber(campaign.impressionsToday)}</td>
+                              <td>{formatNumber(campaign.totalClicks)}</td>
+                              <td>{formatNumber(campaign.clicksToday)}</td>
+                              <td>
+                                <div className="campaign-table-row-end">
+                                  <span>
+                                    {Number(campaign.ctr || 0).toFixed(2)}%
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="campaign-table-expand-toggle"
+                                    aria-expanded={isExpanded}
+                                    aria-label={`${isExpanded ? "Hide" : "Show"} ad units for ${campaign.name}`}
+                                    disabled={campaignAdUnits.length === 0}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (campaignAdUnits.length > 0) {
+                                        toggleCampaignAdUnits(
+                                          campaign._id,
+                                          isExpanded,
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    {campaignAdUnits.length > 0
+                                      ? isExpanded
+                                        ? "−"
+                                        : "+"
+                                      : "·"}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
                           {isExpanded &&
                             campaignAdUnits.map((adUnit) => (
                               <tr
