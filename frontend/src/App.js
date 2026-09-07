@@ -124,7 +124,7 @@ function App() {
   const ownerNeedsTwoFactorSetup =
     user?.role === "owner" && user?.twoFactorSetupRequired;
 
-  const topbarSearchPlaceholder = "Search campaigns, ad channels, ad units...";
+  const topbarSearchPlaceholder = "Search Ad Units / Banners...";
 
   const handleNavigate = (page) => {
     setHeaderSearch("");

@@ -67,8 +67,8 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  padding: 22px 28px;
+  gap: 18px;
+  padding: 18px 28px;
   background: rgba(251, 250, 247, 0.92);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(200, 216, 220, 0.7);
@@ -84,7 +84,7 @@ textarea {
 }
 
 .app-title-main {
-  font-size: 46px;
+  font-size: 40px;
   font-weight: 800;
   letter-spacing: -2px;
   color: #111827;
@@ -92,7 +92,7 @@ textarea {
 
 .app-title-sub {
   margin-top: 4px;
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 500;
   letter-spacing: -0.5px;
   color: #14b8a6;
@@ -101,8 +101,8 @@ textarea {
 .app-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
@@ -161,8 +161,9 @@ textarea {
 .app-search-wrap {
   margin-left: auto;
   min-width: 280px;
-  max-width: 420px;
-  width: 100%;
+  max-width: 440px;
+  width: auto;
+  flex: 1 1 320px;
 }
 
 .app-search-input {
@@ -182,15 +183,16 @@ textarea {
 }
 
 .app-greeting {
-  margin-right: 8px;
+  margin-left: 4px;
   color: var(--ink-muted);
   font-size: 0.95rem;
+  white-space: nowrap;
 }
 
 .app-nav-button,
 .app-logout-button {
-  min-height: 42px;
-  padding: 0 16px;
+  min-height: 40px;
+  padding: 0 15px;
   border-radius: 999px;
   border: 1px solid var(--line-soft);
   background: rgba(255, 253, 249, 0.86);
@@ -222,6 +224,14 @@ textarea {
   background: #fcf5f2;
 }
 
+.app-nav-button:focus-visible,
+.app-logout-button:focus-visible,
+.app-nav-dropdown-item:focus-visible,
+.app-search-input:focus-visible {
+  outline: 3px solid rgba(140, 184, 193, 0.3);
+  outline-offset: 2px;
+}
+
 @media (max-width: 900px) {
   .app-topbar {
     align-items: flex-start;
@@ -231,6 +241,7 @@ textarea {
   .app-toolbar {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .app-nav-dropdown-menu {

@@ -36,8 +36,8 @@
 .inventory-toolbar {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 18px;
 }
 
 .inventory-toolbar-group {
@@ -61,6 +61,7 @@
   font-size: 14px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--ink-body);
+  min-height: 44px;
 }
 
 .inventory-filter-dropdown {
@@ -81,6 +82,7 @@
   gap: 8px;
   text-align: left;
   cursor: pointer;
+  min-height: 44px;
 }
 
 .inventory-filter-menu {
@@ -128,7 +130,7 @@
   border: 1px solid var(--line-soft);
   border-radius: 20px;
   box-shadow: var(--shadow-soft);
-  padding: 24px;
+  padding: 22px;
 }
 
 .inventory-card h3 {
@@ -148,25 +150,62 @@
 
 .inventory-form {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.inventory-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.inventory-field > span {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inventory-field > span small {
+  margin-left: 4px;
+  color: rgba(111, 107, 102, 0.72);
+  font-size: 0.65rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
 }
 
 .inventory-form input,
 .inventory-form select,
 .inventory-edit-form input,
 .inventory-edit-form select {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
   font-size: 14px;
   background: #fff;
+}
+
+.inventory-form input:focus,
+.inventory-edit-form input:focus,
+.inventory-toolbar select:focus,
+.inventory-filter-trigger:focus-visible {
+  outline: none;
+  border-color: rgba(124, 170, 184, 0.75);
+  box-shadow: 0 0 0 3px rgba(199, 224, 231, 0.35);
+}
+
+.inventory-form > .btn-primary {
+  min-width: 144px;
+  justify-self: start;
 }
 
 .inventory-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .inventory-item {
@@ -186,7 +225,9 @@
 }
 
 .inventory-channel-card.is-collapsed {
-  gap: 12px;
+  gap: 8px;
+  padding-top: 14px;
+  padding-bottom: 14px;
 }
 
 .inventory-channel-card.is-expanded {
@@ -237,6 +278,7 @@
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+  min-width: 0;
 }
 
 .inventory-channel-toggle .inventory-inline-metrics {
@@ -263,6 +305,7 @@
   border-radius: 999px;
   background: rgba(223, 236, 240, 0.58);
   color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .inventory-key,
@@ -272,16 +315,22 @@
 }
 
 .inventory-status {
-  font-size: 12px;
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1;
 }
 
 .inventory-status.active {
   color: #1f7a1f;
+  background: var(--success-soft);
 }
 
 .inventory-status.inactive {
   color: #a33;
+  background: var(--danger-soft);
 }
 
 .inventory-collapsed-summary {
@@ -453,9 +502,26 @@
 
 .inventory-edit-form {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto auto;
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px;
   width: 100%;
+}
+
+.inventory-edit-form .inventory-toggle {
+  align-self: end;
+  min-height: 43px;
+  padding: 0 8px;
+}
+
+.inventory-edit-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.inventory-edit-actions .btn {
+  min-width: 130px;
 }
 
 .inventory-form-adunits {
@@ -469,6 +535,18 @@
   font-size: 13px;
   font-weight: 600;
   color: #444;
+}
+
+.inventory-form-adunits-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inventory-form-adunits-header > span {
+  color: var(--ink-muted);
+  font-size: 12px;
 }
 
 .inventory-adunit-list {
@@ -575,6 +653,10 @@
   .inventory-toolbar {
     grid-template-columns: 1fr;
   }
+
+  .inventory-edit-form .inventory-toggle {
+    align-self: start;
+  }
 }
 
 @media (max-width: 768px) {
@@ -624,6 +706,14 @@
   .inventory-actions .btn-sm {
     width: 100%;
     min-width: 0;
+  }
+
+  .inventory-edit-actions {
+    flex-direction: column;
+  }
+
+  .inventory-edit-actions .btn {
+    width: 100%;
   }
 
   .inventory-info {

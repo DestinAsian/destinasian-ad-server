@@ -209,7 +209,10 @@ function CampaignTableNameCell({ campaign, onOpen }) {
           >
             {campaign.name}
           </button>
-          <span className="campaign-table-channel-line">
+          <span
+            className="campaign-table-channel-line"
+            title={`Ad Channels: ${adChannelNames.length > 0 ? adChannelNames.join(", ") : "None"}`}
+          >
             Ad Channels:{" "}
             {adChannelNames.length > 0 ? adChannelNames.join(", ") : "None"}
           </span>
@@ -238,7 +241,10 @@ function AdUnitTableNameCell({ adUnit, campaignId, onOpen }) {
           >
             {adUnit.name || "Untitled Ad Unit"}
           </button>
-          <span className="campaign-table-channel-line">
+          <span
+            className="campaign-table-channel-line"
+            title={`Ad Channels: ${adChannelNames.length > 0 ? adChannelNames.join(", ") : "None"}`}
+          >
             Ad Channels:{" "}
             {adChannelNames.length > 0 ? adChannelNames.join(", ") : "None"}
           </span>
@@ -1328,7 +1334,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       <div className="dashboard">
         <header className="dashboard-header">
           <div>
-            <h1>{isCampaignView ? "List of Campaign" : "Dashboard"}</h1>
+            <h1>{isCampaignView ? "Campaigns" : "Dashboard"}</h1>
           </div>
         </header>
         <div className="no-selection">
@@ -1347,7 +1353,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         className={`dashboard-header${isCampaignView ? " campaigns-header-row" : ""}`}
       >
         <div>
-          <h1>{isCampaignView ? "List of Campaign" : "Overview"}</h1>
+          <h1>{isCampaignView ? "Campaigns" : "Overview"}</h1>
           {!isCampaignView ? (
             <p className="dashboard-header-copy">
               Check performance, narrow the date range, and keep campaign
@@ -1365,7 +1371,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
               className="btn btn-primary campaigns-new-button"
               onClick={handleOpenCreateModal}
             >
-              + New Campaign
+              <span aria-hidden="true">+</span> New Campaign
             </button>
             <div className="dashboard-filter-field campaigns-header-filter">
               <label
@@ -1391,12 +1397,18 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             <AccountSelector />
           </div>
         ) : (
-          <>
-            <div className="dashboard-overview-mode" role="tablist" aria-label="Overview report type">
+          <div className="dashboard-overview-controls">
+            <div className="dashboard-overview-mode-wrap">
+              <span className="account-list-label dashboard-overview-mode-label">
+                Report View
+              </span>
+              <div className="dashboard-overview-mode" role="tablist" aria-label="Overview report type">
               <button
                 type="button"
                 role="tab"
                 aria-selected={overviewMode === "campaign"}
+                aria-label="Campaign Overview"
+                title="Campaign Overview"
                 className={overviewMode === "campaign" ? "is-active" : ""}
                 onClick={() => {
                   setOverviewMode("campaign");
@@ -1404,12 +1416,14 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                   setAdUnitFilterSearch("");
                 }}
               >
-                Campaign Overview
+                Campaign
               </button>
               <button
                 type="button"
                 role="tab"
                 aria-selected={overviewMode === "adUnit"}
+                aria-label="Ad Unit Overview"
+                title="Ad Unit Overview"
                 className={overviewMode === "adUnit" ? "is-active" : ""}
                 onClick={() => {
                   setOverviewMode("adUnit");
@@ -1417,8 +1431,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                   setCampaignFilterSearch("");
                 }}
               >
-                Ad Unit Overview
+                Ad Unit
               </button>
+              </div>
             </div>
             <div className="dashboard-filter-grid">
               <div className="dashboard-filter-field">
@@ -1712,7 +1727,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             <div className="dashboard-header-actions">
               <AccountSelector />
             </div>
-          </>
+          </div>
         )}
       </header>
 

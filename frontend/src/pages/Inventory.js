@@ -685,29 +685,41 @@ function Inventory({ searchQuery = "" }) {
         {isCreateCardExpanded && (
           <div className="create-ad-channel-body">
             <form onSubmit={handleCreate} className="inventory-form">
-              <input
-                type="text"
-                placeholder="Name (e.g., Homepage Banner)"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                required
-              />
-              <input
-                type="text"
-                placeholder="Key (optional, e.g., homepage-banner)"
-                value={form.key}
-                onChange={(e) => setForm({ ...form, key: e.target.value })}
-              />
-              <input
-                type="text"
-                placeholder="Description (optional)"
-                value={form.description}
-                onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
-                }
-              />
+              <label className="inventory-field">
+                <span>Name</span>
+                <input
+                  type="text"
+                  placeholder="e.g., Homepage Banner"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  required
+                />
+              </label>
+              <label className="inventory-field">
+                <span>Key <small>Optional</small></span>
+                <input
+                  type="text"
+                  placeholder="e.g., homepage-banner"
+                  value={form.key}
+                  onChange={(e) => setForm({ ...form, key: e.target.value })}
+                />
+              </label>
+              <label className="inventory-field">
+                <span>Description <small>Optional</small></span>
+                <input
+                  type="text"
+                  placeholder="Describe where this channel is used"
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm({ ...form, description: e.target.value })
+                  }
+                />
+              </label>
               <div className="inventory-form-adunits">
-                <div className="inventory-form-adunits-label">Ad Units</div>
+                <div className="inventory-form-adunits-header">
+                  <div className="inventory-form-adunits-label">Ad Units</div>
+                  <span>{form.adUnitIds.length} selected</span>
+                </div>
                 {sortedAdUnits.length === 0 ? (
                   <p className="no-data">No ad units available.</p>
                 ) : (
@@ -771,7 +783,7 @@ function Inventory({ searchQuery = "" }) {
             aria-expanded={isAdChannelsExpanded}
             onClick={() => setIsAdChannelsExpanded((prev) => !prev)}
           >
-            <h3>List of Ad Channel</h3>
+            <h3>Ad Channel List</h3>
             <span className="ad-unit-cms-toggle-icon" aria-hidden="true">
               {isAdChannelsExpanded ? "▾" : "▸"}
             </span>
@@ -897,31 +909,40 @@ function Inventory({ searchQuery = "" }) {
                       onSubmit={handleUpdate}
                       className="inventory-edit-form"
                     >
-                      <input
-                        type="text"
-                        value={editForm.name}
-                        onChange={(e) =>
-                          setEditForm({ ...editForm, name: e.target.value })
-                        }
-                        required
-                      />
-                      <input
-                        type="text"
-                        value={editForm.key}
-                        onChange={(e) =>
-                          setEditForm({ ...editForm, key: e.target.value })
-                        }
-                      />
-                      <input
-                        type="text"
-                        value={editForm.description}
-                        onChange={(e) =>
-                          setEditForm({
-                            ...editForm,
-                            description: e.target.value,
-                          })
-                        }
-                      />
+                      <label className="inventory-field">
+                        <span>Name</span>
+                        <input
+                          type="text"
+                          value={editForm.name}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, name: e.target.value })
+                          }
+                          required
+                        />
+                      </label>
+                      <label className="inventory-field">
+                        <span>Key</span>
+                        <input
+                          type="text"
+                          value={editForm.key}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, key: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="inventory-field">
+                        <span>Description</span>
+                        <input
+                          type="text"
+                          value={editForm.description}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              description: e.target.value,
+                            })
+                          }
+                        />
+                      </label>
                       <label className="inventory-toggle">
                         <input
                           type="checkbox"
@@ -936,8 +957,11 @@ function Inventory({ searchQuery = "" }) {
                         Active
                       </label>
                       <div className="inventory-form-adunits inventory-form-adunits-inline">
-                        <div className="inventory-form-adunits-label">
-                          Ad Units
+                        <div className="inventory-form-adunits-header">
+                          <div className="inventory-form-adunits-label">
+                            Ad Units
+                          </div>
+                          <span>{editForm.adUnitIds.length} selected</span>
                         </div>
                         {sortedAdUnits.length === 0 ? (
                           <p className="no-data">No ad units available.</p>
@@ -988,16 +1012,18 @@ function Inventory({ searchQuery = "" }) {
                           </div>
                         )}
                       </div>
-                      <button type="submit" className="btn btn-primary btn-sm">
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={cancelEdit}
-                      >
-                        Cancel
-                      </button>
+                      <div className="inventory-edit-actions">
+                        <button type="submit" className="btn btn-primary btn-sm">
+                          Save Changes
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={cancelEdit}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </form>
                   ) : (
                     <>

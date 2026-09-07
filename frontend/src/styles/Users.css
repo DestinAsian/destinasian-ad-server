@@ -6,6 +6,10 @@
 
 .users-header h2 {
   margin: 0 0 6px;
+  font-family: "EB Garamond", serif;
+  font-size: 2.35rem;
+  font-weight: 600;
+  line-height: 1;
   color: var(--ink-strong);
 }
 
@@ -17,9 +21,9 @@
 .users-card {
   background: var(--bg-elevated);
   border: 1px solid var(--line-soft);
-  border-radius: 14px;
+  border-radius: 18px;
   box-shadow: var(--shadow-soft);
-  padding: 18px;
+  padding: 22px;
   margin-bottom: 18px;
 }
 
@@ -118,7 +122,8 @@
 
 .users-actions .btn,
 .users-actions .btn.btn-danger.btn-sm {
-  width: calc(50% - 8px);
+  flex: 1 1 112px;
+  width: auto;
 }
 
 .role-pill,
