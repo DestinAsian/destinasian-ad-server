@@ -143,9 +143,45 @@ const getCampaignPreviewAdUnit = (campaign) => {
   return adUnits.find((adUnit) => hasAdUnitPreview(adUnit)) || null;
 };
 
-function CampaignTablePreview({ adUnit }) {
+function CampaignTablePreview({
+  adUnit,
+  className = "",
+  deferUntilVisible = false,
+}) {
   const directPreviewSource = adUnit?.imageUrl || null;
   const [previewSource, setPreviewSource] = useState(directPreviewSource);
+  const [canLoadPreview, setCanLoadPreview] = useState(
+    !deferUntilVisible || Boolean(directPreviewSource),
+  );
+  const previewRef = useRef(null);
+
+  useEffect(() => {
+    if (!deferUntilVisible || directPreviewSource) {
+      setCanLoadPreview(true);
+    }
+  }, [deferUntilVisible, directPreviewSource]);
+
+  useEffect(() => {
+    if (!deferUntilVisible || canLoadPreview) return undefined;
+
+    const previewElement = previewRef.current;
+    if (!previewElement || typeof IntersectionObserver === "undefined") {
+      setCanLoadPreview(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setCanLoadPreview(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "120px" },
+    );
+    observer.observe(previewElement);
+    return () => observer.disconnect();
+  }, [canLoadPreview, deferUntilVisible]);
 
   useEffect(() => {
     if (directPreviewSource) {
@@ -153,7 +189,7 @@ function CampaignTablePreview({ adUnit }) {
       return undefined;
     }
 
-    if (!adUnit?._id || !adUnit?.hasImageCreative) {
+    if (!canLoadPreview || !adUnit?._id || !adUnit?.hasImageCreative) {
       setPreviewSource(null);
       return undefined;
     }
@@ -179,17 +215,33 @@ function CampaignTablePreview({ adUnit }) {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [adUnit?._id, adUnit?.hasImageCreative, directPreviewSource]);
+  }, [
+    adUnit?._id,
+    adUnit?.hasImageCreative,
+    canLoadPreview,
+    directPreviewSource,
+  ]);
+
+  const previewClassName = ["campaign-table-preview", className]
+    .filter(Boolean)
+    .join(" ");
 
   return previewSource ? (
     <img
-      className="campaign-table-preview"
+      ref={previewRef}
+      className={previewClassName}
       src={previewSource}
       alt=""
       aria-hidden="true"
+      loading="lazy"
     />
   ) : (
-    <span className="campaign-table-preview-empty">No preview</span>
+    <span
+      ref={previewRef}
+      className={`campaign-table-preview-empty${className ? ` ${className}` : ""}`}
+    >
+      No preview
+    </span>
   );
 }
 
@@ -1229,6 +1281,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         .map((campaign) => ({
           campaignId: campaign._id,
           name: campaign.name,
+          previewAdUnit: getCampaignPreviewAdUnit(campaign),
           impressions: 0,
           clicks: 0,
           ctr: 0,
@@ -1255,6 +1308,11 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         adUnitId: adUnit._id,
         adCode: adUnit.adCode,
         name: adUnit.name,
+        campaignName:
+          adUnit.campaign && typeof adUnit.campaign === "object"
+            ? adUnit.campaign.name
+            : null,
+        previewAdUnit: adUnit,
         impressions: 0,
         clicks: 0,
         ctr: 0,
@@ -1761,27 +1819,110 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             <p className="no-data">No dashboard data found for this search.</p>
           )}
 
-          <div className="dashboard-kpi-grid">
-            <div className="stat-card dashboard-kpi-card">
-              <h4>Impressions</h4>
-              <p className="stat-value">
-                {analyticsLoading ? "..." : formatNumber(analytics.impressions)}
-              </p>
+          <div className="dashboard-overview-top-grid">
+            <div className="dashboard-breakdown-panel">
+              <div className="dashboard-breakdown-header">
+                <div>
+                  <h3>
+                    {overviewMode === "campaign"
+                      ? "Campaign Performance"
+                      : "Ad Unit / Banner Performance"}
+                  </h3>
+                  <p>
+                    Select an item to update its detailed daily graph.
+                  </p>
+                </div>
+                <span>{overviewBreakdownItems.length} items</span>
+              </div>
+              {analyticsLoading ? (
+                <div className="no-data">Loading report items...</div>
+              ) : overviewBreakdownItems.length === 0 ? (
+                <div className="no-data">
+                  No report items for the selected filters.
+                </div>
+              ) : (
+                <div className="dashboard-breakdown-list">
+                  {overviewBreakdownItems.map((item) => {
+                    const itemId = String(
+                      overviewMode === "campaign"
+                        ? item.campaignId
+                        : item.adUnitId,
+                    );
+                    const isSelected =
+                      overviewMode === "campaign"
+                        ? itemId === selectedOverviewCampaignId
+                        : itemId === selectedOverviewAdUnitId;
+                    return (
+                      <button
+                        type="button"
+                        key={`${overviewMode}-${itemId}`}
+                        className={`dashboard-breakdown-row${isSelected ? " is-selected" : ""}`}
+                        onClick={() => {
+                          if (overviewMode === "campaign") {
+                            setSelectedOverviewCampaignId(itemId);
+                            setCampaignFilterSearch(item.name || itemId);
+                          } else {
+                            setSelectedOverviewAdUnitId(itemId);
+                            setAdUnitFilterSearch(item.name || itemId);
+                          }
+                        }}
+                      >
+                        <span className="dashboard-breakdown-identity">
+                          <CampaignTablePreview
+                            adUnit={item.previewAdUnit}
+                            className="dashboard-breakdown-preview"
+                            deferUntilVisible
+                          />
+                          <span className="dashboard-breakdown-copy">
+                            <span className="dashboard-breakdown-name">
+                              {item.name || item.adCode || "Unnamed item"}
+                            </span>
+                            {overviewMode === "adUnit" && (
+                              <span className="dashboard-breakdown-caption">
+                                Campaign: {item.campaignName || "Unavailable"}
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                        <span>
+                          Impressions: {formatNumber(item.impressions)}
+                        </span>
+                        <span>Clicks: {formatNumber(item.clicks)}</span>
+                        <span>CTR: {Number(item.ctr || 0).toFixed(2)}%</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <div className="stat-card dashboard-kpi-card">
-              <h4>Clicks</h4>
-              <p className="stat-value">
-                {analyticsLoading ? "..." : formatNumber(analytics.clicks)}
-              </p>
-            </div>
-            <div className="stat-card dashboard-kpi-card">
-              <h4>CTR</h4>
-              <p className="stat-value">
-                {analyticsLoading
-                  ? "..."
-                  : `${Number(analytics.ctr || 0).toFixed(2)}%`}
-              </p>
-            </div>
+
+            <aside
+              className="dashboard-kpi-grid dashboard-kpi-stack"
+              aria-label="Overview totals"
+            >
+              <div className="stat-card dashboard-kpi-card">
+                <h4>Impressions</h4>
+                <p className="stat-value">
+                  {analyticsLoading
+                    ? "..."
+                    : formatNumber(analytics.impressions)}
+                </p>
+              </div>
+              <div className="stat-card dashboard-kpi-card">
+                <h4>Clicks</h4>
+                <p className="stat-value">
+                  {analyticsLoading ? "..." : formatNumber(analytics.clicks)}
+                </p>
+              </div>
+              <div className="stat-card dashboard-kpi-card">
+                <h4>CTR</h4>
+                <p className="stat-value">
+                  {analyticsLoading
+                    ? "..."
+                    : `${Number(analytics.ctr || 0).toFixed(2)}%`}
+                </p>
+              </div>
+            </aside>
           </div>
 
           <div className="dashboard-chart-panel">
@@ -1825,61 +1966,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             </div>
           </div>
 
-          <div className="dashboard-breakdown-panel">
-            <div className="dashboard-breakdown-header">
-              <div>
-                <h3>
-                  {overviewMode === "campaign"
-                    ? "Campaign Performance"
-                    : "Ad Unit / Banner Performance"}
-                </h3>
-                <p>
-                  Select an item to show its detailed daily graph above.
-                </p>
-              </div>
-              <span>{overviewBreakdownItems.length} items</span>
-            </div>
-            {analyticsLoading ? (
-              <div className="no-data">Loading report items...</div>
-            ) : overviewBreakdownItems.length === 0 ? (
-              <div className="no-data">No report items for the selected filters.</div>
-            ) : (
-              <div className="dashboard-breakdown-list">
-                {overviewBreakdownItems.map((item) => {
-                  const itemId = String(
-                    overviewMode === "campaign" ? item.campaignId : item.adUnitId,
-                  );
-                  const isSelected =
-                    overviewMode === "campaign"
-                      ? itemId === selectedOverviewCampaignId
-                      : itemId === selectedOverviewAdUnitId;
-                  return (
-                    <button
-                      type="button"
-                      key={`${overviewMode}-${itemId}`}
-                      className={`dashboard-breakdown-row${isSelected ? " is-selected" : ""}`}
-                      onClick={() => {
-                        if (overviewMode === "campaign") {
-                          setSelectedOverviewCampaignId(itemId);
-                          setCampaignFilterSearch(item.name || itemId);
-                        } else {
-                          setSelectedOverviewAdUnitId(itemId);
-                          setAdUnitFilterSearch(item.name || itemId);
-                        }
-                      }}
-                    >
-                      <span className="dashboard-breakdown-name">
-                        {item.name || item.adCode || "Unnamed item"}
-                      </span>
-                      <span>Impressions: {formatNumber(item.impressions)}</span>
-                      <span>Clicks: {formatNumber(item.clicks)}</span>
-                      <span>CTR: {Number(item.ctr || 0).toFixed(2)}%</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </section>
       )}
 
