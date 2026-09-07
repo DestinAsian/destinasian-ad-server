@@ -1898,9 +1898,56 @@
 }
 
 .dashboard-breakdown-header p,
-.dashboard-breakdown-header > span {
+.dashboard-breakdown-header-actions > span {
   margin: 0;
   color: var(--ink-muted);
+}
+
+.dashboard-breakdown-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.dashboard-breakdown-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid rgba(111, 152, 166, 0.45);
+  border-radius: 999px;
+  background: rgba(199, 224, 231, 0.24);
+  color: var(--ink-strong);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.dashboard-breakdown-reset span {
+  font-size: 1.1rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.dashboard-breakdown-reset:hover {
+  border-color: rgba(111, 152, 166, 0.82);
+  background: rgba(199, 224, 231, 0.48);
+  transform: translateY(-1px);
+}
+
+.dashboard-breakdown-reset:focus-visible {
+  outline: 3px solid rgba(111, 152, 166, 0.28);
+  outline-offset: 2px;
 }
 
 .dashboard-breakdown-list {

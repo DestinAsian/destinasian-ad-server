@@ -781,6 +781,24 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     [selectedOverviewAdChannelId, sortedAdChannelOptions],
   );
 
+  const hasSelectedOverviewItem =
+    overviewMode === "campaign"
+      ? Boolean(selectedOverviewCampaignId)
+      : Boolean(selectedOverviewAdUnitId);
+
+  const handleViewAllOverviewItems = () => {
+    if (overviewMode === "campaign") {
+      setSelectedOverviewCampaignId("");
+      setCampaignFilterSearch("");
+      setIsCampaignFilterOpen(false);
+      return;
+    }
+
+    setSelectedOverviewAdUnitId("");
+    setAdUnitFilterSearch("");
+    setIsAdUnitFilterOpen(false);
+  };
+
   useEffect(() => {
     if (!selectedOverviewCampaignId) return;
     const exists = sortedOverviewCampaignOptions.some(
@@ -1832,7 +1850,21 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                     Select an item to update its detailed daily graph.
                   </p>
                 </div>
-                <span>{overviewBreakdownItems.length} items</span>
+                <div className="dashboard-breakdown-header-actions">
+                  <span>{overviewBreakdownItems.length} items</span>
+                  {hasSelectedOverviewItem && (
+                    <button
+                      type="button"
+                      className="dashboard-breakdown-reset"
+                      onClick={handleViewAllOverviewItems}
+                      aria-label={`View all ${overviewMode === "campaign" ? "campaigns" : "ad units"}`}
+                      title="Clear selected item and view all"
+                    >
+                      <span aria-hidden="true">×</span>
+                      View all
+                    </button>
+                  )}
+                </div>
               </div>
               {analyticsLoading ? (
                 <div className="no-data">Loading report items...</div>
