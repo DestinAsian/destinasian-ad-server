@@ -173,6 +173,9 @@ adUnitSchema.pre('validate', function(next) {
 
 adUnitSchema.index({ account: 1, inventories: 1 });
 adUnitSchema.index({ account: 1, inventory: 1 });
+adUnitSchema.index({ account: 1, campaign: 1 });
+adUnitSchema.index({ inventory: 1, status: 1, startDate: 1, endDate: 1, campaign: 1 });
+adUnitSchema.index({ inventories: 1, status: 1, startDate: 1, endDate: 1, campaign: 1 });
 adUnitSchema.index(
   { crmAdId: 1 },
   {

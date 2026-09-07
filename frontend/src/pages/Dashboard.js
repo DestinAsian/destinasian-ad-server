@@ -118,17 +118,53 @@ const getCampaignAdChannelNames = (campaign) =>
 const getAdUnitAdChannelNames = (adUnit) =>
   getAdChannelNamesFromAdUnits([adUnit]);
 
-const getAdUnitPreviewSource = (adUnit) => adUnit?.imageUrl || null;
+const hasAdUnitPreview = (adUnit) => Boolean(
+  adUnit?.imageUrl || adUnit?.hasImageCreative,
+);
 
-const getCampaignPreviewSource = (campaign) => {
+const getCampaignPreviewAdUnit = (campaign) => {
   const adUnits = Array.isArray(campaign?.adUnits) ? campaign.adUnits : [];
-  const previewAdUnit = adUnits.find((adUnit) =>
-    getAdUnitPreviewSource(adUnit),
-  );
-  return getAdUnitPreviewSource(previewAdUnit);
+  return adUnits.find((adUnit) => hasAdUnitPreview(adUnit)) || null;
 };
 
-function CampaignTablePreview({ previewSource }) {
+function CampaignTablePreview({ adUnit }) {
+  const directPreviewSource = adUnit?.imageUrl || null;
+  const [previewSource, setPreviewSource] = useState(directPreviewSource);
+
+  useEffect(() => {
+    if (directPreviewSource) {
+      setPreviewSource(directPreviewSource);
+      return undefined;
+    }
+
+    if (!adUnit?._id || !adUnit?.hasImageCreative) {
+      setPreviewSource(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let objectUrl = null;
+    let isCurrent = true;
+
+    adUnitAPI.getCreative(adUnit._id, controller.signal)
+      .then((response) => {
+        if (!isCurrent || !response.data) return;
+        objectUrl = URL.createObjectURL(response.data);
+        setPreviewSource(objectUrl);
+      })
+      .catch((error) => {
+        if (error?.code !== "ERR_CANCELED" && isCurrent) {
+          setPreviewSource(null);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [adUnit?._id, adUnit?.hasImageCreative, directPreviewSource]);
+
   return previewSource ? (
     <img
       className="campaign-table-preview"
@@ -143,12 +179,12 @@ function CampaignTablePreview({ previewSource }) {
 
 function CampaignTableNameCell({ campaign, onOpen }) {
   const adChannelNames = getCampaignAdChannelNames(campaign);
-  const previewSource = getCampaignPreviewSource(campaign);
+  const previewAdUnit = getCampaignPreviewAdUnit(campaign);
 
   return (
     <td className="campaign-table-name">
       <div className="campaign-table-adunit-cell">
-        <CampaignTablePreview previewSource={previewSource} />
+        <CampaignTablePreview adUnit={previewAdUnit} />
         <div className="campaign-table-adunit-copy">
           <span className="campaign-table-row-label">Campaign</span>
           <button
@@ -173,12 +209,11 @@ function CampaignTableNameCell({ campaign, onOpen }) {
 
 function AdUnitTableNameCell({ adUnit, campaignId, onOpen }) {
   const adChannelNames = getAdUnitAdChannelNames(adUnit);
-  const previewSource = getAdUnitPreviewSource(adUnit);
 
   return (
     <td className="campaign-table-name campaign-table-adunit-name">
       <div className="campaign-table-adunit-cell">
-        <CampaignTablePreview previewSource={previewSource} />
+        <CampaignTablePreview adUnit={adUnit} />
         <div className="campaign-table-adunit-copy">
           <span className="campaign-table-row-label">AdUnit</span>
           <button
@@ -300,6 +335,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         const params = {
           page,
           limit: CAMPAIGN_PAGE_SIZE,
+          view: "summary",
         };
         if (selectedInventoryId) params.inventoryId = selectedInventoryId;
         if (debouncedSearchQuery) params.search = debouncedSearchQuery;
@@ -497,7 +533,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   useEffect(() => {
     const loadOverviewCampaignOptions = async () => {
       try {
-        const response = await campaignAPI.getAll();
+        const response = await campaignAPI.getAll({ view: "summary" });
         const rows = Array.isArray(response.data?.data)
           ? response.data.data
           : Array.isArray(response.data)
@@ -659,16 +695,29 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     handleOpenCreateAdUnitModal(campaignId);
   };
 
-  const handleOpenEditAdUnitModal = (adUnit, campaignId = null) => {
-    const resolvedCampaignId =
-      campaignId || adUnit?.campaign?._id || adUnit?.campaign || null;
-    if (resolvedCampaignId) {
-      selectedCampaignRef.current = resolvedCampaignId;
-      setSelectedCampaign(resolvedCampaignId);
-    }
-    setEditingAdUnit(adUnit);
-    setShowAdUnitModal(true);
+  const handleOpenEditAdUnitModal = async (adUnit, campaignId = null) => {
     setError(null);
+    try {
+      const response = await adUnitAPI.getById(adUnit._id);
+      const detailedAdUnit = response.data;
+      const resolvedCampaignId =
+        campaignId ||
+        detailedAdUnit?.campaign?._id ||
+        detailedAdUnit?.campaign ||
+        null;
+      if (resolvedCampaignId) {
+        selectedCampaignRef.current = resolvedCampaignId;
+        setSelectedCampaign(resolvedCampaignId);
+      }
+      setEditingAdUnit(detailedAdUnit);
+      setShowAdUnitModal(true);
+    } catch (err) {
+      setError(
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        "Failed to load ad unit details",
+      );
+    }
   };
 
   const handleCloseAdUnitModal = () => {
@@ -851,23 +900,29 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
 
   const handleDuplicateAdUnit = async (adUnit) => {
     try {
-      const duplicateDateWindow = getDuplicateAdUnitDateWindow(adUnit);
+      const response = await adUnitAPI.getById(adUnit._id);
+      const detailedAdUnit = response.data;
+      const duplicateDateWindow = getDuplicateAdUnitDateWindow(detailedAdUnit);
       await adUnitAPI.create({
-        name: adUnit.name,
-        campaign: adUnit.campaign?._id || adUnit.campaign || selectedCampaign,
-        inventory: adUnit.inventory?._id || adUnit.inventory,
-        inventories: Array.isArray(adUnit.inventories)
-          ? adUnit.inventories
+        name: detailedAdUnit.name,
+        campaign:
+          detailedAdUnit.campaign?._id ||
+          detailedAdUnit.campaign ||
+          selectedCampaign,
+        inventory:
+          detailedAdUnit.inventory?._id || detailedAdUnit.inventory,
+        inventories: Array.isArray(detailedAdUnit.inventories)
+          ? detailedAdUnit.inventories
               .map((inventory) => inventory?._id || inventory)
               .filter(Boolean)
           : undefined,
         startDate: duplicateDateWindow.startDate,
         endDate: duplicateDateWindow.endDate,
-        imageUrl: adUnit.imageUrl,
-        htmlCreative: adUnit.htmlCreative,
-        iframeUrl: adUnit.iframeUrl,
-        clickUrl: adUnit.clickUrl,
-        width: adUnit.width,
+        imageUrl: detailedAdUnit.imageUrl,
+        htmlCreative: detailedAdUnit.htmlCreative,
+        iframeUrl: detailedAdUnit.iframeUrl,
+        clickUrl: detailedAdUnit.clickUrl,
+        width: detailedAdUnit.width,
       });
       setSuccessMessage("Ad unit duplicated successfully!");
       if (isCampaignView) {

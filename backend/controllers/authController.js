@@ -132,7 +132,7 @@ const getAccessibleAccountsForUser = async (userId, role) => {
     ...accessQuery
   })
     .select('_id name')
-    .sort({ updatedAt: -1 });
+    .sort({ createdAt: 1, _id: 1 });
 };
 
 const getCurrentAccount = (userAccounts, preferredAccountId) => {

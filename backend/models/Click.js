@@ -29,4 +29,7 @@ const clickSchema = new mongoose.Schema(
   { timestamps: false }
 );
 
+clickSchema.index({ account: 1, campaign: 1, timestamp: 1 });
+clickSchema.index({ account: 1, adUnit: 1, timestamp: 1 });
+
 module.exports = mongoose.model('Click', clickSchema);

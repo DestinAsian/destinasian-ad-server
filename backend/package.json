@@ -8,6 +8,8 @@
     "dev": "nodemon server.js",
     "migrate:add-ad-events": "node migrations/20260402_add_ad_event_and_daily_stat_collections.js up",
     "migrate:rollback:add-ad-events": "node migrations/20260402_add_ad_event_and_daily_stat_collections.js down",
+    "migrate:optimize-statistics-indexes": "node migrations/20260902_optimize_statistics_indexes.js up",
+    "migrate:rollback:optimize-statistics-indexes": "node migrations/20260902_optimize_statistics_indexes.js down",
     "migrate:merge-inventory-entity": "node migrations/20260430_merge_inventory_group_and_backfill_adunit_inventories.js up",
     "migrate:rollback:merge-inventory-entity": "node migrations/20260430_merge_inventory_group_and_backfill_adunit_inventories.js down",
     "migrate:user-roles": "node migrations/20260505_enforce_single_owner_and_editor_roles.js up",

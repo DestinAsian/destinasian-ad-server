@@ -2,10 +2,14 @@ const mongoose = require('mongoose');
 const Campaign = require('../models/Campaign');
 const AdUnit = require('../models/AdUnit');
 const Inventory = require('../models/Inventory');
-const Impression = require('../models/Impression');
-const Click = require('../models/Click');
 const { calculateCampaignStats } = require('../jobs/updateCampaignStats');
 const { assignCrmAdIdToAdUnit, ensureCampaignCode } = require('../utils/crmAdIdAssignment');
+const { getTableStatsByIds } = require('../services/tableStatsService');
+const {
+  applyAdUnitSummaryProjection,
+  getImageCreativeIdSet,
+  isAdUnitSummaryView
+} = require('../services/adUnitSummaryService');
 
 const normalizeString = (value) => {
   if (typeof value !== 'string') {
@@ -236,87 +240,6 @@ const requireAdUnitInventoryAssignmentsForActiveCampaign = async ({ campaignId }
   }
 };
 
-const getTodayRange = () => {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start, end };
-};
-
-const calculateCampaignTodayStats = async (campaignId) => {
-  const { start, end } = getTodayRange();
-  const [impressionsToday, clicksToday] = await Promise.all([
-    Impression.countDocuments({ campaign: campaignId, timestamp: { $gte: start, $lt: end } }),
-    Click.countDocuments({ campaign: campaignId, timestamp: { $gte: start, $lt: end } })
-  ]);
-
-  return { impressionsToday, clicksToday };
-};
-
-const getAdUnitTableStatsById = async (adUnitIds = []) => {
-  if (!Array.isArray(adUnitIds) || adUnitIds.length === 0) {
-    return new Map();
-  }
-
-  const { start, end } = getTodayRange();
-  const [
-    impressionTotals,
-    clickTotals,
-    impressionTodayTotals,
-    clickTodayTotals
-  ] = await Promise.all([
-    Impression.aggregate([
-      { $match: { adUnit: { $in: adUnitIds } } },
-      { $group: { _id: '$adUnit', count: { $sum: 1 } } }
-    ]),
-    Click.aggregate([
-      { $match: { adUnit: { $in: adUnitIds } } },
-      { $group: { _id: '$adUnit', count: { $sum: 1 } } }
-    ]),
-    Impression.aggregate([
-      { $match: { adUnit: { $in: adUnitIds }, timestamp: { $gte: start, $lt: end } } },
-      { $group: { _id: '$adUnit', count: { $sum: 1 } } }
-    ]),
-    Click.aggregate([
-      { $match: { adUnit: { $in: adUnitIds }, timestamp: { $gte: start, $lt: end } } },
-      { $group: { _id: '$adUnit', count: { $sum: 1 } } }
-    ])
-  ]);
-
-  const statsById = new Map(adUnitIds.map((adUnitId) => [
-    String(adUnitId),
-    {
-      impressions: 0,
-      impressionsToday: 0,
-      clicks: 0,
-      clicksToday: 0,
-      ctr: 0
-    }
-  ]));
-
-  const applyCounts = (rows, fieldName) => {
-    rows.forEach((row) => {
-      const key = String(row._id);
-      const current = statsById.get(key);
-      if (current) {
-        current[fieldName] = row.count || 0;
-      }
-    });
-  };
-
-  applyCounts(impressionTotals, 'impressions');
-  applyCounts(clickTotals, 'clicks');
-  applyCounts(impressionTodayTotals, 'impressionsToday');
-  applyCounts(clickTodayTotals, 'clicksToday');
-
-  statsById.forEach((stats) => {
-    stats.ctr = stats.impressions > 0 ? ((stats.clicks / stats.impressions) * 100).toFixed(2) : 0;
-  });
-
-  return statsById;
-};
-
 exports.createCampaign = async (req, res) => {
   try {
     const { name, description } = req.body;
@@ -348,6 +271,7 @@ exports.createCampaign = async (req, res) => {
 exports.getAllCampaigns = async (req, res) => {
   try {
     const filter = { account: req.user.accountId };
+    const summaryView = isAdUnitSummaryView(req.query.view);
     const searchTerm = normalizeString(req.query.search);
     const pageProvided = req.query.page !== undefined;
     const limitProvided = req.query.limit !== undefined;
@@ -476,10 +400,7 @@ exports.getAllCampaigns = async (req, res) => {
       ? await Campaign.countDocuments(filter)
       : null;
 
-    let campaignQuery = Campaign.find(filter).populate({
-      path: 'adUnits',
-      populate: [{ path: 'inventory' }, { path: 'inventories' }]
-    });
+    let campaignQuery = Campaign.find(filter);
 
     if (pageProvided || limitProvided) {
       campaignQuery = campaignQuery
@@ -490,16 +411,30 @@ exports.getAllCampaigns = async (req, res) => {
 
     const campaigns = await campaignQuery;
     const campaignIds = campaigns.map((campaignDoc) => campaignDoc._id);
-    const campaignAdUnits = campaignIds.length > 0
-      ? await AdUnit.find({
+    const campaignAdUnitQuery = applyAdUnitSummaryProjection(AdUnit.find({
         account: req.user.accountId,
         campaign: { $in: campaignIds }
-      })
-        .populate('inventory')
-        .populate('inventories')
+      }), summaryView);
+    const campaignAdUnits = campaignIds.length > 0
+      ? await campaignAdUnitQuery.populate('inventory').populate('inventories')
       : [];
 
-    const adUnitStatsById = await getAdUnitTableStatsById(campaignAdUnits.map((adUnitDoc) => adUnitDoc._id));
+    const campaignAdUnitIds = campaignAdUnits.map((adUnitDoc) => adUnitDoc._id);
+    const [campaignStatsById, adUnitStatsById, imageCreativeIds] = await Promise.all([
+      getTableStatsByIds({
+        accountId: req.user.accountId,
+        dimension: 'campaign',
+        ids: campaignIds
+      }),
+      getTableStatsByIds({
+        accountId: req.user.accountId,
+        dimension: 'adUnit',
+        ids: campaignAdUnitIds
+      }),
+      summaryView
+        ? getImageCreativeIdSet({ accountId: req.user.accountId, adUnitIds: campaignAdUnitIds })
+        : Promise.resolve(new Set())
+    ]);
     const adUnitsByCampaignId = campaignAdUnits.reduce((acc, adUnitDoc) => {
       const campaignId = adUnitDoc.campaign?.toString();
       if (!campaignId) return acc;
@@ -507,30 +442,32 @@ exports.getAllCampaigns = async (req, res) => {
       const adUnitObj = adUnitDoc.toObject();
       acc.get(campaignId).push({
         ...adUnitObj,
+        ...(summaryView ? { hasImageCreative: imageCreativeIds.has(String(adUnitDoc._id)) } : {}),
         ...(adUnitStatsById.get(String(adUnitDoc._id)) || {})
       });
       return acc;
     }, new Map());
 
-    const enrichedCampaigns = await Promise.all(
-      campaigns.map(async (campaign) => {
-        const [stats, todayStats] = await Promise.all([
-          calculateCampaignStats(campaign._id),
-          calculateCampaignTodayStats(campaign._id)
-        ]);
-        const campaignObj = campaign.toObject();
-        const mappedAdUnits = adUnitsByCampaignId.get(campaign._id.toString());
-        return {
-          ...campaignObj,
-          adUnits: Array.isArray(mappedAdUnits) ? mappedAdUnits : (campaignObj.adUnits || []),
-          totalImpressions: stats.totalImpressions,
-          impressionsToday: todayStats.impressionsToday,
-          totalClicks: stats.totalClicks,
-          clicksToday: todayStats.clicksToday,
-          ctr: stats.ctr
-        };
-      })
-    );
+    const enrichedCampaigns = campaigns.map((campaign) => {
+      const stats = campaignStatsById.get(String(campaign._id)) || {
+        impressions: 0,
+        impressionsToday: 0,
+        clicks: 0,
+        clicksToday: 0,
+        ctr: 0
+      };
+      const campaignObj = campaign.toObject();
+      const mappedAdUnits = adUnitsByCampaignId.get(String(campaign._id)) || [];
+      return {
+        ...campaignObj,
+        adUnits: mappedAdUnits,
+        totalImpressions: stats.impressions,
+        impressionsToday: stats.impressionsToday,
+        totalClicks: stats.clicks,
+        clicksToday: stats.clicksToday,
+        ctr: stats.ctr
+      };
+    });
 
     if (pageProvided || limitProvided) {
       return res.json({

@@ -29,4 +29,7 @@ const impressionSchema = new mongoose.Schema(
   { timestamps: false }
 );
 
+impressionSchema.index({ account: 1, campaign: 1, timestamp: 1 });
+impressionSchema.index({ account: 1, adUnit: 1, timestamp: 1 });
+
 module.exports = mongoose.model('Impression', impressionSchema);

@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const Campaign = require('../models/Campaign');
+const AdDailyStat = require('../models/AdDailyStat');
 const Impression = require('../models/Impression');
 const Click = require('../models/Click');
 
@@ -30,22 +31,42 @@ const calculateCampaignStats = async (campaignId) => {
 const updateAllCampaignStats = async () => {
   try {
     console.log('[Campaign Stats Job] Starting daily campaign stats update...');
-    
-    const campaigns = await Campaign.find({ user: { $exists: true } });
-    let updated = 0;
 
-    for (const campaign of campaigns) {
-      const stats = await calculateCampaignStats(campaign._id);
-      if (stats) {
-        await Campaign.findByIdAndUpdate(campaign._id, {
-          totalImpressions: stats.totalImpressions,
-          totalClicks: stats.totalClicks
-        });
-        updated++;
-      }
+    const [campaigns, groupedStats] = await Promise.all([
+      Campaign.find({ user: { $exists: true } }).select('_id'),
+      AdDailyStat.aggregate([
+        { $match: { campaign: { $ne: null } } },
+        {
+          $group: {
+            _id: '$campaign',
+            totalImpressions: { $sum: '$impressions' },
+            totalClicks: { $sum: '$clicks' }
+          }
+        }
+      ])
+    ]);
+
+    const statsByCampaignId = new Map(groupedStats.map((row) => [String(row._id), row]));
+    const operations = campaigns.map((campaign) => {
+      const stats = statsByCampaignId.get(String(campaign._id));
+      return {
+        updateOne: {
+          filter: { _id: campaign._id },
+          update: {
+            $set: {
+              totalImpressions: Number(stats?.totalImpressions || 0),
+              totalClicks: Number(stats?.totalClicks || 0)
+            }
+          }
+        }
+      };
+    });
+
+    if (operations.length > 0) {
+      await Campaign.bulkWrite(operations, { ordered: false });
     }
 
-    console.log(`[Campaign Stats Job] ✓ Updated ${updated} campaigns at ${new Date().toISOString()}`);
+    console.log(`[Campaign Stats Job] ✓ Updated ${operations.length} campaigns at ${new Date().toISOString()}`);
   } catch (error) {
     console.error('[Campaign Stats Job] Error updating campaign stats:', error);
   }
@@ -60,9 +81,6 @@ const initializeCampaignStatsJob = () => {
   const job = cron.schedule('0 0 * * *', updateAllCampaignStats);
   
   console.log('[Campaign Stats Job] Initialized - runs daily at midnight');
-  
-  // Also run once on startup
-  updateAllCampaignStats();
   
   return job;
 };

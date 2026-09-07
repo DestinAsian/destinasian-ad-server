@@ -5,7 +5,7 @@ const normalizeRole = (role) => {
   if (role === 'owner' || role === 'admin') return 'owner';
   return 'editor';
 };
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

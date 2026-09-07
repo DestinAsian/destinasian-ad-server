@@ -72,6 +72,10 @@ adDailyStatSchema.index({ statDate: 1, account: 1 });
 adDailyStatSchema.index({ statDate: 1, campaign: 1 });
 adDailyStatSchema.index({ statDate: 1, adUnit: 1 });
 adDailyStatSchema.index({ statDate: 1, inventory: 1 });
+adDailyStatSchema.index({ account: 1, statDate: 1 });
+adDailyStatSchema.index({ account: 1, campaign: 1, statDate: 1 });
+adDailyStatSchema.index({ account: 1, adUnit: 1, statDate: 1 });
+adDailyStatSchema.index({ account: 1, inventory: 1, statDate: 1 });
 adDailyStatSchema.index(
   { statDate: 1, account: 1, campaign: 1, adUnit: 1, inventory: 1 },
   { name: 'ad_daily_stats_rollup_key', unique: true }

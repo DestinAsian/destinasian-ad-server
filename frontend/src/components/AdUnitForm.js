@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import { adUnitAPI, inventoryAPI } from "../services/api";
 import Modal from "./Modal";
 
@@ -59,9 +59,10 @@ function AdUnitForm({
   const [startDateTouched, setStartDateTouched] = useState(false);
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
   const [bannerLibrary, setBannerLibrary] = useState([]);
-  const [bannerLibraryLoading, setBannerLibraryLoading] = useState(false);
+  const [bannerLibraryStatus, setBannerLibraryStatus] = useState("idle");
   const [bannerLibraryError, setBannerLibraryError] = useState(null);
   const [bannerLibrarySearch, setBannerLibrarySearch] = useState("");
+  const bannerLibraryRequestRef = useRef(null);
 
   useEffect(() => {
     if (adUnit) {
@@ -109,6 +110,13 @@ function AdUnitForm({
     setIsInventoriesModalOpen(false);
     setIsBannerLibraryModalOpen(false);
     setInventorySearchQuery("");
+    if (bannerLibraryRequestRef.current) {
+      bannerLibraryRequestRef.current.abort();
+      bannerLibraryRequestRef.current = null;
+    }
+    setBannerLibrary([]);
+    setBannerLibraryStatus("idle");
+    setBannerLibraryError(null);
     setBannerLibrarySearch("");
     setStartDateTouched(false);
     setErrors({});
@@ -131,33 +139,44 @@ function AdUnitForm({
     loadInventories();
   }, []);
 
-  useEffect(() => {
-    let isCurrentRequest = true;
-
-    const loadBannerLibrary = async () => {
-      try {
-        setBannerLibraryLoading(true);
-        const response = await adUnitAPI.getBannerLibrary();
-        if (!isCurrentRequest) return;
-        setBannerLibrary(response.data?.banners || []);
-        setBannerLibraryError(null);
-      } catch (err) {
-        if (!isCurrentRequest) return;
-        setBannerLibrary([]);
-        setBannerLibraryError("Failed to load banner library.");
-      } finally {
-        if (isCurrentRequest) {
-          setBannerLibraryLoading(false);
-        }
-      }
-    };
-
-    loadBannerLibrary();
-
-    return () => {
-      isCurrentRequest = false;
-    };
+  useEffect(() => () => {
+    if (bannerLibraryRequestRef.current) {
+      bannerLibraryRequestRef.current.abort();
+      bannerLibraryRequestRef.current = null;
+    }
   }, []);
+
+  const loadBannerLibrary = async () => {
+    if (bannerLibraryRequestRef.current) return;
+
+    const controller = new AbortController();
+    bannerLibraryRequestRef.current = controller;
+    setBannerLibraryStatus("loading");
+    setBannerLibraryError(null);
+
+    try {
+      const response = await adUnitAPI.getBannerLibrary(controller.signal);
+      if (controller.signal.aborted) return;
+      setBannerLibrary(response.data?.banners || []);
+      setBannerLibraryStatus("success");
+    } catch (err) {
+      if (controller.signal.aborted || err?.code === "ERR_CANCELED") return;
+      setBannerLibrary([]);
+      setBannerLibraryStatus("error");
+      setBannerLibraryError("Failed to load banner library.");
+    } finally {
+      if (bannerLibraryRequestRef.current === controller) {
+        bannerLibraryRequestRef.current = null;
+      }
+    }
+  };
+
+  const openBannerLibrary = () => {
+    setIsBannerLibraryModalOpen(true);
+    if (bannerLibraryStatus === "idle") {
+      loadBannerLibrary();
+    }
+  };
 
   const isEditingAdUnit = Boolean(adUnit);
   const isEditingActiveAdUnit = Boolean(adUnit && adUnit.status === "active");
@@ -550,12 +569,20 @@ function AdUnitForm({
           />
         )}
       </div>
-      {bannerLibraryLoading ? (
+      {bannerLibraryStatus === "loading" ? (
         <p className="banner-library-state">Loading banner library...</p>
-      ) : bannerLibraryError ? (
-        <p className="banner-library-state banner-library-state-error">
-          {bannerLibraryError}
-        </p>
+      ) : bannerLibraryStatus === "error" ? (
+        <div className="banner-library-state banner-library-state-error">
+          <p>{bannerLibraryError}</p>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={loadBannerLibrary}
+            disabled={submitting}
+          >
+            Retry
+          </button>
+        </div>
       ) : bannerLibrary.length === 0 ? (
         <p className="banner-library-state">
           No saved banners yet. Upload a new banner to add one.
@@ -656,7 +683,7 @@ function AdUnitForm({
               <button
                 type="button"
                 className="btn btn-secondary btn-sm banner-library-open-button"
-                onClick={() => setIsBannerLibraryModalOpen(true)}
+                onClick={openBannerLibrary}
                 disabled={submitting}
               >
                 Library

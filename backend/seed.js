@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 require('dotenv').config();
+const { connectDatabase } = require('./config/database');
 
 const Campaign = require('./models/Campaign');
 const AdUnit = require('./models/AdUnit');
@@ -9,7 +10,7 @@ const Click = require('./models/Click');
 const seedDatabase = async () => {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ad-server');
+    await connectDatabase();
     console.log('✓ Connected to MongoDB');
 
     // Clear existing data

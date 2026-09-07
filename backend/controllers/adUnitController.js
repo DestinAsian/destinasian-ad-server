@@ -5,6 +5,12 @@ const Campaign = require('../models/Campaign');
 const Inventory = require('../models/Inventory');
 const Impression = require('../models/Impression');
 const Click = require('../models/Click');
+const { getTableStatsByIds } = require('../services/tableStatsService');
+const {
+  applyAdUnitSummaryProjection,
+  getImageCreativeIdSet,
+  isAdUnitSummaryView
+} = require('../services/adUnitSummaryService');
 const { assignCrmAdIdToAdUnit } = require('../utils/crmAdIdAssignment');
 
 const toObjectIdString = (value) => {
@@ -357,6 +363,7 @@ exports.createAdUnit = async (req, res) => {
 exports.getAllAdUnits = async (req, res) => {
   try {
     const filter = { account: req.user.accountId };
+    const summaryView = isAdUnitSummaryView(req.query.view);
     const inventoryFilterIds = await resolveInventoryFilterIds({
       accountId: req.user.accountId,
       query: req.query
@@ -373,23 +380,43 @@ exports.getAllAdUnits = async (req, res) => {
       ];
     }
 
-    const adUnits = await AdUnit.find(filter)
+    const adUnitQuery = applyAdUnitSummaryProjection(AdUnit.find(filter), summaryView);
+    const adUnits = await adUnitQuery
       .populate('campaign')
       .populate('inventory')
       .populate('inventories');
 
-    const enrichedAdUnits = await Promise.all(
-      adUnits.map(async (adUnit) => {
-        const stats = await calculateAdUnitStats(adUnit._id);
-        const adUnitObj = adUnit.toObject();
-        return {
-          ...adUnitObj,
-          impressions: stats.impressions,
-          clicks: stats.clicks,
-          ctr: stats.ctr
-        };
-      })
-    );
+    const adUnitIds = adUnits.map((adUnit) => adUnit._id);
+    const [statsById, imageCreativeIds] = await Promise.all([
+      getTableStatsByIds({
+        accountId: req.user.accountId,
+        dimension: 'adUnit',
+        ids: adUnitIds
+      }),
+      summaryView
+        ? getImageCreativeIdSet({ accountId: req.user.accountId, adUnitIds })
+        : Promise.resolve(new Set())
+    ]);
+
+    const enrichedAdUnits = adUnits.map((adUnit) => {
+      const stats = statsById.get(String(adUnit._id)) || {
+        impressions: 0,
+        impressionsToday: 0,
+        clicks: 0,
+        clicksToday: 0,
+        ctr: 0
+      };
+      const adUnitObj = adUnit.toObject();
+      return {
+        ...adUnitObj,
+        ...(summaryView ? { hasImageCreative: imageCreativeIds.has(String(adUnit._id)) } : {}),
+        impressions: stats.impressions,
+        impressionsToday: stats.impressionsToday,
+        clicks: stats.clicks,
+        clicksToday: stats.clicksToday,
+        ctr: stats.ctr
+      };
+    });
 
     res.json(enrichedAdUnits);
   } catch (error) {
@@ -464,6 +491,41 @@ exports.getAdUnit = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getAdUnitCreative = async (req, res) => {
+  try {
+    const adUnit = await AdUnit.findOne({
+      _id: req.params.id,
+      account: req.user.accountId
+    }).select('imageUrl');
+
+    if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
+    if (!adUnit.imageUrl) return res.status(204).end();
+
+    const imageMatch = adUnit.imageUrl.match(/^data:([^;,]+);base64,(.*)$/i);
+    if (!imageMatch) {
+      if (/^https?:\/\//i.test(adUnit.imageUrl)) {
+        return res.redirect(adUnit.imageUrl);
+      }
+      return res.status(204).end();
+    }
+
+    const mimeType = imageMatch[1].toLowerCase();
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mimeType)) {
+      return res.status(415).json({ error: 'Unsupported creative image type' });
+    }
+
+    const imageBuffer = Buffer.from(imageMatch[2], 'base64');
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Length': imageBuffer.length,
+      'Cache-Control': 'private, max-age=3600'
+    });
+    return res.send(imageBuffer);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 };
 
@@ -621,6 +683,7 @@ exports.getAdUnitStats = async (req, res) => {
 
 exports.getAdUnitByCampaign = async (req, res) => {
   try {
+    const summaryView = isAdUnitSummaryView(req.query.view);
     const filter = {
       account: req.user.accountId,
       campaign: req.params.campaignId
@@ -642,22 +705,42 @@ exports.getAdUnitByCampaign = async (req, res) => {
       ];
     }
 
-    const adUnits = await AdUnit.find(filter)
+    const adUnitQuery = applyAdUnitSummaryProjection(AdUnit.find(filter), summaryView);
+    const adUnits = await adUnitQuery
       .populate('inventory')
       .populate('inventories');
 
-    const enrichedAdUnits = await Promise.all(
-      adUnits.map(async (adUnit) => {
-        const stats = await calculateAdUnitStats(adUnit._id);
-        const adUnitObj = adUnit.toObject();
-        return {
-          ...adUnitObj,
-          impressions: stats.impressions,
-          clicks: stats.clicks,
-          ctr: stats.ctr
-        };
-      })
-    );
+    const adUnitIds = adUnits.map((adUnit) => adUnit._id);
+    const [statsById, imageCreativeIds] = await Promise.all([
+      getTableStatsByIds({
+        accountId: req.user.accountId,
+        dimension: 'adUnit',
+        ids: adUnitIds
+      }),
+      summaryView
+        ? getImageCreativeIdSet({ accountId: req.user.accountId, adUnitIds })
+        : Promise.resolve(new Set())
+    ]);
+
+    const enrichedAdUnits = adUnits.map((adUnit) => {
+      const stats = statsById.get(String(adUnit._id)) || {
+        impressions: 0,
+        impressionsToday: 0,
+        clicks: 0,
+        clicksToday: 0,
+        ctr: 0
+      };
+      const adUnitObj = adUnit.toObject();
+      return {
+        ...adUnitObj,
+        ...(summaryView ? { hasImageCreative: imageCreativeIds.has(String(adUnit._id)) } : {}),
+        impressions: stats.impressions,
+        impressionsToday: stats.impressionsToday,
+        clicks: stats.clicks,
+        clicksToday: stats.clicksToday,
+        ctr: stats.ctr
+      };
+    });
 
     res.json(enrichedAdUnits);
   } catch (error) {

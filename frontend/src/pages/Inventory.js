@@ -87,7 +87,7 @@ function Inventory({ searchQuery = "" }) {
     try {
       const [inventoryResponse, adUnitResponse] = await Promise.all([
         inventoryAPI.getAll({ runningAdsOnly }),
-        adUnitAPI.getAll(),
+        adUnitAPI.getAll({ view: "summary" }),
       ]);
 
       if (loadRequestIdRef.current !== requestId) return;

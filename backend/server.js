@@ -3,6 +3,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
+const { connectDatabase } = require('./config/database');
 
 const app = express();
 
@@ -63,7 +64,11 @@ app.get('/', (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'Ad Server is running' });
+  const databaseConnected = mongoose.connection.readyState === 1;
+  res.status(databaseConnected ? 200 : 503).json({
+    status: databaseConnected ? 'Ad Server is running' : 'Ad Server database is unavailable',
+    database: databaseConnected ? 'connected' : 'disconnected'
+  });
 });
 
 app.use((error, req, res, next) => {
@@ -76,27 +81,34 @@ app.use((error, req, res, next) => {
   return next(error);
 });
 
-mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/ad-server')
-  .then(() => {
-    console.log('MongoDB connected');
-
-    // Initialize scheduled jobs after DB connection
-    initializeCampaignStatsJob();
-    initializeEndDateEnforcementJob();
-  })
-  .catch(err => console.log('MongoDB connection error:', err));
-
 const PORT = process.env.PORT || 5001;
 const HOST = process.env.HOST || '0.0.0.0';
-const server = app.listen(PORT, HOST, () => {
-  console.log(`Ad Server backend running on ${HOST}:${PORT}`);
-});
 
-server.on('error', (error) => {
-  if (error.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use. Stop the existing backend process or set PORT to another value.`);
+const startServer = async () => {
+  try {
+    const connection = await connectDatabase();
+    console.log(`MongoDB connected: ${connection.name}`);
+
+    // Initialize scheduled jobs only after the database is ready.
+    initializeCampaignStatsJob();
+    initializeEndDateEnforcementJob();
+
+    const server = app.listen(PORT, HOST, () => {
+      console.log(`Ad Server backend running on ${HOST}:${PORT}`);
+    });
+
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} is already in use. Stop the existing backend process or set PORT to another value.`);
+        process.exit(1);
+      }
+
+      throw error;
+    });
+  } catch (error) {
+    console.error('MongoDB connection error:', error.message);
     process.exit(1);
   }
+};
 
-  throw error;
-});
+startServer();
