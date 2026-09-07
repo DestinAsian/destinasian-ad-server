@@ -4,6 +4,7 @@ import Modal from '../components/Modal';
 import { accountAPI, userAPI } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { getApiErrorMessage } from '../utils/apiError';
 import '../styles/Users.css';
 import '../styles/AccountManagement.css';
 
@@ -47,7 +48,7 @@ function AccountManagement() {
       setAccounts(rows);
       setLoading(false);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to load accounts');
+      setError(getApiErrorMessage(err, 'Failed to load accounts'));
       setLoading(false);
     }
   }, [setError]);
@@ -86,7 +87,7 @@ function AccountManagement() {
       showSuccess('Account updated successfully');
       await fetchAccounts();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to update account');
+      setError(getApiErrorMessage(err, 'Failed to update account'));
     }
   };
 
@@ -104,7 +105,7 @@ function AccountManagement() {
       showSuccess('Account created successfully');
       await fetchAccounts();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create account');
+      setError(getApiErrorMessage(err, 'Failed to create account'));
     } finally {
       setCreatingAccount(false);
     }
@@ -123,7 +124,7 @@ function AccountManagement() {
       showSuccess('Account deleted successfully');
       await fetchAccounts();
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to delete account');
+      setError(getApiErrorMessage(err, 'Failed to delete account'));
     }
   };
 
@@ -152,7 +153,7 @@ function AccountManagement() {
     } catch (err) {
       setAvailableShareUsers([]);
       setSelectedUserIds([]);
-      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to load users for sharing');
+      setError(getApiErrorMessage(err, 'Failed to load users for sharing'));
     } finally {
       setLoadingShareUsers(false);
     }
@@ -187,7 +188,7 @@ function AccountManagement() {
       closeShareModal();
       await fetchAccounts();
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to share account');
+      setError(getApiErrorMessage(err, 'Failed to share account'));
     } finally {
       setSharingSubmitting(false);
     }

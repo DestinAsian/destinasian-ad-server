@@ -1580,7 +1580,8 @@
 }
 
 .dashboard-overview-header,
-.dashboard-chart-panel {
+.dashboard-chart-panel,
+.dashboard-breakdown-panel {
   background: linear-gradient(
     180deg,
     var(--bg-elevated) 0%,
@@ -1623,6 +1624,28 @@
   grid-template-columns: repeat(4, minmax(160px, 1fr));
   gap: 14px;
   width: 100%;
+}
+
+.dashboard-overview-mode {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dashboard-overview-mode button {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--ink-body);
+  padding: 9px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dashboard-overview-mode button.is-active {
+  background: rgba(199, 224, 231, 0.55);
+  border-color: rgba(111, 152, 166, 0.72);
+  color: var(--ink-strong);
 }
 
 .dashboard-filter-field {
@@ -1755,6 +1778,63 @@
 
 .dashboard-chart-canvas {
   height: 320px;
+}
+
+.dashboard-breakdown-panel {
+  padding: 24px 28px;
+}
+
+.dashboard-breakdown-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.dashboard-breakdown-header h3 {
+  margin: 0 0 6px;
+  font-family: "EB Garamond", serif;
+  font-size: 1.5rem;
+  color: var(--ink-strong);
+}
+
+.dashboard-breakdown-header p,
+.dashboard-breakdown-header > span {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.dashboard-breakdown-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(110px, auto));
+  gap: 16px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--ink-body);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dashboard-breakdown-row:hover,
+.dashboard-breakdown-row.is-selected {
+  border-color: rgba(111, 152, 166, 0.72);
+  background: rgba(199, 224, 231, 0.24);
+}
+
+.dashboard-breakdown-name {
+  font-weight: 600;
+  color: var(--ink-strong);
 }
 
 .campaigns-section-panel-campaigns {
@@ -2992,8 +3072,22 @@
   }
 
   .dashboard-overview-header,
-  .dashboard-chart-panel {
+  .dashboard-chart-panel,
+  .dashboard-breakdown-panel {
     padding: 20px;
+  }
+
+  .dashboard-overview-mode {
+    width: 100%;
+  }
+
+  .dashboard-overview-mode button {
+    flex: 1;
+  }
+
+  .dashboard-breakdown-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .dashboard-chart-canvas {

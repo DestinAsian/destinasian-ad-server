@@ -170,6 +170,10 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
   }
 };
 
+// Exported for focused regression tests. Inventory routes remain the only
+// production caller, so this does not change the public API surface.
+exports.syncInventoryAdUnits = syncInventoryAdUnits;
+
 exports.createInventory = async (req, res) => {
   try {
     const normalized = normalizeInventoryPayload(req.body);

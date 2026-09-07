@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { userAPI } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { getApiErrorMessage } from '../utils/apiError';
 import '../styles/Users.css';
 
 const emptyCreateForm = {
@@ -54,7 +55,7 @@ function Users() {
       setUsers(response.data?.users || []);
       setLoading(false);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load users');
+      setError(getApiErrorMessage(err, 'Failed to load users'));
       setLoading(false);
     }
   }, [setError]);
@@ -94,7 +95,7 @@ function Users() {
       showSuccess('User created successfully.');
       await loadUsers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create user');
+      setError(getApiErrorMessage(err, 'Failed to create user'));
     }
   };
 
@@ -115,7 +116,7 @@ function Users() {
       showSuccess('User updated successfully.');
       await loadUsers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update profile');
+      setError(getApiErrorMessage(err, 'Failed to update profile'));
     }
   };
 
@@ -132,7 +133,7 @@ function Users() {
       });
       showSuccess('Password updated successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update password');
+      setError(getApiErrorMessage(err, 'Failed to update password'));
     }
   };
 
@@ -152,7 +153,7 @@ function Users() {
       showSuccess('User updated successfully.');
       await loadUsers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update user');
+      setError(getApiErrorMessage(err, 'Failed to update user'));
     }
   };
 
@@ -167,7 +168,7 @@ function Users() {
       showSuccess('User updated successfully.');
       await loadUsers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update user status');
+      setError(getApiErrorMessage(err, 'Failed to update user status'));
     }
   };
 
@@ -184,7 +185,7 @@ function Users() {
       showSuccess('User deleted successfully.');
       await loadUsers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to delete user');
+      setError(getApiErrorMessage(err, 'Failed to delete user'));
     }
   };
 
@@ -199,7 +200,7 @@ function Users() {
       setResetPasswordForm({ newPassword: '', passwordConfirm: '' });
       showSuccess('Password updated successfully.');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update password');
+      setError(getApiErrorMessage(err, 'Failed to update password'));
     }
   };
 
@@ -218,7 +219,7 @@ function Users() {
       });
       setTimeout(() => logout(), 1500);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to transfer ownership');
+      setError(getApiErrorMessage(err, 'Failed to transfer ownership'));
     }
   };
 

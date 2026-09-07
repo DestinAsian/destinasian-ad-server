@@ -57,6 +57,50 @@ const parsePositiveInt = (value, fallback) => {
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const getAdUnitTextSearch = (searchRegex) => ({
+  $or: [
+    { name: searchRegex },
+    { description: searchRegex },
+    { adCode: searchRegex },
+    { status: searchRegex }
+  ]
+});
+
+const buildCampaignAdUnitFilter = ({
+  accountId,
+  campaignIds,
+  inventoryFilterIds,
+  searchRegex,
+  searchScope
+}) => {
+  const filter = {
+    account: accountId,
+    campaign: { $in: campaignIds }
+  };
+  const intersections = [];
+
+  if (inventoryFilterIds) {
+    intersections.push({
+      $or: [
+        { inventory: { $in: inventoryFilterIds } },
+        { inventories: { $in: inventoryFilterIds } }
+      ]
+    });
+  }
+
+  if (searchRegex && searchScope === 'adunit') {
+    intersections.push(getAdUnitTextSearch(searchRegex));
+  }
+
+  if (intersections.length > 0) {
+    filter.$and = intersections;
+  }
+
+  return filter;
+};
+
+exports.buildCampaignAdUnitFilter = buildCampaignAdUnitFilter;
+
 const resolveInventoryFilterIds = async ({ accountId, query = {} }) => {
   const inventoryTokens = [];
   const pushToken = (value) => {
@@ -273,6 +317,10 @@ exports.getAllCampaigns = async (req, res) => {
     const filter = { account: req.user.accountId };
     const summaryView = isAdUnitSummaryView(req.query.view);
     const searchTerm = normalizeString(req.query.search);
+    const requestedSearchScope = String(req.query.searchScope || 'all').trim().toLowerCase();
+    const searchScope = ['all', 'campaign', 'adunit', 'adchannel'].includes(requestedSearchScope)
+      ? requestedSearchScope
+      : 'all';
     const pageProvided = req.query.page !== undefined;
     const limitProvided = req.query.limit !== undefined;
     const page = parsePositiveInt(req.query.page, 1);
@@ -321,33 +369,47 @@ exports.getAllCampaigns = async (req, res) => {
 
     if (searchTerm) {
       const searchRegex = new RegExp(escapeRegex(searchTerm), 'i');
-      const campaignMatches = await Campaign.find({
-        account: req.user.accountId,
-        $or: [
-          { name: searchRegex },
-          { description: searchRegex },
-          { status: searchRegex }
-        ]
-      }).select('_id');
+      const campaignMatches = searchScope === 'all' || searchScope === 'campaign'
+        ? await Campaign.find({
+            account: req.user.accountId,
+            $or: [
+              { name: searchRegex },
+              { description: searchRegex },
+              { status: searchRegex }
+            ]
+          }).select('_id')
+        : [];
 
-      const adUnitMatches = await AdUnit.find({
+      const adUnitSearchFilter = {
         account: req.user.accountId,
-        $or: [
-          { name: searchRegex },
-          { description: searchRegex },
-          { adCode: searchRegex },
-          { status: searchRegex }
-        ]
-      }).select('campaign');
+        ...getAdUnitTextSearch(searchRegex)
+      };
+      if (inventoryFilterIds) {
+        adUnitSearchFilter.$and = [
+          getAdUnitTextSearch(searchRegex),
+          {
+            $or: [
+              { inventory: { $in: inventoryFilterIds } },
+              { inventories: { $in: inventoryFilterIds } }
+            ]
+          }
+        ];
+        delete adUnitSearchFilter.$or;
+      }
+      const adUnitMatches = searchScope === 'all' || searchScope === 'adunit'
+        ? await AdUnit.find(adUnitSearchFilter).select('campaign')
+        : [];
 
-      const matchingInventories = await Inventory.find({
-        account: req.user.accountId,
-        $or: [
-          { name: searchRegex },
-          { key: searchRegex },
-          { groupName: searchRegex }
-        ]
-      }).select('_id');
+      const matchingInventories = searchScope === 'all' || searchScope === 'adchannel'
+        ? await Inventory.find({
+            account: req.user.accountId,
+            $or: [
+              { name: searchRegex },
+              { key: searchRegex },
+              { groupName: searchRegex }
+            ]
+          }).select('_id')
+        : [];
 
       let adUnitMatchesByInventory = [];
       if (matchingInventories.length > 0) {
@@ -411,10 +473,18 @@ exports.getAllCampaigns = async (req, res) => {
 
     const campaigns = await campaignQuery;
     const campaignIds = campaigns.map((campaignDoc) => campaignDoc._id);
-    const campaignAdUnitQuery = applyAdUnitSummaryProjection(AdUnit.find({
-        account: req.user.accountId,
-        campaign: { $in: campaignIds }
-      }), summaryView);
+    const nestedSearchRegex = searchTerm
+      ? new RegExp(escapeRegex(searchTerm), 'i')
+      : null;
+    const campaignAdUnitQuery = applyAdUnitSummaryProjection(AdUnit.find(
+      buildCampaignAdUnitFilter({
+        accountId: req.user.accountId,
+        campaignIds,
+        inventoryFilterIds,
+        searchRegex: nestedSearchRegex,
+        searchScope
+      })
+    ), summaryView);
     const campaignAdUnits = campaignIds.length > 0
       ? await campaignAdUnitQuery.populate('inventory').populate('inventories')
       : [];
@@ -586,7 +656,30 @@ exports.deleteCampaign = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to delete this campaign' });
     }
 
-    await Campaign.findByIdAndDelete(req.params.id);
+    const linkedAdUnitCount = await AdUnit.countDocuments({
+      account: req.user.accountId,
+      campaign: campaign._id
+    });
+
+    if (linkedAdUnitCount > 0) {
+      return res.status(409).json({
+        error: 'Campaign cannot be deleted while it still contains Ad Units. Move or delete the Ad Units first.',
+        adUnitCount: linkedAdUnitCount
+      });
+    }
+
+    const deletedCampaign = await Campaign.findOneAndDelete({
+      _id: campaign._id,
+      account: req.user.accountId,
+      adUnits: { $size: 0 }
+    });
+
+    if (!deletedCampaign) {
+      return res.status(409).json({
+        error: 'Campaign cannot be deleted because its Ad Unit relationships changed. Refresh and try again.'
+      });
+    }
+
     res.json({ message: 'Campaign deleted' });
   } catch (error) {
     res.status(500).json({ error: error.message });

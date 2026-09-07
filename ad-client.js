@@ -264,7 +264,7 @@
       return;
     }
 
-    await recordClick(adUnit.adCode);
+    await recordClick(adUnit.adCode, adUnit.inventoryId);
     openTrackedDestination(destination);
   }
 
@@ -451,7 +451,8 @@
       const impressionTracker = createImpressionTracker({
         container,
         adCode: adUnit.adCode,
-        recordImpressionFn: recordImpression
+        recordImpressionFn: (trackedAdCode) =>
+          recordImpression(trackedAdCode, adUnit.inventoryId)
       });
       impressionTracker.start();
 
@@ -539,13 +540,14 @@
     return loadAdIntoContainer(container, loadOptions);
   }
 
-  async function recordImpression(adCode) {
+  async function recordImpression(adCode, inventoryId) {
     try {
       const response = await root.fetch(`${API_BASE}/tracking/${adCode}/impression`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
+        body: JSON.stringify(inventoryId ? { inventoryId } : {}),
         keepalive: true
       });
 
@@ -560,13 +562,14 @@
     }
   }
 
-  async function recordClick(adCode) {
+  async function recordClick(adCode, inventoryId) {
     try {
       const response = await root.fetch(`${API_BASE}/tracking/${adCode}/click`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
+        body: JSON.stringify(inventoryId ? { inventoryId } : {}),
         keepalive: true
       });
 

@@ -59,6 +59,32 @@ const parseDateInput = (value) => {
   return { provided: true, value: parsed, error: null };
 };
 
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const ensureUniqueAdUnitName = async ({ accountId, campaignId, name, excludeAdUnitId }) => {
+  const normalizedName = String(name || '').trim();
+  if (!normalizedName) return;
+
+  const duplicateFilter = {
+    account: accountId,
+    campaign: campaignId,
+    name: new RegExp(`^${escapeRegExp(normalizedName)}$`, 'i')
+  };
+
+  if (excludeAdUnitId) {
+    duplicateFilter._id = { $ne: excludeAdUnitId };
+  }
+
+  const duplicateExists = await AdUnit.exists(duplicateFilter);
+  if (duplicateExists) {
+    const error = new Error('An Ad Unit with this name already exists in the selected Campaign');
+    error.statusCode = 409;
+    throw error;
+  }
+};
+
+exports.ensureUniqueAdUnitName = ensureUniqueAdUnitName;
+
 const normalizeInventoryInputList = (payload = {}) => {
   const ids = [];
   const aliases = [];
@@ -295,6 +321,34 @@ const validateDateWindowForUpdate = ({ payload = {}, adUnit }) => {
   return { valid: true, startDate: effectiveStart, endDate: effectiveEnd };
 };
 
+const linkCreatedAdUnitToCampaign = async ({ adUnit, campaignId, accountId }) => {
+  let linkedCampaign;
+
+  try {
+    linkedCampaign = await Campaign.findOneAndUpdate(
+      {
+        _id: campaignId,
+        account: accountId
+      },
+      {
+        $addToSet: { adUnits: adUnit._id }
+      }
+    );
+  } catch (error) {
+    await AdUnit.findByIdAndDelete(adUnit._id);
+    throw error;
+  }
+
+  if (!linkedCampaign) {
+    await AdUnit.findByIdAndDelete(adUnit._id);
+    return false;
+  }
+
+  return true;
+};
+
+exports.linkCreatedAdUnitToCampaign = linkCreatedAdUnitToCampaign;
+
 exports.createAdUnit = async (req, res) => {
   try {
     const { name, description, campaign, imageUrl, htmlCreative, iframeUrl, clickUrl, width } = req.body;
@@ -311,6 +365,12 @@ exports.createAdUnit = async (req, res) => {
     if (campaignDoc.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to use this campaign' });
     }
+
+    await ensureUniqueAdUnitName({
+      accountId: req.user.accountId,
+      campaignId: campaignDoc._id,
+      name
+    });
 
     const inventoryDocs = await resolveInventoryDocs({
       accountId: req.user.accountId,
@@ -345,9 +405,17 @@ exports.createAdUnit = async (req, res) => {
     });
     await adUnit.save();
 
-    await Campaign.findByIdAndUpdate(campaignDoc._id, {
-      $addToSet: { adUnits: adUnit._id }
+    const campaignLinked = await linkCreatedAdUnitToCampaign({
+      adUnit,
+      campaignId: campaignDoc._id,
+      accountId: req.user.accountId
     });
+
+    if (!campaignLinked) {
+      return res.status(409).json({
+        error: 'Campaign is no longer available. The Ad Unit was not created.'
+      });
+    }
 
     const populated = await AdUnit.findById(adUnit._id)
       .populate('campaign')
@@ -591,6 +659,15 @@ exports.updateAdUnit = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to update parent campaign' });
     }
 
+    if (req.body.name !== undefined || req.body.campaign !== undefined) {
+      await ensureUniqueAdUnitName({
+        accountId: req.user.accountId,
+        campaignId: parentCampaignDoc._id,
+        name: req.body.name !== undefined ? req.body.name : adUnit.name,
+        excludeAdUnitId: adUnit._id
+      });
+    }
+
     if (
       parentCampaignDoc.endDate &&
       new Date(dateValidation.endDate).getTime() > new Date(parentCampaignDoc.endDate).getTime()
@@ -762,6 +839,7 @@ exports.serveAd = async (req, res) => {
     }
 
     let adUnit;
+    let servedInventory = null;
     const now = new Date();
 
     if (adCode) {
@@ -776,6 +854,7 @@ exports.serveAd = async (req, res) => {
       if (!inventoryDoc) {
         return res.status(204).end();
       }
+      servedInventory = inventoryDoc;
 
       const activeCampaignIds = await Campaign.find({
         account: inventoryDoc.account,
@@ -827,7 +906,9 @@ exports.serveAd = async (req, res) => {
       clickUrl: adUnit.clickUrl,
       width: adUnit.width,
       aspectRatio: adUnit.aspectRatio,
-      campaignId: adUnit.campaign?._id
+      campaignId: adUnit.campaign?._id,
+      inventoryId: servedInventory?._id,
+      inventoryKey: servedInventory?.key
     });
   } catch (error) {
     console.error('[AdServer] Failed to serve ad:', error);

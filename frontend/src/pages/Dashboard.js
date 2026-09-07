@@ -30,6 +30,7 @@ import Modal from "../components/Modal";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useConfirm } from "../contexts/ConfirmContext";
+import { getApiErrorMessage } from "../utils/apiError";
 
 ChartJS.register(
   CategoryScale,
@@ -62,6 +63,17 @@ const getDefaultDateRange = () => {
 
 const formatNumber = (value) => {
   return new Intl.NumberFormat("en-US").format(Number(value) || 0);
+};
+
+const getAdUnitInventoryIds = (adUnit) => {
+  const ids = new Set();
+  if (adUnit?.inventory) {
+    ids.add(String(adUnit.inventory?._id || adUnit.inventory));
+  }
+  (Array.isArray(adUnit?.inventories) ? adUnit.inventories : []).forEach(
+    (inventory) => ids.add(String(inventory?._id || inventory)),
+  );
+  return ids;
 };
 
 const formatTableDate = (date) => {
@@ -239,7 +251,7 @@ function AdUnitTableNameCell({ adUnit, campaignId, onOpen }) {
 const CAMPAIGN_TABLE_SORT_COLUMNS = [
   { key: "startDate", label: "Start / End" },
   { key: "name", label: "Name" },
-  { key: "impressions", label: "Impressions" },
+  { key: "impressions", label: "Total Impressions" },
   { key: "impressionsToday", label: "Impressions Today" },
   { key: "clicks", label: "Clicks" },
   { key: "clicksToday", label: "Clicks Today" },
@@ -263,13 +275,18 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const [campaignsLoadingMore, setCampaignsLoadingMore] = useState(false);
   const [inventories, setInventories] = useState([]);
   const [overviewCampaignOptions, setOverviewCampaignOptions] = useState([]);
+  const [overviewAdUnitOptions, setOverviewAdUnitOptions] = useState([]);
+  const [overviewMode, setOverviewMode] = useState("campaign");
   const [selectedOverviewCampaignId, setSelectedOverviewCampaignId] =
     useState("");
+  const [selectedOverviewAdUnitId, setSelectedOverviewAdUnitId] = useState("");
   const [selectedOverviewAdChannelId, setSelectedOverviewAdChannelId] =
     useState("");
   const [campaignFilterSearch, setCampaignFilterSearch] = useState("");
+  const [adUnitFilterSearch, setAdUnitFilterSearch] = useState("");
   const [adChannelFilterSearch, setAdChannelFilterSearch] = useState("");
   const [isCampaignFilterOpen, setIsCampaignFilterOpen] = useState(false);
+  const [isAdUnitFilterOpen, setIsAdUnitFilterOpen] = useState(false);
   const [isAdChannelFilterOpen, setIsAdChannelFilterOpen] = useState(false);
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [campaignSort, setCampaignSort] = useState({
@@ -297,6 +314,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const selectedCampaignRef = useRef(null);
   const loadMoreRef = useRef(null);
   const campaignFilterRef = useRef(null);
+  const adUnitFilterRef = useRef(null);
   const adChannelFilterRef = useRef(null);
   const [loading, setLoading] = useState(isCampaignView);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
@@ -338,7 +356,10 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           view: "summary",
         };
         if (selectedInventoryId) params.inventoryId = selectedInventoryId;
-        if (debouncedSearchQuery) params.search = debouncedSearchQuery;
+        if (debouncedSearchQuery) {
+          params.search = debouncedSearchQuery;
+          params.searchScope = "adUnit";
+        }
 
         const response = await campaignAPI.getAll(params);
         const campaignRows = Array.isArray(response.data?.data)
@@ -456,9 +477,17 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
         inventoryId: selectedOverviewAdChannelId || undefined,
-        campaignId: selectedOverviewCampaignId || undefined,
+        campaignId:
+          overviewMode === "campaign"
+            ? selectedOverviewCampaignId || undefined
+            : undefined,
+        adUnitId:
+          overviewMode === "adUnit"
+            ? selectedOverviewAdUnitId || undefined
+            : undefined,
         search: debouncedSearchQuery || undefined,
-        limit: 5,
+        searchScope: debouncedSearchQuery ? "adUnit" : undefined,
+        limit: 200,
       });
       setAnalytics({
         impressions: response.data?.impressions || 0,
@@ -487,6 +516,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     dateRange.startDate,
     selectedOverviewAdChannelId,
     selectedOverviewCampaignId,
+    selectedOverviewAdUnitId,
+    overviewMode,
     debouncedSearchQuery,
   ]);
 
@@ -511,11 +542,16 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     selectedCampaignRef.current = null;
     setSelectedCampaign(null);
     setOverviewCampaignOptions([]);
+    setOverviewAdUnitOptions([]);
+    setOverviewMode("campaign");
     setSelectedOverviewCampaignId("");
+    setSelectedOverviewAdUnitId("");
     setSelectedOverviewAdChannelId("");
     setCampaignFilterSearch("");
+    setAdUnitFilterSearch("");
     setAdChannelFilterSearch("");
     setIsCampaignFilterOpen(false);
+    setIsAdUnitFilterOpen(false);
     setIsAdChannelFilterOpen(false);
     setSelectedInventoryId("");
     setCampaignSort({
@@ -531,30 +567,39 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   }, [currentAccount?.id]);
 
   useEffect(() => {
-    const loadOverviewCampaignOptions = async () => {
+    const loadOverviewFilterOptions = async () => {
       try {
-        const response = await campaignAPI.getAll({ view: "summary" });
-        const rows = Array.isArray(response.data?.data)
-          ? response.data.data
-          : Array.isArray(response.data)
-            ? response.data
+        const [campaignResponse, adUnitResponse] = await Promise.all([
+          campaignAPI.getAll({ view: "summary" }),
+          adUnitAPI.getAll({ view: "summary" }),
+        ]);
+        const rows = Array.isArray(campaignResponse.data?.data)
+          ? campaignResponse.data.data
+          : Array.isArray(campaignResponse.data)
+            ? campaignResponse.data
             : [];
         setOverviewCampaignOptions(rows);
+        setOverviewAdUnitOptions(
+          Array.isArray(adUnitResponse.data) ? adUnitResponse.data : [],
+        );
       } catch (loadError) {
         setOverviewCampaignOptions([]);
+        setOverviewAdUnitOptions([]);
       }
     };
 
     if (!currentAccount?.id) {
       setOverviewCampaignOptions([]);
+      setOverviewAdUnitOptions([]);
       setSelectedOverviewCampaignId("");
+      setSelectedOverviewAdUnitId("");
       setSelectedOverviewAdChannelId("");
       setCampaignFilterSearch("");
       setAdChannelFilterSearch("");
       return;
     }
 
-    loadOverviewCampaignOptions();
+    loadOverviewFilterOptions();
   }, [currentAccount?.id]);
 
   const sortedOverviewCampaignOptions = useMemo(
@@ -567,6 +612,18 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         ),
       ),
     [overviewCampaignOptions],
+  );
+
+  const sortedOverviewAdUnitOptions = useMemo(
+    () =>
+      [...overviewAdUnitOptions].sort((a, b) =>
+        (a?.name || a?._id || "").localeCompare(
+          b?.name || b?._id || "",
+          undefined,
+          { sensitivity: "base" },
+        ),
+      ),
+    [overviewAdUnitOptions],
   );
 
   const sortedAdChannelOptions = useMemo(
@@ -591,6 +648,16 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     );
   }, [campaignFilterSearch, sortedOverviewCampaignOptions]);
 
+  const filteredAdUnitOptions = useMemo(() => {
+    const searchValue = adUnitFilterSearch.trim().toLowerCase();
+    if (!searchValue) return sortedOverviewAdUnitOptions;
+    return sortedOverviewAdUnitOptions.filter((adUnit) =>
+      (adUnit?.name || adUnit?._id || "")
+        .toLowerCase()
+        .includes(searchValue),
+    );
+  }, [adUnitFilterSearch, sortedOverviewAdUnitOptions]);
+
   const filteredAdChannelOptions = useMemo(() => {
     const searchValue = adChannelFilterSearch.trim().toLowerCase();
     if (!searchValue) return sortedAdChannelOptions;
@@ -608,6 +675,27 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       ) || null,
     [selectedOverviewCampaignId, sortedOverviewCampaignOptions],
   );
+
+  const selectedOverviewAdUnit = useMemo(
+    () =>
+      sortedOverviewAdUnitOptions.find(
+        (adUnit) => adUnit._id === selectedOverviewAdUnitId,
+      ) || null,
+    [selectedOverviewAdUnitId, sortedOverviewAdUnitOptions],
+  );
+
+  const selectedOverviewAdUnitCampaignName = useMemo(() => {
+    const campaign = selectedOverviewAdUnit?.campaign;
+    if (!campaign) return "";
+    if (typeof campaign === "object" && campaign.name) return campaign.name;
+
+    const campaignId = typeof campaign === "object" ? campaign._id : campaign;
+    return (
+      sortedOverviewCampaignOptions.find(
+        (option) => String(option._id) === String(campaignId),
+      )?.name || ""
+    );
+  }, [selectedOverviewAdUnit, sortedOverviewCampaignOptions]);
 
   const selectedOverviewAdChannel = useMemo(
     () =>
@@ -629,6 +717,17 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   }, [selectedOverviewCampaignId, sortedOverviewCampaignOptions]);
 
   useEffect(() => {
+    if (!selectedOverviewAdUnitId) return;
+    const exists = sortedOverviewAdUnitOptions.some(
+      (adUnit) => adUnit._id === selectedOverviewAdUnitId,
+    );
+    if (!exists) {
+      setSelectedOverviewAdUnitId("");
+      setAdUnitFilterSearch("");
+    }
+  }, [selectedOverviewAdUnitId, sortedOverviewAdUnitOptions]);
+
+  useEffect(() => {
     if (!selectedOverviewAdChannelId) return;
     const exists = sortedAdChannelOptions.some(
       (adChannel) => adChannel._id === selectedOverviewAdChannelId,
@@ -643,6 +742,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     const handleClickOutside = (event) => {
       if (!campaignFilterRef.current?.contains(event.target))
         setIsCampaignFilterOpen(false);
+      if (!adUnitFilterRef.current?.contains(event.target))
+        setIsAdUnitFilterOpen(false);
       if (!adChannelFilterRef.current?.contains(event.target))
         setIsAdChannelFilterOpen(false);
     };
@@ -740,7 +841,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       handleCloseCampaignModal();
       await fetchCampaigns({ page: 1, reset: true });
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to save campaign");
+      setError(getApiErrorMessage(err, "Failed to save campaign"));
     } finally {
       setSubmitting(false);
     }
@@ -749,7 +850,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const handleDeleteCampaign = async (campaignId) => {
     const confirmed = await confirmAction({
       title: "Delete campaign?",
-      message: "This campaign will be permanently deleted. This action cannot be undone.",
+      message:
+        "Only an empty campaign can be deleted. Move or delete all Ad Units first. This action cannot be undone.",
       confirmLabel: "Delete campaign",
     });
     if (!confirmed) return;
@@ -763,7 +865,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         setSelectedCampaign(null);
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to delete campaign");
+      setError(getApiErrorMessage(err, "Failed to delete campaign"));
     }
   };
 
@@ -783,11 +885,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         await fetchCampaigns({ page: 1, reset: true });
       }
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        "Failed to save ad unit"
-      );
+      setError(getApiErrorMessage(err, "Failed to save ad unit"));
     } finally {
       setSubmitting(false);
     }
@@ -808,7 +906,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         await fetchCampaigns({ page: 1, reset: true });
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to delete ad unit");
+      setError(getApiErrorMessage(err, "Failed to delete ad unit"));
     }
   };
 
@@ -821,9 +919,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       );
       await fetchCampaigns({ page: 1, reset: true });
     } catch (err) {
-      setError(
-        err.response?.data?.message || "Failed to update campaign status",
-      );
+      setError(getApiErrorMessage(err, "Failed to update campaign status"));
     }
   };
 
@@ -838,9 +934,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         await fetchCampaigns({ page: 1, reset: true });
       }
     } catch (err) {
-      setError(
-        err.response?.data?.message || "Failed to update ad unit status",
-      );
+      setError(getApiErrorMessage(err, "Failed to update ad unit status"));
     }
   };
 
@@ -894,7 +988,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       setSuccessMessage("Campaign duplicated successfully!");
       await fetchCampaigns({ page: 1, reset: true });
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to duplicate campaign");
+      setError(getApiErrorMessage(err, "Failed to duplicate campaign"));
     }
   };
 
@@ -903,8 +997,19 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       const response = await adUnitAPI.getById(adUnit._id);
       const detailedAdUnit = response.data;
       const duplicateDateWindow = getDuplicateAdUnitDateWindow(detailedAdUnit);
+      const existingAdUnitNames = new Set(
+        campaigns.flatMap((campaign) =>
+          (Array.isArray(campaign.adUnits) ? campaign.adUnits : []).map(
+            (campaignAdUnit) => campaignAdUnit.name,
+          ),
+        ),
+      );
+      const duplicateName = generateCopyName(
+        detailedAdUnit.name,
+        existingAdUnitNames,
+      );
       await adUnitAPI.create({
-        name: detailedAdUnit.name,
+        name: duplicateName,
         campaign:
           detailedAdUnit.campaign?._id ||
           detailedAdUnit.campaign ||
@@ -929,7 +1034,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         await fetchCampaigns({ page: 1, reset: true });
       }
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to duplicate ad unit");
+      setError(getApiErrorMessage(err, "Failed to duplicate ad unit"));
     }
   };
 
@@ -1052,6 +1157,90 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     }),
     [analytics.daily],
   );
+
+  const overviewBreakdownItems = useMemo(() => {
+    const normalizedSearch = debouncedSearchQuery.toLowerCase();
+    const metrics = new Map(
+      (overviewMode === "campaign"
+        ? analytics.topCampaigns
+        : analytics.topAdUnits
+      ).map((item) => [
+        String(overviewMode === "campaign" ? item.campaignId : item.adUnitId),
+        item,
+      ]),
+    );
+
+    if (overviewMode === "campaign") {
+      return sortedOverviewCampaignOptions
+        .filter((campaign) =>
+          !selectedOverviewCampaignId ||
+          String(campaign._id) === String(selectedOverviewCampaignId),
+        )
+        .filter((campaign) => {
+          const adUnits = Array.isArray(campaign.adUnits) ? campaign.adUnits : [];
+          if (
+            selectedOverviewAdChannelId &&
+            !adUnits.some((adUnit) =>
+              getAdUnitInventoryIds(adUnit).has(String(selectedOverviewAdChannelId)),
+            )
+          ) {
+            return false;
+          }
+          if (
+            normalizedSearch &&
+            !adUnits.some((adUnit) =>
+              String(adUnit?.name || "").toLowerCase().includes(normalizedSearch),
+            )
+          ) {
+            return false;
+          }
+          return true;
+        })
+        .map((campaign) => ({
+          campaignId: campaign._id,
+          name: campaign.name,
+          impressions: 0,
+          clicks: 0,
+          ctr: 0,
+          ...(metrics.get(String(campaign._id)) || {}),
+        }));
+    }
+
+    return sortedOverviewAdUnitOptions
+      .filter((adUnit) =>
+        !selectedOverviewAdUnitId ||
+        String(adUnit._id) === String(selectedOverviewAdUnitId),
+      )
+      .filter(
+        (adUnit) =>
+          !selectedOverviewAdChannelId ||
+          getAdUnitInventoryIds(adUnit).has(String(selectedOverviewAdChannelId)),
+      )
+      .filter(
+        (adUnit) =>
+          !normalizedSearch ||
+          String(adUnit?.name || "").toLowerCase().includes(normalizedSearch),
+      )
+      .map((adUnit) => ({
+        adUnitId: adUnit._id,
+        adCode: adUnit.adCode,
+        name: adUnit.name,
+        impressions: 0,
+        clicks: 0,
+        ctr: 0,
+        ...(metrics.get(String(adUnit._id)) || {}),
+      }));
+  }, [
+    analytics.topAdUnits,
+    analytics.topCampaigns,
+    debouncedSearchQuery,
+    overviewMode,
+    selectedOverviewAdChannelId,
+    selectedOverviewAdUnitId,
+    selectedOverviewCampaignId,
+    sortedOverviewAdUnitOptions,
+    sortedOverviewCampaignOptions,
+  ]);
 
   const analyticsChartOptions = useMemo(
     () => ({
@@ -1203,6 +1392,34 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           </div>
         ) : (
           <>
+            <div className="dashboard-overview-mode" role="tablist" aria-label="Overview report type">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={overviewMode === "campaign"}
+                className={overviewMode === "campaign" ? "is-active" : ""}
+                onClick={() => {
+                  setOverviewMode("campaign");
+                  setSelectedOverviewAdUnitId("");
+                  setAdUnitFilterSearch("");
+                }}
+              >
+                Campaign Overview
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={overviewMode === "adUnit"}
+                className={overviewMode === "adUnit" ? "is-active" : ""}
+                onClick={() => {
+                  setOverviewMode("adUnit");
+                  setSelectedOverviewCampaignId("");
+                  setCampaignFilterSearch("");
+                }}
+              >
+                Ad Unit Overview
+              </button>
+            </div>
             <div className="dashboard-filter-grid">
               <div className="dashboard-filter-field">
                 <label
@@ -1246,6 +1463,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                   }
                 />
               </div>
+              {overviewMode === "campaign" ? (
               <div
                 className="dashboard-filter-field dashboard-filter-field-wide"
                 ref={campaignFilterRef}
@@ -1332,6 +1550,78 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                     : "Showing all campaigns"}
                 </small>
               </div>
+              ) : (
+                <div
+                  className="dashboard-filter-field dashboard-filter-field-wide"
+                  ref={adUnitFilterRef}
+                >
+                  <label htmlFor="dashboard-ad-unit-filter" className="account-list-label">
+                    Ad Unit / Banner
+                  </label>
+                  <div className="dashboard-filter-combobox">
+                    <input
+                      id="dashboard-ad-unit-filter"
+                      type="text"
+                      className="account-select dashboard-filter-select dashboard-filter-input"
+                      placeholder="All Ad Units"
+                      value={adUnitFilterSearch}
+                      onFocus={() => setIsAdUnitFilterOpen(true)}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setAdUnitFilterSearch(nextValue);
+                        setIsAdUnitFilterOpen(true);
+                        if (!nextValue.trim()) {
+                          setSelectedOverviewAdUnitId("");
+                          return;
+                        }
+                        const selectedLabel =
+                          selectedOverviewAdUnit?.name || selectedOverviewAdUnit?._id || "";
+                        if (selectedOverviewAdUnitId && nextValue !== selectedLabel) {
+                          setSelectedOverviewAdUnitId("");
+                        }
+                      }}
+                    />
+                    {isAdUnitFilterOpen && (
+                      <div className="dashboard-filter-options" role="listbox" aria-label="Ad Unit filter options">
+                        <button
+                          type="button"
+                          className={`dashboard-filter-option${!selectedOverviewAdUnitId ? " selected" : ""}`}
+                          onClick={() => {
+                            setSelectedOverviewAdUnitId("");
+                            setAdUnitFilterSearch("");
+                            setIsAdUnitFilterOpen(false);
+                          }}
+                        >
+                          All Ad Units
+                        </button>
+                        {filteredAdUnitOptions.length > 0 ? (
+                          filteredAdUnitOptions.map((adUnit) => (
+                            <button
+                              type="button"
+                              key={adUnit._id}
+                              className={`dashboard-filter-option${selectedOverviewAdUnitId === adUnit._id ? " selected" : ""}`}
+                              onClick={() => {
+                                setSelectedOverviewAdUnitId(adUnit._id);
+                                setAdUnitFilterSearch(adUnit.name || adUnit._id);
+                                setIsAdUnitFilterOpen(false);
+                              }}
+                            >
+                              {adUnit.name || adUnit._id}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="dashboard-filter-option-empty">No ad units found.</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <small className="dashboard-filter-helper">
+                    {selectedOverviewAdUnit
+                      ? `Filtering by ${selectedOverviewAdUnit.name || selectedOverviewAdUnit._id}`
+                      : "Showing all ad units"}
+                  </small>
+                </div>
+              )}
               <div
                 className="dashboard-filter-field dashboard-filter-field-wide"
                 ref={adChannelFilterRef}
@@ -1468,6 +1758,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 <span>
                   {analytics.topCampaigns[0]?.name
                     ? `Top Campaign: ${analytics.topCampaigns[0].name}`
+                    : overviewMode === "adUnit" &&
+                        selectedOverviewAdUnitCampaignName
+                      ? `Top Campaign: ${selectedOverviewAdUnitCampaignName}`
                     : "No campaign data yet"}
                 </span>
                 <span>
@@ -1491,6 +1784,62 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="dashboard-breakdown-panel">
+            <div className="dashboard-breakdown-header">
+              <div>
+                <h3>
+                  {overviewMode === "campaign"
+                    ? "Campaign Performance"
+                    : "Ad Unit / Banner Performance"}
+                </h3>
+                <p>
+                  Select an item to show its detailed daily graph above.
+                </p>
+              </div>
+              <span>{overviewBreakdownItems.length} items</span>
+            </div>
+            {analyticsLoading ? (
+              <div className="no-data">Loading report items...</div>
+            ) : overviewBreakdownItems.length === 0 ? (
+              <div className="no-data">No report items for the selected filters.</div>
+            ) : (
+              <div className="dashboard-breakdown-list">
+                {overviewBreakdownItems.map((item) => {
+                  const itemId = String(
+                    overviewMode === "campaign" ? item.campaignId : item.adUnitId,
+                  );
+                  const isSelected =
+                    overviewMode === "campaign"
+                      ? itemId === selectedOverviewCampaignId
+                      : itemId === selectedOverviewAdUnitId;
+                  return (
+                    <button
+                      type="button"
+                      key={`${overviewMode}-${itemId}`}
+                      className={`dashboard-breakdown-row${isSelected ? " is-selected" : ""}`}
+                      onClick={() => {
+                        if (overviewMode === "campaign") {
+                          setSelectedOverviewCampaignId(itemId);
+                          setCampaignFilterSearch(item.name || itemId);
+                        } else {
+                          setSelectedOverviewAdUnitId(itemId);
+                          setAdUnitFilterSearch(item.name || itemId);
+                        }
+                      }}
+                    >
+                      <span className="dashboard-breakdown-name">
+                        {item.name || item.adCode || "Unnamed item"}
+                      </span>
+                      <span>Impressions: {formatNumber(item.impressions)}</span>
+                      <span>Clicks: {formatNumber(item.clicks)}</span>
+                      <span>CTR: {Number(item.ctr || 0).toFixed(2)}%</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </section>
       )}

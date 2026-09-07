@@ -134,12 +134,35 @@ function successfulAdResponse() {
   return createResponse({
     body: {
       adCode: 'ad-123',
+      inventoryId: 'inventory-123',
       name: 'Test Ad',
       imageUrl: 'https://example.com/ad.jpg',
       clickUrl: 'https://example.com'
     }
   });
 }
+
+test('served inventory context is forwarded to impression and click tracking', async () => {
+  const slot = createAdSlot();
+  const calls = [];
+  const harness = createClientHarness({
+    elements: [slot],
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      return url.includes('/serve?') ? successfulAdResponse() : createResponse();
+    }
+  });
+
+  await harness.client.loadAd(slot.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  await slot.onclick();
+
+  const trackingCalls = calls.filter((call) => call.url.includes('/tracking/'));
+  assert.equal(trackingCalls.length, 2);
+  trackingCalls.forEach((call) => {
+    assert.deepEqual(JSON.parse(call.options.body), { inventoryId: 'inventory-123' });
+  });
+});
 
 test('impression fires once when visibility reaches at least 50 percent', async () => {
   const observedTargets = [];

@@ -4,6 +4,7 @@ import AccountSelector from "../components/AccountSelector";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useConfirm } from "../contexts/ConfirmContext";
+import { getApiErrorMessage } from "../utils/apiError";
 import "../styles/Inventory.css";
 
 const isAdUnitLinkedToChannel = (adUnit, channelId) => {
@@ -18,6 +19,20 @@ const isAdUnitLinkedToChannel = (adUnit, channelId) => {
     : null;
 
   return inventoryIds.includes(targetId) || primaryInventoryId === targetId;
+};
+
+const filterCampaignEntriesByAdUnitName = (campaignEntries, searchQuery) => {
+  const normalizedSearch = String(searchQuery || "").trim().toLowerCase();
+  if (!normalizedSearch) return campaignEntries;
+
+  return campaignEntries
+    .map((campaignEntry) => ({
+      ...campaignEntry,
+      adUnits: (campaignEntry.adUnits || []).filter((adUnit) =>
+        String(adUnit?.name || "").toLowerCase().includes(normalizedSearch),
+      ),
+    }))
+    .filter((campaignEntry) => campaignEntry.adUnits.length > 0);
 };
 
 function Inventory({ searchQuery = "" }) {
@@ -284,14 +299,6 @@ function Inventory({ searchQuery = "" }) {
       .map((inventory, index) => ({ inventory, index }))
       .filter(({ inventory }) => {
         if (!normalizedSearch) return true;
-        const nameMatch = (inventory?.name || "")
-          .toLowerCase()
-          .includes(normalizedSearch);
-        const keyMatch = (inventory?.key || "")
-          .toLowerCase()
-          .includes(normalizedSearch);
-        if (nameMatch || keyMatch) return true;
-
         const details = inventoryDetailsById.get(String(inventory?._id));
         if (!details) return false;
         const summaryView =
@@ -301,17 +308,13 @@ function Inventory({ searchQuery = "" }) {
             ? details.runningCampaigns
             : details.linkedCampaigns;
 
-        return campaignEntries.some((campaignEntry) => {
-          const campaignMatch = String(campaignEntry?.campaignName || "")
-            .toLowerCase()
-            .includes(normalizedSearch);
-          if (campaignMatch) return true;
-          return (campaignEntry?.adUnits || []).some((adUnit) =>
+        return campaignEntries.some((campaignEntry) =>
+          (campaignEntry?.adUnits || []).some((adUnit) =>
             String(adUnit?.name || "")
               .toLowerCase()
               .includes(normalizedSearch),
-          );
-        });
+          ),
+        );
       })
       .filter(({ inventory }) => {
         if (!hasSelectionFilter) return true;
@@ -515,7 +518,7 @@ function Inventory({ searchQuery = "" }) {
       setSuccessMessage("Ad Channel created");
       await loadData();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to create ad channel");
+      setError(getApiErrorMessage(err, "Failed to create ad channel"));
     }
   };
 
@@ -553,7 +556,7 @@ function Inventory({ searchQuery = "" }) {
       setSuccessMessage("Ad Channel updated");
       await loadData();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to update ad channel");
+      setError(getApiErrorMessage(err, "Failed to update ad channel"));
     }
   };
 
@@ -571,7 +574,7 @@ function Inventory({ searchQuery = "" }) {
       setSuccessMessage("Ad Channel deleted");
       await loadData();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to delete ad channel");
+      setError(getApiErrorMessage(err, "Failed to delete ad channel"));
     }
   };
 
@@ -593,7 +596,7 @@ function Inventory({ searchQuery = "" }) {
       setSuccessMessage("Ad Channel duplicated");
       await loadData();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to duplicate ad channel");
+      setError(getApiErrorMessage(err, "Failed to duplicate ad channel"));
     }
   };
 
@@ -1014,10 +1017,15 @@ function Inventory({ searchQuery = "" }) {
                           summaryView === "running"
                             ? details.runningMetrics
                             : details.linkedMetrics;
-                        const currentCampaigns =
+                        const unfilteredCampaigns =
                           summaryView === "running"
                             ? details.runningCampaigns
                             : details.linkedCampaigns;
+                        const currentCampaigns =
+                          filterCampaignEntriesByAdUnitName(
+                            unfilteredCampaigns,
+                            searchQuery,
+                          );
                         const isSnippetExpanded = Boolean(
                           expandedSnippets[inventory._id],
                         );

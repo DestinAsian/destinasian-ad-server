@@ -43,12 +43,48 @@ const resolveInventoryIdFromValue = (value) => {
 };
 
 const getPrimaryInventoryId = (adUnit) => {
+  const explicitPrimary = resolveInventoryIdFromValue(adUnit?.inventory);
+  if (explicitPrimary) {
+    return explicitPrimary;
+  }
+
   if (Array.isArray(adUnit?.inventories) && adUnit.inventories.length > 0) {
     return resolveInventoryIdFromValue(adUnit.inventories[0]);
   }
-
-  return resolveInventoryIdFromValue(adUnit?.inventory);
+  return null;
 };
+
+const resolveTrackingInventoryId = (adUnit, requestedInventoryId) => {
+  const normalizedRequest = normalizeString(requestedInventoryId);
+  if (!normalizedRequest) {
+    return getPrimaryInventoryId(adUnit);
+  }
+
+  const requestedObjectId = resolveInventoryIdFromValue(normalizedRequest);
+  if (!requestedObjectId) {
+    const error = new Error('Invalid inventory tracking context');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const assignedInventoryIds = new Set();
+  const primaryInventoryId = resolveInventoryIdFromValue(adUnit?.inventory);
+  if (primaryInventoryId) assignedInventoryIds.add(String(primaryInventoryId));
+  (Array.isArray(adUnit?.inventories) ? adUnit.inventories : []).forEach((inventory) => {
+    const inventoryId = resolveInventoryIdFromValue(inventory);
+    if (inventoryId) assignedInventoryIds.add(String(inventoryId));
+  });
+
+  if (!assignedInventoryIds.has(String(requestedObjectId))) {
+    const error = new Error('Ad unit is not assigned to this inventory');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return requestedObjectId;
+};
+
+exports.resolveTrackingInventoryId = resolveTrackingInventoryId;
 
 const toObjectId = (value) => {
   if (!value || !mongoose.Types.ObjectId.isValid(value)) {
@@ -134,7 +170,9 @@ const buildScopedMatches = async (accountId, query = {}) => {
   const inventoryGroup = normalizeString(query.inventoryGroup || query.groupName);
   const inventoryQuery = normalizeString(query.inventory || query.inventoryId || query.inventoryGroupId || query.inventory_group_id);
   const campaignId = normalizeString(query.campaignId);
+  const adUnitId = normalizeString(query.adUnitId);
   const searchTerm = normalizeString(query.search);
+  const searchScope = String(query.searchScope || 'all').trim().toLowerCase();
   const dailyMatch = buildDateRangeMatch(accountId, query.startDate, query.endDate);
   const eventMatch = buildEventDateRangeMatch(accountId, query.startDate, query.endDate);
 
@@ -146,6 +184,24 @@ const buildScopedMatches = async (accountId, query = {}) => {
 
     dailyMatch.campaign = campaignObjectId;
     eventMatch.campaign = campaignObjectId;
+  }
+
+  if (adUnitId) {
+    const adUnitObjectId = toObjectId(adUnitId);
+    if (!adUnitObjectId) {
+      return { dailyMatch, eventMatch, noResults: true };
+    }
+
+    const adUnitExists = await AdUnit.exists({
+      _id: adUnitObjectId,
+      account: accountId
+    });
+    if (!adUnitExists) {
+      return { dailyMatch, eventMatch, noResults: true };
+    }
+
+    dailyMatch.adUnit = adUnitObjectId;
+    eventMatch.adUnit = adUnitObjectId;
   }
 
   if (!inventoryGroup && !inventoryQuery) {
@@ -191,26 +247,32 @@ const buildScopedMatches = async (accountId, query = {}) => {
 
   const searchRegex = new RegExp(escapeRegex(searchTerm), 'i');
   const [campaignMatches, adUnitMatches, inventoryMatches] = await Promise.all([
-    Campaign.find({
-      account: accountId,
-      name: searchRegex
-    }).select('_id'),
-    AdUnit.find({
-      account: accountId,
-      $or: [
-        { name: searchRegex },
-        { description: searchRegex },
-        { adCode: searchRegex }
-      ]
-    }).select('_id'),
-    Inventory.find({
-      account: accountId,
-      $or: [
-        { name: searchRegex },
-        { key: searchRegex },
-        { groupName: searchRegex }
-      ]
-    }).select('_id')
+    searchScope === 'all' || searchScope === 'campaign'
+      ? Campaign.find({
+          account: accountId,
+          name: searchRegex
+        }).select('_id')
+      : [],
+    searchScope === 'all' || searchScope === 'adunit'
+      ? AdUnit.find({
+          account: accountId,
+          $or: [
+            { name: searchRegex },
+            { description: searchRegex },
+            { adCode: searchRegex }
+          ]
+        }).select('_id')
+      : [],
+    searchScope === 'all' || searchScope === 'adchannel'
+      ? Inventory.find({
+          account: accountId,
+          $or: [
+            { name: searchRegex },
+            { key: searchRegex },
+            { groupName: searchRegex }
+          ]
+        }).select('_id')
+      : []
   ]);
 
   const searchCampaignIds = campaignMatches.map((campaign) => campaign._id);
@@ -400,6 +462,7 @@ exports.recordImpression = async (req, res) => {
 
     const adUnit = await AdUnit.findOne({ adCode: adUnitId });
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
+    const trackingInventoryId = resolveTrackingInventoryId(adUnit, req.body?.inventoryId);
 
     const impression = new Impression({
       adUnit: adUnit._id,
@@ -414,7 +477,7 @@ exports.recordImpression = async (req, res) => {
       adUnit: adUnit._id,
       campaign: adUnit.campaign,
       account: adUnit.account,
-      inventory: getPrimaryInventoryId(adUnit),
+      inventory: trackingInventoryId,
       adCode: adUnit.adCode,
       userIp,
       userAgent,
@@ -440,7 +503,7 @@ exports.recordImpression = async (req, res) => {
       account: adUnit.account,
       campaign: adUnit.campaign,
       adUnit: adUnit._id,
-      inventory: getPrimaryInventoryId(adUnit),
+      inventory: trackingInventoryId,
       adCode: adUnit.adCode,
       occurredAt,
       impressions: 1,
@@ -449,7 +512,7 @@ exports.recordImpression = async (req, res) => {
 
     res.json({ success: true, message: 'Impression recorded', revenue: impressionRevenue });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(error.statusCode || 500).json({ error: error.message });
   }
 };
 
@@ -465,6 +528,7 @@ exports.recordClick = async (req, res) => {
 
     const adUnit = await AdUnit.findOne({ adCode: adUnitId });
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
+    const trackingInventoryId = resolveTrackingInventoryId(adUnit, req.body?.inventoryId);
 
     const click = new Click({
       adUnit: adUnit._id,
@@ -479,7 +543,7 @@ exports.recordClick = async (req, res) => {
       adUnit: adUnit._id,
       campaign: adUnit.campaign,
       account: adUnit.account,
-      inventory: getPrimaryInventoryId(adUnit),
+      inventory: trackingInventoryId,
       adCode: adUnit.adCode,
       clickUrl: adUnit.clickUrl,
       userIp,
@@ -506,7 +570,7 @@ exports.recordClick = async (req, res) => {
       account: adUnit.account,
       campaign: adUnit.campaign,
       adUnit: adUnit._id,
-      inventory: getPrimaryInventoryId(adUnit),
+      inventory: trackingInventoryId,
       adCode: adUnit.adCode,
       occurredAt,
       clicks: 1,
@@ -515,7 +579,7 @@ exports.recordClick = async (req, res) => {
 
     res.json({ success: true, message: 'Click recorded', revenue: clickRevenue });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(error.statusCode || 500).json({ error: error.message });
   }
 };
 
@@ -571,7 +635,7 @@ exports.getTrackingStats = async (req, res) => {
 exports.getAnalytics = async (req, res) => {
   try {
     const { limit } = req.query;
-    const topLimit = Number(limit) > 0 ? Number(limit) : 5;
+    const topLimit = Number(limit) > 0 ? Math.min(Number(limit), 500) : 5;
     const { dailyMatch, eventMatch, noResults } = await buildScopedMatches(req.user.accountId, req.query);
 
     if (noResults) {
@@ -634,7 +698,8 @@ exports.getAnalytics = async (req, res) => {
       aggregateEventRevenueTotal(AdImpressionEvent, eventMatch),
       aggregateEventRevenueTotal(AdClickEvent, eventMatch),
       AdDailyStat.aggregate([
-        { $match: { ...dailyMatch, adUnit: { $ne: null } } },
+        { $match: dailyMatch },
+        { $match: { adUnit: { $ne: null } } },
         {
           $group: {
             _id: '$adUnit',
@@ -653,6 +718,7 @@ exports.getAnalytics = async (req, res) => {
           }
         },
         { $unwind: { path: '$adUnit', preserveNullAndEmptyArrays: true } },
+        { $match: { 'adUnit._id': { $exists: true } } },
         {
           $project: {
             _id: 0,
@@ -669,7 +735,8 @@ exports.getAnalytics = async (req, res) => {
         { $limit: topLimit }
       ]),
       AdDailyStat.aggregate([
-        { $match: { ...dailyMatch, campaign: { $ne: null } } },
+        { $match: dailyMatch },
+        { $match: { campaign: { $ne: null } } },
         {
           $group: {
             _id: '$campaign',
@@ -687,6 +754,7 @@ exports.getAnalytics = async (req, res) => {
           }
         },
         { $unwind: { path: '$campaign', preserveNullAndEmptyArrays: true } },
+        { $match: { 'campaign._id': { $exists: true } } },
         {
           $project: {
             _id: 0,
@@ -720,3 +788,5 @@ exports.getAnalytics = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+exports.buildScopedMatches = buildScopedMatches;

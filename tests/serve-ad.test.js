@@ -35,7 +35,7 @@ function createResponse() {
 }
 
 function mockInventoryServing(candidates) {
-  Inventory.findOne = async () => ({ _id: 'inventory-1', account: 'account-1' });
+  Inventory.findOne = async () => ({ _id: 'inventory-1', account: 'account-1', key: 'homepage' });
   Campaign.find = () => ({
     select: async () => [{ _id: 'campaign-1' }]
   });
@@ -71,6 +71,8 @@ test('available ad returns 200 and the existing payload contract', async () => {
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.adCode, 'ad-123');
   assert.equal(res.body.campaignId, 'campaign-1');
+  assert.equal(res.body.inventoryId, 'inventory-1');
+  assert.equal(res.body.inventoryKey, 'homepage');
 });
 
 test('inventory with no active ad returns 204', async () => {
