@@ -37,6 +37,13 @@ test('unchecking every ad unit clears both primary and secondary channel assignm
   assert.equal(updates.length, 1);
   assert.equal(updates[0].update.$set.inventory, null);
   assert.deepEqual(updates[0].update.$set.inventories, []);
+  assert.deepEqual(updates[0].update.$unset, {
+    inventoryCode: '',
+    adUnitCode: '',
+    crmAdId: ''
+  });
+  assert.equal(updates[0].update.$set.adUnitCode, undefined);
+  assert.equal(updates[0].update.$set.crmAdId, undefined);
 });
 
 test('unchecking one secondary channel preserves the remaining primary assignment', async () => {
@@ -61,6 +68,7 @@ test('unchecking one secondary channel preserves the remaining primary assignmen
     updates[0].update.$set.inventories.map(String),
     [String(otherInventoryId)]
   );
+  assert.equal(updates[0].update.$unset, undefined);
 });
 
 test('rejects selected ad units that do not belong to the current account', async () => {

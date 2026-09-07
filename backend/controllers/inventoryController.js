@@ -57,16 +57,33 @@ const toObjectId = (value) => {
 };
 
 const buildAdUnitAssignmentUpdate = (adUnit) => {
-  const update = {
+  const fieldsToSet = {
     inventory: adUnit.inventory,
     inventories: adUnit.inventories
   };
 
   ['sourceCode', 'inventoryCode', 'campaignCode', 'adUnitCode', 'crmAdId'].forEach((field) => {
     if (adUnit[field] !== undefined) {
-      update[field] = adUnit[field];
+      fieldsToSet[field] = adUnit[field];
     }
   });
+
+  const update = { $set: fieldsToSet };
+
+  // A CRM Ad ID and its inventory/ad-unit codes identify an assignment to a
+  // primary Ad Channel. Once every channel is removed, keeping those values
+  // would leave a stale identity and make multiple unassigned Ad Units collide
+  // in the compound unique index where inventory is null.
+  if (!adUnit.inventory) {
+    delete fieldsToSet.inventoryCode;
+    delete fieldsToSet.adUnitCode;
+    delete fieldsToSet.crmAdId;
+    update.$unset = {
+      inventoryCode: '',
+      adUnitCode: '',
+      crmAdId: ''
+    };
+  }
 
   return update;
 };
@@ -136,7 +153,7 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
     }
     await AdUnit.updateOne(
       { _id: adUnit._id, account: accountId },
-      { $set: buildAdUnitAssignmentUpdate(adUnit) }
+      buildAdUnitAssignmentUpdate(adUnit)
     );
   }
 
@@ -165,7 +182,7 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
     }
     await AdUnit.updateOne(
       { _id: adUnit._id, account: accountId },
-      { $set: buildAdUnitAssignmentUpdate(adUnit) }
+      buildAdUnitAssignmentUpdate(adUnit)
     );
   }
 };
