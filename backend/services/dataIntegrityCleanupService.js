@@ -1,5 +1,3 @@
-const DELETE_CHANNEL_NAME_PATTERN = /^delete(?:[\s_-]*\d+)?$/i;
-
 const HISTORY_COLLECTIONS = [
   'impressions',
   'clicks',
@@ -8,163 +6,116 @@ const HISTORY_COLLECTIONS = [
   'ad_daily_stats'
 ];
 
-const normalizeName = (value) => String(value || '').trim().toLocaleLowerCase();
+const normalizeId = (value) => String(value || '');
 
-const buildScopedNameKey = (document) => (
-  `${String(document?.account || '')}:${normalizeName(document?.name)}`
+const isNamespaceMissing = (error) => (
+  error?.codeName === 'NamespaceNotFound' || error?.code === 26
 );
 
-const isDeleteChannelName = (value) => DELETE_CHANNEL_NAME_PATTERN.test(String(value || '').trim());
+const classifyAdUnits = ({ adUnits = [], campaigns = [] }) => {
+  const campaignIds = new Set(campaigns.map((campaign) => normalizeId(campaign._id)));
+  const validAdUnits = [];
+  const orphanAdUnits = [];
 
-const classifyAdUnits = ({
-  adUnits = [],
-  campaigns = [],
-  historyUsageById = new Map(),
-  campaignBackReferenceIds = new Set()
-}) => {
-  const campaignIds = new Set(campaigns.map((campaign) => String(campaign._id)));
-  const validAdUnits = adUnits.filter((adUnit) => campaignIds.has(String(adUnit.campaign)));
-  const validByScopedName = new Map();
-
-  validAdUnits.forEach((adUnit) => {
-    const key = buildScopedNameKey(adUnit);
-    if (!validByScopedName.has(key)) validByScopedName.set(key, []);
-    validByScopedName.get(key).push(adUnit);
-  });
-
-  const orphanAdUnits = adUnits.filter((adUnit) => !campaignIds.has(String(adUnit.campaign)));
-  const duplicateOrphans = [];
-  const standaloneOrphans = [];
-
-  orphanAdUnits.forEach((adUnit) => {
-    const validDuplicates = validByScopedName.get(buildScopedNameKey(adUnit)) || [];
-    if (validDuplicates.length === 0) {
-      standaloneOrphans.push({ document: adUnit });
-      return;
+  for (const adUnit of adUnits) {
+    if (campaignIds.has(normalizeId(adUnit.campaign))) {
+      validAdUnits.push(adUnit);
+    } else {
+      orphanAdUnits.push(adUnit);
     }
-
-    const id = String(adUnit._id);
-    const historyRows = Number(historyUsageById.get(id) || 0);
-    const hasCampaignBackReference = campaignBackReferenceIds.has(id);
-    duplicateOrphans.push({
-      document: adUnit,
-      validDuplicateIds: validDuplicates.map((duplicate) => duplicate._id),
-      historyRows,
-      hasCampaignBackReference,
-      historyPreserved: true,
-      safeToRemove: !hasCampaignBackReference
-    });
-  });
-
-  return { duplicateOrphans, standaloneOrphans };
-};
-
-const classifyDeleteChannels = ({ inventories = [], linkedCountsById = new Map() }) => (
-  inventories
-    .filter((inventory) => isDeleteChannelName(inventory.name) || isDeleteChannelName(inventory.key))
-    .map((inventory) => {
-      const linkedAdUnits = Number(linkedCountsById.get(String(inventory._id)) || 0);
-      return {
-        document: inventory,
-        linkedAdUnits,
-        safeToRemove: linkedAdUnits === 0
-      };
-    })
-);
-
-const aggregateUsageCounts = async (db, adUnitIds) => {
-  const counts = new Map(adUnitIds.map((id) => [String(id), 0]));
-  if (adUnitIds.length === 0) return counts;
-
-  for (const collectionName of HISTORY_COLLECTIONS) {
-    const rows = await db.collection(collectionName).aggregate([
-      { $match: { adUnit: { $in: adUnitIds } } },
-      { $group: { _id: '$adUnit', count: { $sum: 1 } } }
-    ]).toArray().catch((error) => {
-      if (error?.codeName === 'NamespaceNotFound') return [];
-      throw error;
-    });
-
-    rows.forEach((row) => {
-      const id = String(row._id);
-      counts.set(id, Number(counts.get(id) || 0) + Number(row.count || 0));
-    });
   }
 
-  return counts;
+  return {
+    validAdUnits,
+    orphanAdUnits,
+    deleteOrphanAdUnits: orphanAdUnits,
+    retainedOrphanAdUnits: []
+  };
+};
+
+const countDocumentsSafely = async (collection, filter) => {
+  try {
+    return await collection.countDocuments(filter);
+  } catch (error) {
+    if (isNamespaceMissing(error)) return 0;
+    throw error;
+  }
+};
+
+const countHistoryDocuments = async (db, adUnitIds) => {
+  const byCollection = {};
+  let total = 0;
+
+  for (const collectionName of HISTORY_COLLECTIONS) {
+    const count = adUnitIds.length > 0
+      ? await countDocumentsSafely(
+          db.collection(collectionName),
+          { adUnit: { $in: adUnitIds } }
+        )
+      : 0;
+    byCollection[collectionName] = count;
+    total += count;
+  }
+
+  return { byCollection, total };
 };
 
 const buildCleanupPlan = async (db) => {
-  const [campaigns, adUnits, inventories] = await Promise.all([
-    db.collection('campaigns').find({}, { projection: { _id: 1, adUnits: 1 } }).toArray(),
+  const [campaigns, adUnits, inventoryCount] = await Promise.all([
+    db.collection('campaigns').find({}, { projection: { _id: 1 } }).toArray(),
     db.collection('adunits').find({}).toArray(),
-    db.collection('inventories').find({}).toArray()
+    countDocumentsSafely(db.collection('inventories'), {})
   ]);
 
-  const campaignIds = new Set(campaigns.map((campaign) => String(campaign._id)));
-  const orphanIds = adUnits
-    .filter((adUnit) => !campaignIds.has(String(adUnit.campaign)))
-    .map((adUnit) => adUnit._id);
-  const historyUsageById = await aggregateUsageCounts(db, orphanIds);
-  const campaignBackReferenceIds = new Set(
-    campaigns.flatMap((campaign) => (
-      Array.isArray(campaign.adUnits) ? campaign.adUnits.map(String) : []
-    ))
-  );
-
-  const inventoryIds = inventories.map((inventory) => inventory._id);
-  const linkedCountsById = new Map(inventoryIds.map((id) => [String(id), 0]));
-  if (inventoryIds.length > 0) {
-    const linkedRows = await db.collection('adunits').aggregate([
-      {
-        $project: {
-          linkedInventoryIds: {
-            $setUnion: [
-              { $cond: [{ $ne: ['$inventory', null] }, ['$inventory'], []] },
-              { $ifNull: ['$inventories', []] }
-            ]
-          }
-        }
-      },
-      { $unwind: '$linkedInventoryIds' },
-      { $match: { linkedInventoryIds: { $in: inventoryIds } } },
-      { $group: { _id: '$linkedInventoryIds', count: { $sum: 1 } } }
-    ]).toArray();
-    linkedRows.forEach((row) => linkedCountsById.set(String(row._id), Number(row.count || 0)));
-  }
-
-  const adUnitPlan = classifyAdUnits({
-    adUnits,
-    campaigns,
-    historyUsageById,
-    campaignBackReferenceIds
-  });
+  const classified = classifyAdUnits({ adUnits, campaigns });
+  const orphanIds = classified.deleteOrphanAdUnits.map((adUnit) => adUnit._id);
+  const history = await countHistoryDocuments(db, orphanIds);
 
   return {
-    ...adUnitPlan,
-    deleteChannels: classifyDeleteChannels({ inventories, linkedCountsById })
+    databaseName: String(db.databaseName || ''),
+    totalAdUnits: adUnits.length,
+    totalCampaigns: campaigns.length,
+    totalInventories: inventoryCount,
+    validRelations: classified.validAdUnits.length,
+    ...classified,
+    orphanIds,
+    historyByCollection: history.byCollection,
+    totalHistoryDocuments: history.total,
+    deleteInventories: [],
+    deleteCampaigns: []
   };
 };
 
 const summarizeCleanupPlan = (plan) => ({
-  orphanAdUnits: plan.duplicateOrphans.length + plan.standaloneOrphans.length,
-  duplicateOrphans: plan.duplicateOrphans.length,
-  safeDuplicateOrphans: plan.duplicateOrphans.filter((entry) => entry.safeToRemove).length,
-  retainedDuplicateOrphans: plan.duplicateOrphans.filter((entry) => !entry.safeToRemove).length,
-  standaloneOrphans: plan.standaloneOrphans.length,
-  deleteNamedChannels: plan.deleteChannels.length,
-  safeDeleteNamedChannels: plan.deleteChannels.filter((entry) => entry.safeToRemove).length,
-  retainedLinkedDeleteChannels: plan.deleteChannels.filter((entry) => !entry.safeToRemove).length
+  DATABASE: plan.databaseName,
+  TOTAL_ADUNITS: plan.totalAdUnits,
+  TOTAL_CAMPAIGNS: plan.totalCampaigns,
+  VALID_ADUNIT_CAMPAIGN_RELATIONS: plan.validRelations,
+  ORPHAN_ADUNITS: plan.orphanAdUnits.length,
+  DELETE_ORPHAN_ADUNITS: plan.deleteOrphanAdUnits.length,
+  RETAIN_ORPHAN_ADUNITS: plan.retainedOrphanAdUnits.length,
+  HISTORY_DOCUMENTS_BY_COLLECTION: plan.historyByCollection,
+  TOTAL_HISTORY_DOCUMENTS: plan.totalHistoryDocuments,
+  DELETE_INVENTORIES: plan.deleteInventories.length,
+  DELETE_CAMPAIGNS: plan.deleteCampaigns.length
 });
+
+const getIdSet = (documents = []) => new Set(documents.map((document) => normalizeId(document._id)));
+
+const idSetsMatch = (left, right) => {
+  if (left.size !== right.size) return false;
+  return [...left].every((id) => right.has(id));
+};
 
 module.exports = {
   HISTORY_COLLECTIONS,
-  aggregateUsageCounts,
   buildCleanupPlan,
-  buildScopedNameKey,
   classifyAdUnits,
-  classifyDeleteChannels,
-  isDeleteChannelName,
-  normalizeName,
+  countDocumentsSafely,
+  countHistoryDocuments,
+  getIdSet,
+  idSetsMatch,
+  isNamespaceMissing,
+  normalizeId,
   summarizeCleanupPlan
 };
