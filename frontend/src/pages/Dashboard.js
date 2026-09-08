@@ -5,16 +5,14 @@ import React, {
   useRef,
   useMemo,
 } from "react";
-import { Line } from "react-chartjs-2";
+import { Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
+  BarElement,
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
   Tooltip,
   Legend,
-  Filler,
 } from "chart.js";
 import {
   campaignAPI,
@@ -37,13 +35,11 @@ import {
 } from "../utils/campaignSearch";
 
 ChartJS.register(
+  BarElement,
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
   Tooltip,
   Legend,
-  Filler,
 );
 
 const formatDateInput = (date) => {
@@ -81,21 +77,21 @@ const buildDailyChartData = (daily = []) => ({
       label: "Impressions",
       data: daily.map((entry) => entry.impressions || 0),
       borderColor: "#6f98a6",
-      backgroundColor: "rgba(111, 152, 166, 0.14)",
-      tension: 0.35,
-      fill: true,
-      pointRadius: 2,
-      pointHoverRadius: 4,
+      backgroundColor: "rgba(111, 152, 166, 0.72)",
+      borderWidth: 1,
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 32,
     },
     {
       label: "Clicks",
       data: daily.map((entry) => entry.clicks || 0),
       borderColor: "#1f2b32",
-      backgroundColor: "rgba(31, 43, 50, 0.08)",
-      tension: 0.35,
-      fill: false,
-      pointRadius: 2,
-      pointHoverRadius: 4,
+      backgroundColor: "rgba(31, 43, 50, 0.78)",
+      borderWidth: 1,
+      borderRadius: 4,
+      borderSkipped: false,
+      maxBarThickness: 32,
     },
   ],
 });
@@ -1443,11 +1439,15 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       },
       scales: {
         x: {
+          stacked: false,
           grid: {
             display: false,
           },
           ticks: {
+            autoSkip: true,
             color: "#67757e",
+            maxRotation: 0,
+            maxTicksLimit: 12,
             font: {
               family: "Rubik",
             },
@@ -2054,7 +2054,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
               {analyticsLoading ? (
                 <div className="no-data">Loading analytics...</div>
               ) : analytics.daily.length > 0 ? (
-                <Line
+                <Bar
                   data={analyticsChartData}
                   options={analyticsChartOptions}
                 />
@@ -2105,7 +2105,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                       {analyticsLoading ? (
                         <div className="no-data">Loading analytics...</div>
                       ) : report.daily.length > 0 ? (
-                        <Line
+                        <Bar
                           data={buildDailyChartData(report.daily)}
                           options={analyticsChartOptions}
                         />
