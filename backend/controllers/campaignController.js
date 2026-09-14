@@ -255,27 +255,56 @@ const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings })
   for (const mapping of mappings) {
     const adUnitId = String(mapping.adUnitId || '').trim();
     if (!adUnitId) continue;
+    const mappedAdUnit = adUnitById.get(adUnitId);
 
     const rawInventoryIds = Array.isArray(mapping.inventoryIds)
       ? mapping.inventoryIds
       : (mapping.inventories || []);
 
-    const normalizedInventoryObjectIds = rawInventoryIds
-      .map((inventoryId) => toObjectId(inventoryId))
+    const requestedInventoryIds = rawInventoryIds
+      .map((inventoryId) => String(inventoryId || '').trim())
       .filter(Boolean);
 
-    if (normalizedInventoryObjectIds.length === 0) {
-      const error = new Error('At least one Ad Channel is required to generate CRM AD ID');
+    if (requestedInventoryIds.length === 0) {
+      await AdUnit.updateOne(
+        {
+          _id: mappedAdUnit._id,
+          account: accountId,
+          campaign: campaignId
+        },
+        {
+          $set: {
+            inventory: null,
+            inventories: []
+          },
+          $unset: {
+            inventoryCode: '',
+            adUnitCode: '',
+            crmAdId: ''
+          }
+        }
+      );
+      continue;
+    }
+
+    const normalizedInventoryObjectIds = requestedInventoryIds
+      .map((inventoryId) => toObjectId(inventoryId));
+    if (normalizedInventoryObjectIds.some((inventoryId) => !inventoryId)) {
+      const error = new Error(`One or more inventories are invalid for ad unit ${adUnitId}`);
       error.statusCode = 400;
       throw error;
     }
 
+    const uniqueInventoryObjectIds = [...new Set(
+      normalizedInventoryObjectIds.map((inventoryId) => inventoryId.toString())
+    )].map((id) => new mongoose.Types.ObjectId(id));
+
     const inventories = await Inventory.find({
       account: accountId,
-      _id: { $in: normalizedInventoryObjectIds }
+      _id: { $in: uniqueInventoryObjectIds }
     }).select('_id');
 
-    if (inventories.length !== normalizedInventoryObjectIds.length) {
+    if (inventories.length !== uniqueInventoryObjectIds.length) {
       const error = new Error(`One or more inventories are invalid for ad unit ${adUnitId}`);
       error.statusCode = 400;
       throw error;
@@ -291,16 +320,6 @@ const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings })
       await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId });
       await adUnit.save();
     }
-  }
-};
-
-const requireAdUnitInventoryAssignmentsForActiveCampaign = async ({ campaignId }) => {
-  const adUnits = await AdUnit.find({ campaign: campaignId }).select('_id inventory inventories');
-  const unassigned = adUnits.filter((adUnit) => normalizeAdUnitInventoryIds(adUnit).length === 0);
-  if (unassigned.length > 0) {
-    const error = new Error('Active campaigns cannot have ad units without inventory assignments');
-    error.statusCode = 400;
-    throw error;
   }
 };
 
@@ -644,11 +663,6 @@ exports.updateCampaign = async (req, res) => {
       });
     }
 
-    const effectiveStatus = updatePayload.status || campaign.status;
-    if (effectiveStatus === 'active') {
-      await requireAdUnitInventoryAssignmentsForActiveCampaign({ campaignId: updatedCampaign._id });
-    }
-
     const refreshedCampaign = await Campaign.findById(updatedCampaign._id).populate({
       path: 'adUnits',
       populate: [{ path: 'inventory' }, { path: 'inventories' }]
@@ -779,10 +793,6 @@ exports.updateCampaignAdUnitInventories = async (req, res) => {
       mappings
     });
 
-    if (campaign.status === 'active') {
-      await requireAdUnitInventoryAssignmentsForActiveCampaign({ campaignId: campaign._id });
-    }
-
     const adUnits = await AdUnit.find({
       account: req.user.accountId,
       campaign: campaign._id
@@ -800,3 +810,7 @@ exports.updateCampaignAdUnitInventories = async (req, res) => {
     res.status(error.statusCode || 400).json({ error: error.message });
   }
 };
+
+// Exported for focused regression tests. Campaign routes remain the only
+// production callers, so this does not change the public HTTP API.
+exports.applyAdUnitInventoryMappings = applyAdUnitInventoryMappings;

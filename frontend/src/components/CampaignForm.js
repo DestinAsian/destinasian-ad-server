@@ -80,9 +80,6 @@ function CampaignForm({
   const [isAssignmentsModalOpen, setIsAssignmentsModalOpen] = useState(false);
 
   const isEditingCampaign = Boolean(campaign);
-  const isEditingActiveCampaign = Boolean(
-    campaign && campaign.status === "active",
-  );
   const assignmentOptionCount =
     mappingRows.length * Math.max(inventories.length, 1);
   const assignedAdUnitCount = mappingRows.filter(
@@ -206,7 +203,7 @@ function CampaignForm({
       if (!isEditingCampaign && startDateTime < now) {
         newErrors.startDate = "Start date and time cannot be in the past";
       }
-      if (isEditingActiveCampaign && startDateChanged) {
+      if (campaign?.status === "active" && startDateChanged) {
         newErrors.startDate =
           "Active campaigns cannot change start date. Pause the campaign first.";
       }
@@ -225,17 +222,6 @@ function CampaignForm({
       if (startDateTime > endDateTime) {
         newErrors.endDate =
           "End date and time must be after start date and time";
-      }
-    }
-
-    if (isEditingActiveCampaign && mappingRows.length > 0) {
-      const unassigned = mappingRows.filter((row) => {
-        const assigned = inventoryMappings[row.adUnitId] || [];
-        return assigned.length === 0;
-      });
-      if (unassigned.length > 0) {
-        newErrors.adUnitInventoryMappings =
-          "Active campaigns cannot save ad units without ad channel assignments.";
       }
     }
 
@@ -271,13 +257,6 @@ function CampaignForm({
       };
     });
 
-    if (errors.adUnitInventoryMappings) {
-      setErrors((prev) => {
-        const next = { ...prev };
-        delete next.adUnitInventoryMappings;
-        return next;
-      });
-    }
   };
 
   const handleSubmit = (e) => {
@@ -440,11 +419,6 @@ function CampaignForm({
                   Manage Assignments
                 </button>
               </div>
-              {errors.adUnitInventoryMappings && (
-                <span className="error-message">
-                  {errors.adUnitInventoryMappings}
-                </span>
-              )}
             </div>
           </>
         )}
