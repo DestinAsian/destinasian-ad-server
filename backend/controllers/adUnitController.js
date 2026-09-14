@@ -59,6 +59,20 @@ const parseDateInput = (value) => {
   return { provided: true, value: parsed, error: null };
 };
 
+const isCampaignDeliverable = (campaign, now = new Date()) => {
+  if (!campaign || campaign.status !== 'active') return false;
+
+  const nowTime = now.getTime();
+  const startTime = new Date(campaign.startDate).getTime();
+  if (!Number.isFinite(startTime) || startTime > nowTime) return false;
+
+  if (!campaign.endDate) return true;
+  const endTime = new Date(campaign.endDate).getTime();
+  return Number.isFinite(endTime) && endTime >= nowTime;
+};
+
+exports.isCampaignDeliverable = isCampaignDeliverable;
+
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const ensureUniqueAdUnitName = async ({ accountId, campaignId, name, excludeAdUnitId }) => {
@@ -849,6 +863,9 @@ exports.serveAd = async (req, res) => {
         startDate: { $lte: now },
         endDate: { $gte: now }
       }).populate('campaign');
+      if (adUnit && !isCampaignDeliverable(adUnit.campaign, now)) {
+        adUnit = null;
+      }
     } else {
       const inventoryDoc = await Inventory.findOne({ key: String(inventory).toLowerCase(), isActive: true });
       if (!inventoryDoc) {

@@ -232,6 +232,8 @@ const validateCampaignUpdateDates = ({ payload = {}, campaign }) => {
   return { valid: true, startDate: effectiveStart, endDate: effectiveEnd };
 };
 
+exports.validateCampaignUpdateDates = validateCampaignUpdateDates;
+
 const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings }) => {
   if (!Array.isArray(mappings)) {
     return;

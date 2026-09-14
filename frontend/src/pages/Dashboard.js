@@ -384,6 +384,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     userSelected: false,
   });
   const [campaignEditorId, setCampaignEditorId] = useState(null);
+  const [campaignEditorStatus, setCampaignEditorStatus] = useState(null);
+  const [campaignStatusUpdatingId, setCampaignStatusUpdatingId] =
+    useState(null);
   const [isCampaignAdUnitsModalOpen, setIsCampaignAdUnitsModalOpen] =
     useState(false);
   const [expandedCampaignIds, setExpandedCampaignIds] = useState(
@@ -671,6 +674,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       userSelected: false,
     });
     setCampaignEditorId(null);
+    setCampaignEditorStatus(null);
+    setCampaignStatusUpdatingId(null);
     setIsCampaignAdUnitsModalOpen(false);
     setExpandedCampaignIds(new Set());
     setDateRange(getDefaultDateRange());
@@ -892,11 +897,22 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     setSelectedCampaign(campaign._id);
     setEditingCampaign(campaign);
     setCampaignEditorId(campaign._id);
+    setCampaignEditorStatus(campaign.status);
     setError(null);
   };
 
   const handleCloseCampaignEditor = () => {
+    if (campaignEditorId && campaignEditorStatus) {
+      setCampaigns((previousCampaigns) =>
+        previousCampaigns.map((campaign) =>
+          campaign._id === campaignEditorId
+            ? { ...campaign, status: campaignEditorStatus }
+            : campaign,
+        ),
+      );
+    }
     setCampaignEditorId(null);
+    setCampaignEditorStatus(null);
     setIsCampaignAdUnitsModalOpen(false);
     setEditingCampaign(null);
     setError(null);
@@ -905,6 +921,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const handleCloseCampaignModal = () => {
     setShowCampaignModal(false);
     setCampaignEditorId(null);
+    setCampaignEditorStatus(null);
     setIsCampaignAdUnitsModalOpen(false);
     setEditingCampaign(null);
     setError(null);
@@ -1040,15 +1057,21 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleToggleCampaignStatus = async (campaignId, currentStatus) => {
+    if (campaignStatusUpdatingId === campaignId) return;
+
+    const newStatus = currentStatus === "active" ? "paused" : "active";
+    setCampaignStatusUpdatingId(campaignId);
     try {
-      const newStatus = currentStatus === "active" ? "paused" : "active";
-      await campaignAPI.updateStatus(campaignId, newStatus);
+      const response = await campaignAPI.updateStatus(campaignId, newStatus);
+      const savedStatus = response.data?.status || newStatus;
+      setCampaignEditorStatus(savedStatus);
       setSuccessMessage(
-        `Campaign ${newStatus === "active" ? "activated" : "paused"} successfully!`,
+        `Campaign ${savedStatus === "active" ? "activated" : "paused"} successfully!`,
       );
-      await fetchCampaigns({ page: 1, reset: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to update campaign status"));
+    } finally {
+      setCampaignStatusUpdatingId(null);
     }
   };
 
@@ -1258,6 +1281,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       campaigns.find((campaign) => campaign._id === campaignEditorId) || null,
     [campaignEditorId, campaigns],
   );
+  const effectiveCampaignEditorStatus =
+    campaignEditorStatus || campaignEditorCampaign?.status || null;
 
   const analyticsChartData = useMemo(
     () => buildDailyChartData(analytics.daily),
@@ -2309,25 +2334,31 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             <div className="campaign-editor-content">
               <div className="campaign-editor-actions">
                 <button
-                  className={`btn-icon btn-status ${campaignEditorCampaign.status}`}
+                  className={`btn-icon btn-status ${effectiveCampaignEditorStatus}`}
+                  disabled={
+                    campaignStatusUpdatingId === campaignEditorCampaign._id
+                  }
+                  aria-busy={
+                    campaignStatusUpdatingId === campaignEditorCampaign._id
+                  }
                   onClick={() =>
                     handleToggleCampaignStatus(
                       campaignEditorCampaign._id,
-                      campaignEditorCampaign.status,
+                      effectiveCampaignEditorStatus,
                     )
                   }
                   title={
-                    campaignEditorCampaign.status === "active"
+                    effectiveCampaignEditorStatus === "active"
                       ? "Pause"
                       : "Activate"
                   }
                   aria-label={
-                    campaignEditorCampaign.status === "active"
+                    effectiveCampaignEditorStatus === "active"
                       ? "Pause campaign"
                       : "Activate campaign"
                   }
                 >
-                  {campaignEditorCampaign.status === "active" ? "⏸" : "▶"}
+                  {effectiveCampaignEditorStatus === "active" ? "⏸" : "▶"}
                 </button>
                 <button
                   className="btn-icon btn-edit"
@@ -2353,6 +2384,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
 
               <CampaignForm
                 campaign={campaignEditorCampaign}
+                statusOverride={effectiveCampaignEditorStatus}
                 submitting={submitting}
                 onSubmit={handleSubmitCampaign}
                 onCancel={handleCloseCampaignEditor}

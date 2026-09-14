@@ -75,6 +75,50 @@ test('available ad returns 200 and the existing payload contract', async () => {
   assert.equal(res.body.inventoryKey, 'homepage');
 });
 
+test('direct ad-code serving stops while its Campaign is paused', async () => {
+  AdUnit.findOne = () => ({
+    populate: async () => ({
+      adCode: 'ad-paused',
+      status: 'active',
+      campaign: {
+        _id: 'campaign-1',
+        status: 'paused',
+        startDate: new Date('2026-01-01T00:00:00.000Z'),
+        endDate: new Date('2030-01-01T00:00:00.000Z')
+      }
+    })
+  });
+  const res = createResponse();
+
+  await serveAd({ query: { adCode: 'ad-paused' } }, res);
+
+  assert.equal(res.statusCode, 204);
+  assert.equal(res.body, undefined);
+});
+
+test('direct ad-code serving resumes with an old start date after Campaign activation', async () => {
+  AdUnit.findOne = () => ({
+    populate: async () => ({
+      adCode: 'ad-reactivated',
+      name: 'Reactivated Ad',
+      status: 'active',
+      campaign: {
+        _id: 'campaign-1',
+        status: 'active',
+        startDate: new Date('2026-01-01T00:00:00.000Z'),
+        endDate: new Date('2030-01-01T00:00:00.000Z')
+      }
+    })
+  });
+  const res = createResponse();
+
+  await serveAd({ query: { adCode: 'ad-reactivated' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.adCode, 'ad-reactivated');
+  assert.equal(res.body.campaignId, 'campaign-1');
+});
+
 test('inventory with no active ad returns 204', async () => {
   mockInventoryServing([]);
   const res = createResponse();

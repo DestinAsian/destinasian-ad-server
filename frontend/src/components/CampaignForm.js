@@ -63,6 +63,7 @@ function CampaignForm({
   onSubmit,
   onCancel,
   onManageAdUnits,
+  statusOverride,
   submitting = false,
 }) {
   const [formData, setFormData] = useState({
@@ -80,6 +81,7 @@ function CampaignForm({
   const [isAssignmentsModalOpen, setIsAssignmentsModalOpen] = useState(false);
 
   const isEditingCampaign = Boolean(campaign);
+  const effectiveCampaignStatus = statusOverride || campaign?.status;
   const assignmentOptionCount =
     mappingRows.length * Math.max(inventories.length, 1);
   const assignedAdUnitCount = mappingRows.filter(
@@ -203,7 +205,7 @@ function CampaignForm({
       if (!isEditingCampaign && startDateTime < now) {
         newErrors.startDate = "Start date and time cannot be in the past";
       }
-      if (campaign?.status === "active" && startDateChanged) {
+      if (effectiveCampaignStatus === "active" && startDateChanged) {
         newErrors.startDate =
           "Active campaigns cannot change start date. Pause the campaign first.";
       }
