@@ -40,6 +40,8 @@ function Inventory({ searchQuery = "" }) {
   const [inventories, setInventories] = useState([]);
   const [adUnits, setAdUnits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
   const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
   const confirmAction = useConfirm();
   const [runningAdsOnly, setRunningAdsOnly] = useState(false);
@@ -73,6 +75,8 @@ function Inventory({ searchQuery = "" }) {
   const cmsScriptTag = `<script src="https://YOUR-AD-SERVER.DOMAIN/ad-client.js"></script>`;
   const inventoryFilterRef = useRef(null);
   const loadRequestIdRef = useRef(0);
+  const loadAbortControllerRef = useRef(null);
+  const loadedAccountRef = useRef(null);
 
   const isRunningAdUnit = useCallback((adUnit) => {
     const adUnitStatus = String(adUnit?.status || "").toLowerCase();
@@ -87,22 +91,33 @@ function Inventory({ searchQuery = "" }) {
     );
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async ({ silent = false } = {}) => {
     const requestId = loadRequestIdRef.current + 1;
     loadRequestIdRef.current = requestId;
+    loadAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortControllerRef.current = controller;
+    const accountId = currentAccount?.id || null;
 
-    if (!currentAccount?.id) {
+    if (!accountId) {
       setInventories([]);
       setAdUnits([]);
       setLoading(false);
+      setRefreshing(false);
+      loadedAccountRef.current = null;
       return;
     }
 
-    setLoading(true);
+    const isInitialLoad = loadedAccountRef.current !== accountId;
+    if (isInitialLoad && !silent) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     try {
       const [inventoryResponse, adUnitResponse] = await Promise.all([
-        inventoryAPI.getAll({ runningAdsOnly }),
-        adUnitAPI.getAll({ view: "summary" }),
+        inventoryAPI.getAll({ runningAdsOnly }, { signal: controller.signal }),
+        adUnitAPI.getAll({ view: "summary" }, { signal: controller.signal }),
       ]);
 
       if (loadRequestIdRef.current !== requestId) return;
@@ -117,13 +132,19 @@ function Inventory({ searchQuery = "" }) {
       );
       setInventories(uniqueInventories);
       setAdUnits(uniqueAdUnits);
+      loadedAccountRef.current = accountId;
       setLoading(false);
+      setRefreshing(false);
     } catch (err) {
       if (loadRequestIdRef.current !== requestId) return;
+      if (err?.code === "ERR_CANCELED") return;
       setError("Failed to load ad channel data");
       setLoading(false);
+      setRefreshing(false);
     }
   }, [currentAccount?.id, runningAdsOnly, setError]);
+
+  useEffect(() => () => loadAbortControllerRef.current?.abort(), []);
 
   useEffect(() => {
     loadData();
@@ -140,6 +161,7 @@ function Inventory({ searchQuery = "" }) {
     setExpandedInventoryIds(new Set());
     setInventorySummaryViewById({});
     setEditingId(null);
+    setPendingAction(null);
     setEditForm({
       name: "",
       key: "",
@@ -499,7 +521,9 @@ function Inventory({ searchQuery = "" }) {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (pendingAction) return;
     setError(null);
+    setPendingAction({ type: "create", id: "new" });
 
     try {
       await inventoryAPI.create({
@@ -516,9 +540,11 @@ function Inventory({ searchQuery = "" }) {
         adUnitIds: [],
       });
       setSuccessMessage("Ad Channel created");
-      await loadData();
+      await loadData({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to create ad channel"));
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -548,19 +574,25 @@ function Inventory({ searchQuery = "" }) {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
+    if (pendingAction) return;
     setError(null);
+    const targetId = editingId;
+    setPendingAction({ type: "update", id: targetId });
 
     try {
       await inventoryAPI.update(editingId, editForm);
       setEditingId(null);
       setSuccessMessage("Ad Channel updated");
-      await loadData();
+      await loadData({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to update ad channel"));
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleDelete = async (inventory) => {
+    if (pendingAction) return;
     const linkedAdUnits = adUnits.filter((adUnit) =>
       isAdUnitLinkedToChannel(adUnit, inventory._id),
     );
@@ -586,16 +618,21 @@ function Inventory({ searchQuery = "" }) {
     setError(null);
 
     try {
+      setPendingAction({ type: "delete", id: inventory._id });
       await inventoryAPI.delete(inventory._id);
       setSuccessMessage("Ad Channel deleted");
-      await loadData();
+      await loadData({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to delete ad channel"));
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleDuplicate = async (inventory) => {
+    if (pendingAction) return;
     setError(null);
+    setPendingAction({ type: "duplicate", id: inventory._id });
 
     try {
       const existingNames = new Set(inventories.map((item) => item.name));
@@ -610,9 +647,11 @@ function Inventory({ searchQuery = "" }) {
       });
 
       setSuccessMessage("Ad Channel duplicated");
-      await loadData();
+      await loadData({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to duplicate ad channel"));
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -648,7 +687,16 @@ function Inventory({ searchQuery = "" }) {
           <h1>Ad Channels</h1>
           <p>Create and manage ad placement channels.</p>
         </div>
-        <AccountSelector />
+        <div className="inventory-header-actions">
+          <span
+            className={`background-refresh-status${refreshing ? " is-visible" : ""}`}
+            role="status"
+            aria-live="polite"
+          >
+            Refreshing…
+          </span>
+          <AccountSelector />
+        </div>
       </header>
 
       <div className={`ad-unit-cms ${isCmsSetupExpanded ? "is-expanded" : ""}`}>
@@ -781,8 +829,12 @@ function Inventory({ searchQuery = "" }) {
                   </div>
                 )}
               </div>
-              <button type="submit" className="btn btn-primary">
-                Create
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={Boolean(pendingAction)}
+              >
+                {pendingAction?.type === "create" ? "Creating…" : "Create"}
               </button>
             </form>
           </div>
@@ -1029,13 +1081,21 @@ function Inventory({ searchQuery = "" }) {
                         )}
                       </div>
                       <div className="inventory-edit-actions">
-                        <button type="submit" className="btn btn-primary btn-sm">
-                          Save Changes
+                        <button
+                          type="submit"
+                          className="btn btn-primary btn-sm"
+                          disabled={Boolean(pendingAction)}
+                        >
+                          {pendingAction?.type === "update" &&
+                          pendingAction?.id === inventory._id
+                            ? "Saving…"
+                            : "Save Changes"}
                         </button>
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
                           onClick={cancelEdit}
+                          disabled={Boolean(pendingAction)}
                         >
                           Cancel
                         </button>
@@ -1131,18 +1191,21 @@ function Inventory({ searchQuery = "" }) {
                                 <div className="inventory-actions">
                                   <button
                                     className="btn btn-secondary btn-sm"
+                                    disabled={Boolean(pendingAction)}
                                     onClick={() => handleDuplicate(inventory)}
                                   >
                                     Duplicate
                                   </button>
                                   <button
                                     className="btn btn-secondary btn-sm"
+                                    disabled={Boolean(pendingAction)}
                                     onClick={() => startEdit(inventory)}
                                   >
                                     Edit
                                   </button>
                                   <button
                                     className="btn btn-danger btn-sm"
+                                    disabled={Boolean(pendingAction)}
                                     onClick={() => handleDelete(inventory)}
                                   >
                                     Delete

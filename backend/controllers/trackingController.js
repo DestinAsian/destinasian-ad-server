@@ -7,6 +7,8 @@ const Inventory = require('../models/Inventory');
 const AdImpressionEvent = require('../models/AdImpressionEvent');
 const AdClickEvent = require('../models/AdClickEvent');
 const AdDailyStat = require('../models/AdDailyStat');
+const { isAdUnitDeliverable } = require('../services/deliveryEligibilityService');
+const { runAtomicMutation } = require('../services/transactionService');
 
 const getUtcDayStart = (dateInput = new Date()) => {
   const date = new Date(dateInput);
@@ -408,7 +410,8 @@ const updateDailyStat = async ({
   impressions = 0,
   clicks = 0,
   impressionRevenue = 0,
-  clickRevenue = 0
+  clickRevenue = 0,
+  session = null
 }) => {
   const statDate = getUtcDayStart(occurredAt);
   const totalRevenue = getNumericValue(impressionRevenue) + getNumericValue(clickRevenue);
@@ -436,7 +439,8 @@ const updateDailyStat = async ({
     {
       upsert: true,
       new: true,
-      setDefaultsOnInsert: true
+      setDefaultsOnInsert: true,
+      ...(session ? { session } : {})
     }
   );
 
@@ -446,7 +450,7 @@ const updateDailyStat = async ({
 
   if (updated.ctr !== ctr) {
     updated.ctr = ctr;
-    await updated.save();
+    await updated.save(session ? { session } : undefined);
   }
 };
 
@@ -460,13 +464,17 @@ exports.recordImpression = async (req, res) => {
     const impressionRevenue = getNumericValue(req.body?.revenue);
     const eventMeta = getEventMeta(req.body, impressionRevenue);
 
-    const adUnit = await AdUnit.findOne({ adCode: adUnitId });
+    const adUnit = await AdUnit.findOne({ adCode: adUnitId }).populate('campaign');
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
+    if (!isAdUnitDeliverable(adUnit, occurredAt)) {
+      return res.status(204).end();
+    }
+    const campaignId = adUnit.campaign?._id || adUnit.campaign;
     const trackingInventoryId = resolveTrackingInventoryId(adUnit, req.body?.inventoryId);
 
     const impression = new Impression({
       adUnit: adUnit._id,
-      campaign: adUnit.campaign,
+      campaign: campaignId,
       account: adUnit.account,
       userIp,
       userAgent,
@@ -475,7 +483,7 @@ exports.recordImpression = async (req, res) => {
 
     const impressionEvent = new AdImpressionEvent({
       adUnit: adUnit._id,
-      campaign: adUnit.campaign,
+      campaign: campaignId,
       account: adUnit.account,
       inventory: trackingInventoryId,
       adCode: adUnit.adCode,
@@ -486,28 +494,33 @@ exports.recordImpression = async (req, res) => {
       meta: eventMeta
     });
 
-    await Promise.all([
-      impression.save(),
-      impressionEvent.save()
-    ]);
+    await runAtomicMutation(async (session) => {
+      // MongoDB does not support parallel operations on one transaction
+      // session. Keep these writes sequential so replica-set deployments do
+      // not fail nondeterministically while still committing as one unit.
+      await impression.save(session ? { session } : undefined);
+      await impressionEvent.save(session ? { session } : undefined);
 
-    adUnit.impressions += 1;
-    await adUnit.save();
+      adUnit.impressions += 1;
+      await adUnit.save(session ? { session } : undefined);
 
-    // Update campaign impressions
-    await Campaign.findByIdAndUpdate(adUnit.campaign, {
-      $inc: { totalImpressions: 1 }
-    });
+      await Campaign.findByIdAndUpdate(
+        campaignId,
+        { $inc: { totalImpressions: 1 } },
+        session ? { session } : undefined
+      );
 
-    await updateDailyStat({
-      account: adUnit.account,
-      campaign: adUnit.campaign,
-      adUnit: adUnit._id,
-      inventory: trackingInventoryId,
-      adCode: adUnit.adCode,
-      occurredAt,
-      impressions: 1,
-      impressionRevenue
+      await updateDailyStat({
+        account: adUnit.account,
+        campaign: campaignId,
+        adUnit: adUnit._id,
+        inventory: trackingInventoryId,
+        adCode: adUnit.adCode,
+        occurredAt,
+        impressions: 1,
+        impressionRevenue,
+        session
+      });
     });
 
     res.json({ success: true, message: 'Impression recorded', revenue: impressionRevenue });
@@ -553,28 +566,30 @@ exports.recordClick = async (req, res) => {
       meta: eventMeta
     });
 
-    await Promise.all([
-      click.save(),
-      clickEvent.save()
-    ]);
+    await runAtomicMutation(async (session) => {
+      await click.save(session ? { session } : undefined);
+      await clickEvent.save(session ? { session } : undefined);
 
-    adUnit.clicks += 1;
-    await adUnit.save();
+      adUnit.clicks += 1;
+      await adUnit.save(session ? { session } : undefined);
 
-    // Update campaign clicks
-    await Campaign.findByIdAndUpdate(adUnit.campaign, {
-      $inc: { totalClicks: 1 }
-    });
+      await Campaign.findByIdAndUpdate(
+        adUnit.campaign,
+        { $inc: { totalClicks: 1 } },
+        session ? { session } : undefined
+      );
 
-    await updateDailyStat({
-      account: adUnit.account,
-      campaign: adUnit.campaign,
-      adUnit: adUnit._id,
-      inventory: trackingInventoryId,
-      adCode: adUnit.adCode,
-      occurredAt,
-      clicks: 1,
-      clickRevenue
+      await updateDailyStat({
+        account: adUnit.account,
+        campaign: adUnit.campaign,
+        adUnit: adUnit._id,
+        inventory: trackingInventoryId,
+        adCode: adUnit.adCode,
+        occurredAt,
+        clicks: 1,
+        clickRevenue,
+        session
+      });
     });
 
     res.json({ success: true, message: 'Click recorded', revenue: clickRevenue });

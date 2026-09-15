@@ -406,18 +406,28 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     topAdUnits: [],
   });
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState("");
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const selectedCampaignRef = useRef(null);
+  const campaignPageRef = useRef(1);
+  const campaignRequestIdRef = useRef(0);
+  const campaignAbortControllerRef = useRef(null);
+  const loadedCampaignAccountRef = useRef(null);
+  const analyticsRequestIdRef = useRef(0);
+  const analyticsAbortControllerRef = useRef(null);
   const loadMoreRef = useRef(null);
   const campaignFilterRef = useRef(null);
   const adUnitFilterRef = useRef(null);
   const adChannelFilterRef = useRef(null);
   const [loading, setLoading] = useState(isCampaignView);
+  const [campaignsRefreshing, setCampaignsRefreshing] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showAdUnitModal, setShowAdUnitModal] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState(null);
   const [editingAdUnit, setEditingAdUnit] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingCampaignAction, setPendingCampaignAction] = useState(null);
+  const [pendingAdUnitAction, setPendingAdUnitAction] = useState(null);
   const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
   const confirmAction = useConfirm();
 
@@ -430,9 +440,22 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   }, [normalizedSearchQuery]);
 
   const fetchCampaigns = useCallback(
-    async ({ page = 1, reset = false } = {}) => {
+    async ({
+      page = 1,
+      reset = false,
+      silent = false,
+      preservePageCount = false,
+    } = {}) => {
+      const requestId = campaignRequestIdRef.current + 1;
+      campaignRequestIdRef.current = requestId;
+      campaignAbortControllerRef.current?.abort();
+      const controller = new AbortController();
+      campaignAbortControllerRef.current = controller;
+      const accountId = currentAccount?.id || null;
+      const isInitialLoad = loadedCampaignAccountRef.current !== accountId;
+
       try {
-        if (!currentAccount?.id) {
+        if (!accountId) {
           setCampaigns([]);
           setCampaignHasMore(false);
           setCampaignPage(1);
@@ -440,33 +463,53 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           return;
         }
 
-        if (reset) {
+        if (reset && isInitialLoad && !silent) {
           setLoading(true);
+        } else if (reset) {
+          setCampaignsRefreshing(true);
         } else {
           setCampaignsLoadingMore(true);
         }
 
-        const params = {
-          page,
-          limit: CAMPAIGN_PAGE_SIZE,
-          view: "summary",
+        const fetchPage = async (requestedPage) => {
+          const params = {
+            page: requestedPage,
+            limit: CAMPAIGN_PAGE_SIZE,
+            view: "summary",
+          };
+          if (selectedInventoryId) params.inventoryId = selectedInventoryId;
+          if (debouncedSearchQuery) {
+            params.search = debouncedSearchQuery;
+            params.searchScope = "title";
+          }
+          return campaignAPI.getAll(params, { signal: controller.signal });
         };
-        if (selectedInventoryId) params.inventoryId = selectedInventoryId;
-        if (debouncedSearchQuery) {
-          params.search = debouncedSearchQuery;
-          params.searchScope = "title";
-        }
 
-        const response = await campaignAPI.getAll(params);
-        const campaignRows = Array.isArray(response.data?.data)
-          ? response.data.data
-          : Array.isArray(response.data)
-            ? response.data
-            : [];
+        const pageCount = preservePageCount
+          ? Math.max(1, campaignPageRef.current)
+          : 1;
+        const responses = preservePageCount
+          ? await Promise.all(
+              Array.from({ length: pageCount }, (_, index) => fetchPage(index + 1)),
+            )
+          : [await fetchPage(page)];
+
+        if (campaignRequestIdRef.current !== requestId) return;
+
+        const rowsByResponse = responses.map((response) =>
+          Array.isArray(response.data?.data)
+            ? response.data.data
+            : Array.isArray(response.data)
+              ? response.data
+              : [],
+        );
+        const campaignRows = rowsByResponse.flat();
+        const finalResponse = responses[responses.length - 1];
+        const finalRows = rowsByResponse[rowsByResponse.length - 1];
         const hasMore =
-          typeof response.data?.pagination?.hasMore === "boolean"
-            ? response.data.pagination.hasMore
-            : campaignRows.length >= CAMPAIGN_PAGE_SIZE;
+          typeof finalResponse.data?.pagination?.hasMore === "boolean"
+            ? finalResponse.data.pagination.hasMore
+            : finalRows.length >= CAMPAIGN_PAGE_SIZE;
 
         let dedupedRows = [];
         setCampaigns((prev) => {
@@ -479,7 +522,10 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           return dedupedRows;
         });
         setCampaignHasMore(Boolean(hasMore));
-        setCampaignPage(page);
+        const resultingPage = preservePageCount ? pageCount : page;
+        campaignPageRef.current = resultingPage;
+        setCampaignPage(resultingPage);
+        loadedCampaignAccountRef.current = accountId;
 
         const searchResultCampaignIds = getCampaignIdsWithAdUnitSearchResults(
           campaignRows,
@@ -501,14 +547,21 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         selectedCampaignRef.current = nextSelectedCampaignId;
         setSelectedCampaign(nextSelectedCampaignId);
       } catch (error) {
+        if (error?.code === "ERR_CANCELED") return;
         console.error("Error fetching campaigns:", error);
+        setError("Failed to refresh campaign data. The previous data is still displayed.");
       } finally {
-        setLoading(false);
-        setCampaignsLoadingMore(false);
+        if (campaignRequestIdRef.current === requestId) {
+          setLoading(false);
+          setCampaignsRefreshing(false);
+          setCampaignsLoadingMore(false);
+        }
       }
     },
-    [currentAccount?.id, selectedInventoryId, debouncedSearchQuery],
+    [currentAccount?.id, selectedInventoryId, debouncedSearchQuery, setError],
   );
+
+  useEffect(() => () => campaignAbortControllerRef.current?.abort(), []);
 
   useEffect(() => {
     if (!isCampaignView) {
@@ -565,6 +618,12 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   }, [isCampaignView, campaignHasMore, loadMoreCampaigns, campaigns.length]);
 
   const fetchAnalytics = useCallback(async () => {
+    const requestId = analyticsRequestIdRef.current + 1;
+    analyticsRequestIdRef.current = requestId;
+    analyticsAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    analyticsAbortControllerRef.current = controller;
+
     try {
       if (!currentAccount?.id) {
         setAnalytics({
@@ -576,10 +635,12 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           topCampaigns: [],
           topAdUnits: [],
         });
+        setAnalyticsError("");
         setAnalyticsLoading(false);
         return;
       }
 
+      setAnalyticsError("");
       setAnalyticsLoading(true);
       const response = await trackingAPI.getAnalytics({
         startDate: dateRange.startDate || undefined,
@@ -600,7 +661,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             ? true
             : undefined,
         limit: 200,
-      });
+      }, { signal: controller.signal });
+      if (analyticsRequestIdRef.current !== requestId) return;
       setAnalytics({
         impressions: response.data?.impressions || 0,
         clicks: response.data?.clicks || 0,
@@ -610,19 +672,18 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         topCampaigns: response.data?.topCampaigns || [],
         topAdUnits: response.data?.topAdUnits || [],
       });
+      setAnalyticsError("");
     } catch (error) {
+      if (error?.code === "ERR_CANCELED") return;
       console.error("Error fetching analytics:", error);
-      setAnalytics({
-        impressions: 0,
-        clicks: 0,
-        ctr: 0,
-        daily: [],
-        adUnitDaily: [],
-        topCampaigns: [],
-        topAdUnits: [],
-      });
+      setAnalyticsError(
+        "Analytics could not be refreshed. The last successful report remains visible.",
+      );
+      setError("Failed to refresh analytics. The previous report is still displayed.");
     } finally {
-      setAnalyticsLoading(false);
+      if (analyticsRequestIdRef.current === requestId) {
+        setAnalyticsLoading(false);
+      }
     }
   }, [
     currentAccount?.id,
@@ -633,7 +694,10 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     selectedOverviewAdUnitId,
     overviewMode,
     debouncedSearchQuery,
+    setError,
   ]);
+
+  useEffect(() => () => analyticsAbortControllerRef.current?.abort(), []);
 
   useEffect(() => {
     fetchAnalytics();
@@ -651,6 +715,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
 
     setCampaigns([]);
     setCampaignPage(1);
+    campaignPageRef.current = 1;
     setCampaignHasMore(true);
     setCampaignsLoadingMore(false);
     selectedCampaignRef.current = null;
@@ -676,6 +741,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     setCampaignEditorId(null);
     setCampaignEditorStatus(null);
     setCampaignStatusUpdatingId(null);
+    setPendingCampaignAction(null);
+    setPendingAdUnitAction(null);
     setIsCampaignAdUnitsModalOpen(false);
     setExpandedCampaignIds(new Set());
     setDateRange(getDefaultDateRange());
@@ -943,7 +1010,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleOpenEditAdUnitModal = async (adUnit, campaignId = null) => {
+    if (pendingAdUnitAction) return;
     setError(null);
+    setPendingAdUnitAction({ type: "load", id: adUnit._id });
     try {
       const response = await adUnitAPI.getById(adUnit._id);
       const detailedAdUnit = response.data;
@@ -964,6 +1033,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         err.response?.data?.message ||
         "Failed to load ad unit details",
       );
+    } finally {
+      setPendingAdUnitAction(null);
     }
   };
 
@@ -985,7 +1056,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         setSuccessMessage("Campaign created successfully!");
       }
       handleCloseCampaignModal();
-      await fetchCampaigns({ page: 1, reset: true });
+      await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to save campaign"));
     } finally {
@@ -994,6 +1065,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleDeleteCampaign = async (campaignId) => {
+    if (pendingCampaignAction) return;
     const confirmed = await confirmAction({
       title: "Delete campaign?",
       message:
@@ -1003,15 +1075,21 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     if (!confirmed) return;
 
     try {
+      setPendingCampaignAction({ type: "delete", id: campaignId });
       await campaignAPI.delete(campaignId);
       setSuccessMessage("Campaign deleted successfully!");
-      await fetchCampaigns({ page: 1, reset: true });
+      if (campaignEditorId === campaignId) {
+        handleCloseCampaignEditor();
+      }
+      await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
       if (selectedCampaign === campaignId) {
         selectedCampaignRef.current = null;
         setSelectedCampaign(null);
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to delete campaign"));
+    } finally {
+      setPendingCampaignAction(null);
     }
   };
 
@@ -1028,7 +1106,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       }
       handleCloseAdUnitModal();
       if (isCampaignView) {
-        await fetchCampaigns({ page: 1, reset: true });
+        await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to save ad unit"));
@@ -1038,6 +1116,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleDeleteAdUnit = async (adUnitId) => {
+    if (pendingAdUnitAction) return;
     const confirmed = await confirmAction({
       title: "Delete ad unit?",
       message: "This ad unit will be permanently deleted. This action cannot be undone.",
@@ -1046,13 +1125,16 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     if (!confirmed) return;
 
     try {
+      setPendingAdUnitAction({ type: "delete", id: adUnitId });
       await adUnitAPI.delete(adUnitId);
       setSuccessMessage("Ad unit deleted successfully!");
       if (isCampaignView) {
-        await fetchCampaigns({ page: 1, reset: true });
+        await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to delete ad unit"));
+    } finally {
+      setPendingAdUnitAction(null);
     }
   };
 
@@ -1076,17 +1158,21 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleToggleAdUnitStatus = async (adUnitId, currentStatus) => {
+    if (pendingAdUnitAction) return;
     try {
+      setPendingAdUnitAction({ type: "status", id: adUnitId });
       const newStatus = currentStatus === "active" ? "paused" : "active";
       await adUnitAPI.updateStatus(adUnitId, newStatus);
       setSuccessMessage(
         `Ad unit ${newStatus === "active" ? "activated" : "paused"} successfully!`,
       );
       if (isCampaignView) {
-        await fetchCampaigns({ page: 1, reset: true });
+        await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to update ad unit status"));
+    } finally {
+      setPendingAdUnitAction(null);
     }
   };
 
@@ -1128,7 +1214,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleDuplicateCampaign = async (campaign) => {
+    if (pendingCampaignAction) return;
     try {
+      setPendingCampaignAction({ type: "duplicate", id: campaign._id });
       const existing = new Set(campaigns.map((c) => c.name));
       const name = generateCopyName(campaign.name, existing);
       await campaignAPI.create({
@@ -1138,14 +1226,18 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         endDate: campaign.endDate,
       });
       setSuccessMessage("Campaign duplicated successfully!");
-      await fetchCampaigns({ page: 1, reset: true });
+      await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to duplicate campaign"));
+    } finally {
+      setPendingCampaignAction(null);
     }
   };
 
   const handleDuplicateAdUnit = async (adUnit) => {
+    if (pendingAdUnitAction) return;
     try {
+      setPendingAdUnitAction({ type: "duplicate", id: adUnit._id });
       const response = await adUnitAPI.getById(adUnit._id);
       const detailedAdUnit = response.data;
       const duplicateDateWindow = getDuplicateAdUnitDateWindow(detailedAdUnit);
@@ -1183,10 +1275,12 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       });
       setSuccessMessage("Ad unit duplicated successfully!");
       if (isCampaignView) {
-        await fetchCampaigns({ page: 1, reset: true });
+        await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to duplicate ad unit"));
+    } finally {
+      setPendingAdUnitAction(null);
     }
   };
 
@@ -1277,9 +1371,15 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   }, []);
 
   const campaignEditorCampaign = useMemo(
-    () =>
-      campaigns.find((campaign) => campaign._id === campaignEditorId) || null,
-    [campaignEditorId, campaigns],
+    () => {
+      if (!campaignEditorId) return null;
+      const refreshedCampaign = campaigns.find(
+        (campaign) => campaign._id === campaignEditorId,
+      );
+      if (refreshedCampaign) return refreshedCampaign;
+      return editingCampaign?._id === campaignEditorId ? editingCampaign : null;
+    },
+    [campaignEditorId, campaigns, editingCampaign],
   );
   const effectiveCampaignEditorStatus =
     campaignEditorStatus || campaignEditorCampaign?.status || null;
@@ -1588,6 +1688,13 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
               </select>
             </div>
             <AccountSelector />
+            <span
+              className={`background-refresh-status${campaignsRefreshing ? " is-visible" : ""}`}
+              role="status"
+              aria-live="polite"
+            >
+              Refreshing…
+            </span>
           </div>
         ) : (
           <div className="dashboard-overview-controls">
@@ -2075,6 +2182,19 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 </span>
               </div>
             </div>
+            {analyticsError && (
+              <div className="dashboard-analytics-error" role="alert">
+                <span>{analyticsError}</span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={fetchAnalytics}
+                  disabled={analyticsLoading}
+                >
+                  {analyticsLoading ? "Retrying…" : "Retry"}
+                </button>
+              </div>
+            )}
             <div className="dashboard-chart-canvas">
               {analyticsLoading ? (
                 <div className="no-data">Loading analytics...</div>
@@ -2362,6 +2482,12 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 </button>
                 <button
                   className="btn-icon btn-edit"
+                  type="button"
+                  disabled={Boolean(pendingCampaignAction)}
+                  aria-busy={
+                    pendingCampaignAction?.type === "duplicate" &&
+                    pendingCampaignAction?.id === campaignEditorCampaign._id
+                  }
                   onClick={() =>
                     handleDuplicateCampaign(campaignEditorCampaign)
                   }
@@ -2372,6 +2498,12 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 </button>
                 <button
                   className="btn-icon btn-delete"
+                  type="button"
+                  disabled={Boolean(pendingCampaignAction)}
+                  aria-busy={
+                    pendingCampaignAction?.type === "delete" &&
+                    pendingCampaignAction?.id === campaignEditorCampaign._id
+                  }
                   onClick={() =>
                     handleDeleteCampaign(campaignEditorCampaign._id)
                   }
@@ -2428,6 +2560,12 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                   <div className="campaign-editor-adunit-actions">
                     <button
                       className={`btn-icon btn-status ${adUnit.status}`}
+                      type="button"
+                      disabled={Boolean(pendingAdUnitAction)}
+                      aria-busy={
+                        pendingAdUnitAction?.type === "status" &&
+                        pendingAdUnitAction?.id === adUnit._id
+                      }
                       onClick={() =>
                         handleToggleAdUnitStatus(adUnit._id, adUnit.status)
                       }
@@ -2442,6 +2580,12 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                     </button>
                     <button
                       className="btn-icon btn-edit"
+                      type="button"
+                      disabled={Boolean(pendingAdUnitAction)}
+                      aria-busy={
+                        pendingAdUnitAction?.type === "duplicate" &&
+                        pendingAdUnitAction?.id === adUnit._id
+                      }
                       onClick={() => handleDuplicateAdUnit(adUnit)}
                       title="Duplicate"
                       aria-label="Duplicate ad unit"
@@ -2450,6 +2594,12 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                     </button>
                     <button
                       className="btn-icon btn-edit"
+                      type="button"
+                      disabled={Boolean(pendingAdUnitAction)}
+                      aria-busy={
+                        pendingAdUnitAction?.type === "load" &&
+                        pendingAdUnitAction?.id === adUnit._id
+                      }
                       onClick={() =>
                         handleOpenEditAdUnitModal(
                           adUnit,
@@ -2463,6 +2613,12 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                     </button>
                     <button
                       className="btn-icon btn-delete"
+                      type="button"
+                      disabled={Boolean(pendingAdUnitAction)}
+                      aria-busy={
+                        pendingAdUnitAction?.type === "delete" &&
+                        pendingAdUnitAction?.id === adUnit._id
+                      }
                       onClick={() => handleDeleteAdUnit(adUnit._id)}
                       title="Delete"
                       aria-label="Delete ad unit"

@@ -3,19 +3,21 @@ const AdUnit = require('../models/AdUnit');
 const Campaign = require('../models/Campaign');
 const Inventory = require('../models/Inventory');
 const { formatCrmAdId, inferSourceCodeFromAccount } = require('./crmAdId');
+const { applySession } = require('../services/transactionService');
 
-const getNextCode = async (Model, filter, fieldName) => {
-  const latest = await Model.findOne({
+const getNextCode = async (Model, filter, fieldName, session) => {
+  const query = Model.findOne({
     ...filter,
     [fieldName]: { $type: 'number' }
   })
     .sort({ [fieldName]: -1 })
     .select(fieldName);
+  const latest = await applySession(query, session);
 
   return Number(latest?.[fieldName] || 0) + 1;
 };
 
-const ensureInventoryCode = async (inventoryDoc) => {
+const ensureInventoryCode = async (inventoryDoc, options = {}) => {
   if (!inventoryDoc) {
     throw new Error('Primary Ad Channel is required to generate CRM AD ID');
   }
@@ -27,13 +29,14 @@ const ensureInventoryCode = async (inventoryDoc) => {
   inventoryDoc.inventoryCode = await getNextCode(
     Inventory,
     { account: inventoryDoc.account },
-    'inventoryCode'
+    'inventoryCode',
+    options.session
   );
-  await inventoryDoc.save();
+  await inventoryDoc.save(options.session ? { session: options.session } : undefined);
   return inventoryDoc.inventoryCode;
 };
 
-const ensureCampaignCode = async (campaignDoc) => {
+const ensureCampaignCode = async (campaignDoc, options = {}) => {
   if (!campaignDoc) {
     throw new Error('Campaign is required to generate CRM AD ID');
   }
@@ -45,31 +48,32 @@ const ensureCampaignCode = async (campaignDoc) => {
   campaignDoc.campaignCode = await getNextCode(
     Campaign,
     { account: campaignDoc.account },
-    'campaignCode'
+    'campaignCode',
+    options.session
   );
-  await campaignDoc.save();
+  await campaignDoc.save(options.session ? { session: options.session } : undefined);
   return campaignDoc.campaignCode;
 };
 
-const getPrimaryInventoryDoc = async (adUnit, providedInventoryDoc) => {
+const getPrimaryInventoryDoc = async (adUnit, providedInventoryDoc, session) => {
   if (providedInventoryDoc) return providedInventoryDoc;
   if (!adUnit.inventory) return null;
-  return Inventory.findOne({
+  return applySession(Inventory.findOne({
     _id: adUnit.inventory,
     account: adUnit.account
-  });
+  }), session);
 };
 
-const getCampaignDoc = async (adUnit, providedCampaignDoc) => {
+const getCampaignDoc = async (adUnit, providedCampaignDoc, session) => {
   if (providedCampaignDoc) return providedCampaignDoc;
   if (!adUnit.campaign) return null;
-  return Campaign.findOne({
+  return applySession(Campaign.findOne({
     _id: adUnit.campaign,
     account: adUnit.account
-  });
+  }), session);
 };
 
-const getNextAdUnitCode = async ({ accountId, campaignId, inventoryId }) => {
+const getNextAdUnitCode = async ({ accountId, campaignId, inventoryId, session }) => {
   return getNextCode(
     AdUnit,
     {
@@ -77,33 +81,37 @@ const getNextAdUnitCode = async ({ accountId, campaignId, inventoryId }) => {
       campaign: campaignId,
       inventory: inventoryId
     },
-    'adUnitCode'
+    'adUnitCode',
+    session
   );
 };
 
-const findCrmAdIdConflict = async ({ crmAdId, adUnitId }) => {
+const findCrmAdIdConflict = async ({ crmAdId, adUnitId, session }) => {
   if (!crmAdId) return null;
-  return AdUnit.findOne({
+  return applySession(AdUnit.findOne({
     crmAdId,
     _id: { $ne: adUnitId }
-  }).select('_id crmAdId');
+  }).select('_id crmAdId'), session);
 };
 
 const assignCrmAdIdToAdUnit = async (adUnit, options = {}) => {
-  const inventoryDoc = await getPrimaryInventoryDoc(adUnit, options.inventoryDoc);
-  const campaignDoc = await getCampaignDoc(adUnit, options.campaignDoc);
-  const accountDoc = await Account.findById(adUnit.account).select('name sourceCode');
+  const inventoryDoc = await getPrimaryInventoryDoc(adUnit, options.inventoryDoc, options.session);
+  const campaignDoc = await getCampaignDoc(adUnit, options.campaignDoc, options.session);
+  const accountDoc = await applySession(
+    Account.findById(adUnit.account).select('name sourceCode'),
+    options.session
+  );
   if (!accountDoc) {
     throw new Error('Account source is required to generate CRM AD ID');
   }
 
   const sourceCode = inferSourceCodeFromAccount(accountDoc);
-  const inventoryCode = await ensureInventoryCode(inventoryDoc);
+  const inventoryCode = await ensureInventoryCode(inventoryDoc, options);
   const campaignCode = campaignDoc
-    ? await ensureCampaignCode(campaignDoc)
+    ? await ensureCampaignCode(campaignDoc, options)
     : options.allowStoredCampaignCode && adUnit.campaignCode
       ? adUnit.campaignCode
-      : await ensureCampaignCode(campaignDoc);
+      : await ensureCampaignCode(campaignDoc, options);
   const campaignId = campaignDoc?._id || (options.allowStoredCampaignCode ? adUnit.campaign : null);
   const inventoryChanged = String(adUnit.inventory || '') !== String(options.previousInventoryId || adUnit.inventory || '');
   const campaignChanged = String(adUnit.campaign || '') !== String(options.previousCampaignId || adUnit.campaign || '');
@@ -115,7 +123,8 @@ const assignCrmAdIdToAdUnit = async (adUnit, options = {}) => {
     adUnit.adUnitCode = adUnit.adUnitCode || await getNextAdUnitCode({
       accountId: adUnit.account,
       campaignId,
-      inventoryId: inventoryDoc._id
+      inventoryId: inventoryDoc._id,
+      session: options.session
     });
   }
 
@@ -126,7 +135,11 @@ const assignCrmAdIdToAdUnit = async (adUnit, options = {}) => {
     adUnitCode: adUnit.adUnitCode
   });
 
-  const conflict = await findCrmAdIdConflict({ crmAdId, adUnitId: adUnit._id });
+  const conflict = await findCrmAdIdConflict({
+    crmAdId,
+    adUnitId: adUnit._id,
+    session: options.session
+  });
   if (conflict) {
     if (!campaignId) {
       throw new Error('Campaign is required to generate CRM AD ID');
@@ -134,7 +147,8 @@ const assignCrmAdIdToAdUnit = async (adUnit, options = {}) => {
     adUnit.adUnitCode = await getNextAdUnitCode({
       accountId: adUnit.account,
       campaignId,
-      inventoryId: inventoryDoc._id
+      inventoryId: inventoryDoc._id,
+      session: options.session
     });
 
     crmAdId = formatCrmAdId({
@@ -144,7 +158,11 @@ const assignCrmAdIdToAdUnit = async (adUnit, options = {}) => {
       adUnitCode: adUnit.adUnitCode
     });
 
-    const retryConflict = await findCrmAdIdConflict({ crmAdId, adUnitId: adUnit._id });
+    const retryConflict = await findCrmAdIdConflict({
+      crmAdId,
+      adUnitId: adUnit._id,
+      session: options.session
+    });
     if (retryConflict) {
       const error = new Error('Generated CRM AD ID already exists');
       error.statusCode = 409;

@@ -34,18 +34,18 @@ axiosInstance.interceptors.response.use(
 );
 
 export const campaignAPI = {
-  getAll: (params) => axiosInstance.get('/campaigns', { params }),
+  getAll: (params, config = {}) => axiosInstance.get('/campaigns', { ...config, params }),
   create: (data) => axiosInstance.post('/campaigns', data),
   update: (id, data) => axiosInstance.put(`/campaigns/${id}`, data),
   delete: (id) => axiosInstance.delete(`/campaigns/${id}`),
-  getAdUnitInventories: (id) => axiosInstance.get(`/campaigns/${id}/ad-unit-inventories`),
+  getAdUnitInventories: (id, config = {}) => axiosInstance.get(`/campaigns/${id}/ad-unit-inventories`, config),
   updateAdUnitInventories: (id, mappings) => axiosInstance.put(`/campaigns/${id}/ad-unit-inventories`, { mappings }),
   updateStatus: (id, status) => axiosInstance.put(`/campaigns/${id}`, { status })
 };
 
 export const adUnitAPI = {
-  getAll: (params) => axiosInstance.get('/ad-units', { params }),
-  getById: (id) => axiosInstance.get(`/ad-units/${id}`),
+  getAll: (params, config = {}) => axiosInstance.get('/ad-units', { ...config, params }),
+  getById: (id, config = {}) => axiosInstance.get(`/ad-units/${id}`, config),
   getCreative: (id, signal) => axiosInstance.get(`/ad-units/${id}/creative`, {
     responseType: 'blob',
     signal
@@ -58,7 +58,7 @@ export const adUnitAPI = {
 };
 
 export const trackingAPI = {
-  getAnalytics: (startDateOrParams, endDate, limit, inventoryFilter) => {
+  getAnalytics: (startDateOrParams, endDate, limit, inventoryFilter, config = {}) => {
     const params = typeof startDateOrParams === 'object'
       ? {
           ...startDateOrParams,
@@ -66,7 +66,10 @@ export const trackingAPI = {
         }
       : { startDate: startDateOrParams, endDate, limit, inventory: inventoryFilter };
 
-    return axiosInstance.get('/tracking/analytics', { params });
+    const requestConfig = typeof startDateOrParams === 'object' && endDate && typeof endDate === 'object'
+      ? endDate
+      : config;
+    return axiosInstance.get('/tracking/analytics', { ...requestConfig, params });
   }
 };
 
@@ -79,7 +82,7 @@ export const accountAPI = {
 };
 
 export const inventoryAPI = {
-  getAll: (params) => axiosInstance.get('/inventories', { params }),
+  getAll: (params, config = {}) => axiosInstance.get('/inventories', { ...config, params }),
   create: (data) => axiosInstance.post('/inventories', data),
   update: (id, data) => axiosInstance.put(`/inventories/${id}`, data),
   delete: (id) => axiosInstance.delete(`/inventories/${id}`)

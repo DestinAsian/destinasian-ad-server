@@ -10,6 +10,7 @@ const {
   getImageCreativeIdSet,
   isAdUnitSummaryView
 } = require('../services/adUnitSummaryService');
+const { applySession, runAtomicMutation } = require('../services/transactionService');
 
 const normalizeString = (value) => {
   if (typeof value !== 'string') {
@@ -22,9 +23,10 @@ const normalizeString = (value) => {
 
 const toObjectId = (value) => {
   if (!value) return null;
+  if (value instanceof mongoose.Types.ObjectId) return value;
   if (typeof value === 'object' && value !== null) {
-    if (value._id) return toObjectId(value._id);
-    if (value.id) return toObjectId(value.id);
+    if (value._id && value._id !== value) return toObjectId(value._id);
+    if (value.id && value.id !== value) return toObjectId(value.id);
   }
   const normalized = String(value).trim();
   return mongoose.Types.ObjectId.isValid(normalized) ? new mongoose.Types.ObjectId(normalized) : null;
@@ -234,18 +236,25 @@ const validateCampaignUpdateDates = ({ payload = {}, campaign }) => {
 
 exports.validateCampaignUpdateDates = validateCampaignUpdateDates;
 
-const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings }) => {
+const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings, session = null }) => {
   if (!Array.isArray(mappings)) {
     return;
   }
 
-  const adUnits = await AdUnit.find({
+  const adUnitQuery = AdUnit.find({
     account: accountId,
     campaign: campaignId
-  }).select('_id name');
+  }).select('_id name account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode');
+  const adUnits = await applySession(adUnitQuery, session);
 
   const adUnitById = new Map(adUnits.map((adUnit) => [adUnit._id.toString(), adUnit]));
   const requestedAdUnitIds = mappings.map((mapping) => String(mapping.adUnitId || '').trim()).filter(Boolean);
+
+  if (new Set(requestedAdUnitIds).size !== requestedAdUnitIds.length) {
+    const error = new Error('Each ad unit may only appear once in assignment mappings');
+    error.statusCode = 400;
+    throw error;
+  }
 
   const invalidAdUnits = requestedAdUnitIds.filter((adUnitId) => !adUnitById.has(adUnitId));
   if (invalidAdUnits.length > 0) {
@@ -254,74 +263,100 @@ const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings })
     throw error;
   }
 
-  for (const mapping of mappings) {
-    const adUnitId = String(mapping.adUnitId || '').trim();
-    if (!adUnitId) continue;
-    const mappedAdUnit = adUnitById.get(adUnitId);
+  const normalizedMappings = mappings
+    .filter((mapping) => String(mapping.adUnitId || '').trim())
+    .map((mapping) => {
+      const adUnitId = String(mapping.adUnitId).trim();
+      const rawInventoryIds = Array.isArray(mapping.inventoryIds)
+        ? mapping.inventoryIds
+        : (mapping.inventories || []);
+      const requestedInventoryIds = rawInventoryIds
+        .map((inventoryId) => String(inventoryId || '').trim())
+        .filter(Boolean);
+      const normalizedInventoryObjectIds = requestedInventoryIds
+        .map((inventoryId) => toObjectId(inventoryId));
 
-    const rawInventoryIds = Array.isArray(mapping.inventoryIds)
-      ? mapping.inventoryIds
-      : (mapping.inventories || []);
+      if (normalizedInventoryObjectIds.some((inventoryId) => !inventoryId)) {
+        const error = new Error(`One or more inventories are invalid for ad unit ${adUnitId}`);
+        error.statusCode = 400;
+        throw error;
+      }
 
-    const requestedInventoryIds = rawInventoryIds
-      .map((inventoryId) => String(inventoryId || '').trim())
-      .filter(Boolean);
+      return {
+        adUnitId,
+        inventoryIds: [...new Set(
+          normalizedInventoryObjectIds.map((inventoryId) => inventoryId.toString())
+        )]
+      };
+    });
 
-    if (requestedInventoryIds.length === 0) {
-      await AdUnit.updateOne(
-        {
-          _id: mappedAdUnit._id,
+  const allInventoryIds = [...new Set(
+    normalizedMappings.flatMap((mapping) => mapping.inventoryIds)
+  )];
+  if (allInventoryIds.length > 0) {
+    const inventoryQuery = Inventory.find({
+      account: accountId,
+      _id: { $in: allInventoryIds.map((id) => new mongoose.Types.ObjectId(id)) }
+    }).select('_id');
+    const validInventories = await applySession(inventoryQuery, session);
+    const validInventoryIds = new Set(validInventories.map((inventory) => String(inventory._id)));
+    const invalidInventoryIds = allInventoryIds.filter((id) => !validInventoryIds.has(id));
+    if (invalidInventoryIds.length > 0) {
+      const error = new Error(`One or more inventories are invalid: ${invalidInventoryIds.join(', ')}`);
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  const unlinkOperations = normalizedMappings
+    .filter((mapping) => mapping.inventoryIds.length === 0)
+    .map((mapping) => ({
+      updateOne: {
+        filter: {
+          _id: adUnitById.get(mapping.adUnitId)._id,
           account: accountId,
           campaign: campaignId
         },
-        {
-          $set: {
-            inventory: null,
-            inventories: []
-          },
-          $unset: {
-            inventoryCode: '',
-            adUnitCode: '',
-            crmAdId: ''
-          }
+        update: {
+          $set: { inventory: null, inventories: [] },
+          $unset: { inventoryCode: '', adUnitCode: '', crmAdId: '' }
         }
-      );
-      continue;
-    }
+      }
+    }));
 
-    const normalizedInventoryObjectIds = requestedInventoryIds
-      .map((inventoryId) => toObjectId(inventoryId));
-    if (normalizedInventoryObjectIds.some((inventoryId) => !inventoryId)) {
-      const error = new Error(`One or more inventories are invalid for ad unit ${adUnitId}`);
-      error.statusCode = 400;
+  if (unlinkOperations.length > 0) {
+    const result = await AdUnit.bulkWrite(
+      unlinkOperations,
+      session ? { session, ordered: true } : { ordered: true }
+    );
+    if (typeof result.matchedCount === 'number' && result.matchedCount !== unlinkOperations.length) {
+      const error = new Error('Ad unit relationships changed during assignment update');
+      error.statusCode = 409;
       throw error;
     }
+  }
 
-    const uniqueInventoryObjectIds = [...new Set(
-      normalizedInventoryObjectIds.map((inventoryId) => inventoryId.toString())
-    )].map((id) => new mongoose.Types.ObjectId(id));
+  for (const mapping of normalizedMappings) {
+    const adUnitId = String(mapping.adUnitId || '').trim();
+    if (mapping.inventoryIds.length === 0) continue;
 
-    const inventories = await Inventory.find({
+    const adUnitQuery = AdUnit.findOne({
+      _id: adUnitById.get(adUnitId)._id,
       account: accountId,
-      _id: { $in: uniqueInventoryObjectIds }
-    }).select('_id');
-
-    if (inventories.length !== uniqueInventoryObjectIds.length) {
-      const error = new Error(`One or more inventories are invalid for ad unit ${adUnitId}`);
-      error.statusCode = 400;
+      campaign: campaignId
+    });
+    const adUnit = await applySession(adUnitQuery, session);
+    if (!adUnit) {
+      const error = new Error(`Ad unit relationship changed during assignment update: ${adUnitId}`);
+      error.statusCode = 409;
       throw error;
     }
 
-    const deduped = [...new Set(inventories.map((inventory) => inventory._id.toString()))].map((id) => new mongoose.Types.ObjectId(id));
-
-    const adUnit = await AdUnit.findById(adUnitId);
-    if (adUnit) {
-      const previousInventoryId = adUnit.inventory;
-      adUnit.inventories = deduped;
-      adUnit.inventory = deduped[0];
-      await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId });
-      await adUnit.save();
-    }
+    const previousInventoryId = adUnit.inventory;
+    adUnit.inventories = mapping.inventoryIds.map((id) => new mongoose.Types.ObjectId(id));
+    adUnit.inventory = adUnit.inventories[0];
+    await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId, session });
+    await adUnit.save(session ? { session } : undefined);
   }
 };
 
@@ -652,20 +687,34 @@ exports.updateCampaign = async (req, res) => {
 
     delete updatePayload.adUnitInventoryMappings;
 
-    const updatedCampaign = await Campaign.findByIdAndUpdate(req.params.id, updatePayload, { new: true }).populate({
-      path: 'adUnits',
-      populate: [{ path: 'inventory' }, { path: 'inventories' }]
+    const updatedCampaignId = await runAtomicMutation(async (session) => {
+      if (Array.isArray(req.body.adUnitInventoryMappings)) {
+        await applyAdUnitInventoryMappings({
+          accountId: req.user.accountId,
+          campaignId: campaign._id,
+          mappings: req.body.adUnitInventoryMappings,
+          session
+        });
+      }
+
+      const updatedCampaign = await Campaign.findOneAndUpdate(
+        { _id: campaign._id, account: req.user.accountId },
+        updatePayload,
+        {
+          new: true,
+          runValidators: true,
+          ...(session ? { session } : {})
+        }
+      );
+      if (!updatedCampaign) {
+        const conflictError = new Error('Campaign changed during update. Refresh and try again.');
+        conflictError.statusCode = 409;
+        throw conflictError;
+      }
+      return updatedCampaign._id;
     });
 
-    if (Array.isArray(req.body.adUnitInventoryMappings)) {
-      await applyAdUnitInventoryMappings({
-        accountId: req.user.accountId,
-        campaignId: updatedCampaign._id,
-        mappings: req.body.adUnitInventoryMappings
-      });
-    }
-
-    const refreshedCampaign = await Campaign.findById(updatedCampaign._id).populate({
+    const refreshedCampaign = await Campaign.findById(updatedCampaignId).populate({
       path: 'adUnits',
       populate: [{ path: 'inventory' }, { path: 'inventories' }]
     });
@@ -789,10 +838,13 @@ exports.updateCampaignAdUnitInventories = async (req, res) => {
     }
 
     const mappings = Array.isArray(req.body.mappings) ? req.body.mappings : [];
-    await applyAdUnitInventoryMappings({
-      accountId: req.user.accountId,
-      campaignId: campaign._id,
-      mappings
+    await runAtomicMutation(async (session) => {
+      await applyAdUnitInventoryMappings({
+        accountId: req.user.accountId,
+        campaignId: campaign._id,
+        mappings,
+        session
+      });
     });
 
     const adUnits = await AdUnit.find({

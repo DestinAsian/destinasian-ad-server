@@ -77,6 +77,9 @@ function CampaignForm({
   const [inventoryMappings, setInventoryMappings] = useState({});
   const [mappingRows, setMappingRows] = useState([]);
   const [mappingError, setMappingError] = useState(null);
+  const [assignmentStatus, setAssignmentStatus] = useState(
+    campaign ? "loading" : "success",
+  );
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
   const [isAssignmentsModalOpen, setIsAssignmentsModalOpen] = useState(false);
 
@@ -88,9 +91,13 @@ function CampaignForm({
     (row) => (inventoryMappings[row.adUnitId] || []).length > 0,
   ).length;
   const assignmentSummary =
-    mappingRows.length > 0
-      ? `${assignedAdUnitCount} of ${mappingRows.length} ad units assigned`
-      : "No ad units to assign";
+    assignmentStatus === "loading"
+      ? "Loading assignments…"
+      : assignmentStatus === "error"
+        ? "Assignments temporarily unavailable"
+        : mappingRows.length > 0
+          ? `${assignedAdUnitCount} of ${mappingRows.length} ad units assigned`
+          : "No ad units to assign";
 
   useEffect(() => {
     if (campaign) {
@@ -111,10 +118,16 @@ function CampaignForm({
       });
       setInitialStartDateValue("");
     }
-  }, [campaign]);
+    // Keep in-progress form edits stable when the surrounding list refreshes
+    // and replaces the campaign object with a newer summary instance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaign?._id]);
 
   useEffect(() => {
     let isActive = true;
+    const controller = new AbortController();
+    setAssignmentStatus(campaign ? "loading" : "success");
+    setMappingError(null);
 
     const applyMappings = (mappings) => {
       if (!isActive) return;
@@ -133,15 +146,19 @@ function CampaignForm({
         : [];
 
       try {
-        const inventoryResponse = await inventoryAPI.getAll();
+        const inventoryResponse = await inventoryAPI.getAll(undefined, {
+          signal: controller.signal,
+        });
         if (!isActive) return;
         setInventories(
           Array.isArray(inventoryResponse.data) ? inventoryResponse.data : [],
         );
       } catch (error) {
+        if (error?.code === "ERR_CANCELED") return;
         if (!isActive) return;
         setInventories([]);
         setMappingError("Failed to load ad channel assignment data.");
+        setAssignmentStatus("error");
         applyMappings(fallbackMappings);
         return;
       }
@@ -149,27 +166,35 @@ function CampaignForm({
       if (!campaign) {
         applyMappings([]);
         setMappingError(null);
+        setAssignmentStatus("success");
         return;
       }
 
       if (!campaign._id) {
         applyMappings(fallbackMappings);
         setMappingError(null);
+        setAssignmentStatus("success");
         return;
       }
 
       try {
         const mappingResponse = await campaignAPI.getAdUnitInventories(
           campaign._id,
+          { signal: controller.signal },
         );
         const mappings = normalizeMappings(
           mappingResponse.data?.mappings || [],
         );
         applyMappings(mappings);
-        if (isActive) setMappingError(null);
+        if (isActive) {
+          setMappingError(null);
+          setAssignmentStatus("success");
+        }
       } catch (error) {
+        if (error?.code === "ERR_CANCELED") return;
         applyMappings(fallbackMappings);
         if (isActive) {
+          setAssignmentStatus("error");
           setMappingError(
             fallbackMappings.length > 0
               ? null
@@ -183,8 +208,12 @@ function CampaignForm({
 
     return () => {
       isActive = false;
+      controller.abort();
     };
-  }, [campaign]);
+    // Assignment support data belongs to the editor session for this campaign.
+    // A list refresh must not overwrite checkbox changes already made by the user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaign?._id]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -274,8 +303,11 @@ function CampaignForm({
         endDate: formData.endDate
           ? new Date(formData.endDate).toISOString()
           : "",
-        adUnitInventoryMappings: mappings,
       };
+
+      if (assignmentStatus === "success") {
+        submitData.adUnitInventoryMappings = mappings;
+      }
 
       if (!isEditingCampaign || formData.startDate !== initialStartDateValue) {
         submitData.startDate = formData.startDate
@@ -291,8 +323,11 @@ function CampaignForm({
     <div
       className={`assignment-popup-list ${assignmentOptionCount > 20 ? "is-scrollable" : ""}`}
     >
+      {assignmentStatus === "loading" && (
+        <p className="assignment-loading" role="status">Loading assignments…</p>
+      )}
       {mappingError && <span className="error-message">{mappingError}</span>}
-      {!mappingError && mappingRows.length === 0 && (
+      {assignmentStatus === "success" && mappingRows.length === 0 && (
         <p className="no-data">No ad units in this campaign yet.</p>
       )}
       {mappingRows.map((row) => (
@@ -417,6 +452,7 @@ function CampaignForm({
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={() => setIsAssignmentsModalOpen(true)}
+                  disabled={assignmentStatus !== "success"}
                 >
                   Manage Assignments
                 </button>
@@ -429,7 +465,8 @@ function CampaignForm({
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={submitting}
+            disabled={submitting || assignmentStatus === "loading"}
+            aria-busy={submitting}
           >
             {submitting
               ? "Saving..."

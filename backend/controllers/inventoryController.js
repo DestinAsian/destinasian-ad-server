@@ -3,6 +3,7 @@ const Inventory = require('../models/Inventory');
 const AdUnit = require('../models/AdUnit');
 const Campaign = require('../models/Campaign');
 const { assignCrmAdIdToAdUnit, ensureInventoryCode } = require('../utils/crmAdIdAssignment');
+const { applySession, runAtomicMutation } = require('../services/transactionService');
 
 const slugifyKey = (value) => {
   return String(value || '')
@@ -88,7 +89,7 @@ const buildAdUnitAssignmentUpdate = (adUnit) => {
   return update;
 };
 
-const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) => {
+const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [], session = null }) => {
   const inventoryObjectId = toObjectId(inventoryId);
   if (!inventoryObjectId) {
     const error = new Error('Invalid inventory id');
@@ -108,10 +109,10 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
   }
 
   const selectedAdUnits = selectedObjectIds.length > 0
-    ? await AdUnit.find({
+    ? await applySession(AdUnit.find({
         _id: { $in: selectedObjectIds },
         account: accountId
-      }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode')
+      }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode'), session)
     : [];
 
   if (selectedAdUnits.length !== selectedObjectIds.length) {
@@ -122,14 +123,15 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
 
   const selectedIdSet = new Set(selectedAdUnits.map((adUnit) => String(adUnit._id)));
 
-  const linkedAdUnits = await AdUnit.find({
+  const linkedAdUnits = await applySession(AdUnit.find({
     account: accountId,
     $or: [
       { inventory: inventoryObjectId },
       { inventories: inventoryObjectId }
     ]
-  }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode');
+  }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode'), session);
 
+  const unlinkOperations = [];
   for (const adUnit of linkedAdUnits) {
     const adUnitId = String(adUnit._id);
     if (selectedIdSet.has(adUnitId)) {
@@ -148,13 +150,28 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
     if (adUnit.inventory && primaryInventoryChanged) {
       await assignCrmAdIdToAdUnit(adUnit, {
         previousInventoryId,
-        allowStoredCampaignCode: true
+        allowStoredCampaignCode: true,
+        session
       });
     }
-    await AdUnit.updateOne(
-      { _id: adUnit._id, account: accountId },
-      buildAdUnitAssignmentUpdate(adUnit)
+    unlinkOperations.push({
+      updateOne: {
+        filter: { _id: adUnit._id, account: accountId },
+        update: buildAdUnitAssignmentUpdate(adUnit)
+      }
+    });
+  }
+
+  if (unlinkOperations.length > 0) {
+    const result = await AdUnit.bulkWrite(
+      unlinkOperations,
+      session ? { session, ordered: true } : { ordered: true }
     );
+    if (typeof result.matchedCount === 'number' && result.matchedCount !== unlinkOperations.length) {
+      const error = new Error('Ad unit relationships changed during Ad Channel update');
+      error.statusCode = 409;
+      throw error;
+    }
   }
 
   for (const adUnit of selectedAdUnits) {
@@ -177,12 +194,14 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [] }) 
     if (primaryInventoryChanged || !adUnit.crmAdId) {
       await assignCrmAdIdToAdUnit(adUnit, {
         previousInventoryId,
-        allowStoredCampaignCode: true
+        allowStoredCampaignCode: true,
+        session
       });
     }
     await AdUnit.updateOne(
       { _id: adUnit._id, account: accountId },
-      buildAdUnitAssignmentUpdate(adUnit)
+      buildAdUnitAssignmentUpdate(adUnit),
+      session ? { session } : undefined
     );
   }
 };
@@ -208,24 +227,29 @@ exports.createInventory = async (req, res) => {
       return res.status(409).json({ error: 'Inventory name already exists' });
     }
 
-    const inventory = await Inventory.create({
-      user: req.user.id,
-      account: req.user.accountId,
-      name: normalized.name,
-      key: finalKey,
-      description: normalized.description || '',
-      groupName: normalized.groupName,
-      rotationMode: 'rotate'
-    });
-    await ensureInventoryCode(inventory);
-
-    if (Array.isArray(req.body.adUnitIds)) {
-      await syncInventoryAdUnits({
-        inventoryId: inventory._id,
-        accountId: req.user.accountId,
-        adUnitIds: req.body.adUnitIds
+    const inventory = await runAtomicMutation(async (session) => {
+      const createdInventory = new Inventory({
+        user: req.user.id,
+        account: req.user.accountId,
+        name: normalized.name,
+        key: finalKey,
+        description: normalized.description || '',
+        groupName: normalized.groupName,
+        rotationMode: 'rotate'
       });
-    }
+      await createdInventory.save(session ? { session } : undefined);
+      await ensureInventoryCode(createdInventory, { session });
+
+      if (Array.isArray(req.body.adUnitIds)) {
+        await syncInventoryAdUnits({
+          inventoryId: createdInventory._id,
+          accountId: req.user.accountId,
+          adUnitIds: req.body.adUnitIds,
+          session
+        });
+      }
+      return createdInventory;
+    });
 
     res.status(201).json(inventory);
   } catch (error) {
@@ -346,15 +370,18 @@ exports.updateInventory = async (req, res) => {
     if (normalized.isActive !== undefined) inventory.isActive = normalized.isActive;
     if (req.body.rotationMode !== undefined) inventory.rotationMode = 'rotate';
 
-    await inventory.save();
+    await runAtomicMutation(async (session) => {
+      await inventory.save(session ? { session } : undefined);
 
-    if (Array.isArray(req.body.adUnitIds)) {
-      await syncInventoryAdUnits({
-        inventoryId: inventory._id,
-        accountId: req.user.accountId,
-        adUnitIds: req.body.adUnitIds
-      });
-    }
+      if (Array.isArray(req.body.adUnitIds)) {
+        await syncInventoryAdUnits({
+          inventoryId: inventory._id,
+          accountId: req.user.accountId,
+          adUnitIds: req.body.adUnitIds,
+          session
+        });
+      }
+    });
 
     res.json(inventory);
   } catch (error) {

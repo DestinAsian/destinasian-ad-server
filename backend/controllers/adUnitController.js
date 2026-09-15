@@ -11,6 +11,7 @@ const {
   getImageCreativeIdSet,
   isAdUnitSummaryView
 } = require('../services/adUnitSummaryService');
+const { isCampaignDeliverable } = require('../services/deliveryEligibilityService');
 const { assignCrmAdIdToAdUnit } = require('../utils/crmAdIdAssignment');
 
 const toObjectIdString = (value) => {
@@ -57,18 +58,6 @@ const parseDateInput = (value) => {
   }
 
   return { provided: true, value: parsed, error: null };
-};
-
-const isCampaignDeliverable = (campaign, now = new Date()) => {
-  if (!campaign || campaign.status !== 'active') return false;
-
-  const nowTime = now.getTime();
-  const startTime = new Date(campaign.startDate).getTime();
-  if (!Number.isFinite(startTime) || startTime > nowTime) return false;
-
-  if (!campaign.endDate) return true;
-  const endTime = new Date(campaign.endDate).getTime();
-  return Number.isFinite(endTime) && endTime >= nowTime;
 };
 
 exports.isCampaignDeliverable = isCampaignDeliverable;

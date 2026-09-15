@@ -42,20 +42,25 @@ function AdUnit({
 }) {
   const containerRef = useRef(null);
   const creativeType = useMemo(() => getCreativeType(adUnit), [adUnit]);
+  const trackingInventoryId = useMemo(
+    () => adUnit?.inventoryId || adUnit?.inventory?._id || adUnit?.inventory || null,
+    [adUnit]
+  );
 
   const recordImpression = useCallback(async () => {
     if (enableTracking && adUnit?.adCode) {
       await recordTrackedEvent({
         apiBaseUrl: trackingBaseUrl,
         adCode: adUnit.adCode,
-        eventType: 'impression'
+        eventType: 'impression',
+        inventoryId: trackingInventoryId
       });
     }
 
     if (onImpression) {
       onImpression(adUnit);
     }
-  }, [adUnit, enableTracking, onImpression, trackingBaseUrl]);
+  }, [adUnit, enableTracking, onImpression, trackingBaseUrl, trackingInventoryId]);
 
   const recordClickAndOpen = useCallback(async (destination) => {
     if (!destination) {
@@ -66,7 +71,8 @@ function AdUnit({
       await recordTrackedEvent({
         apiBaseUrl: trackingBaseUrl,
         adCode: adUnit.adCode,
-        eventType: 'click'
+        eventType: 'click',
+        inventoryId: trackingInventoryId
       });
     }
 
@@ -75,7 +81,7 @@ function AdUnit({
     }
 
     openTrackedDestination(destination);
-  }, [adUnit, enableTracking, onClick, trackingBaseUrl]);
+  }, [adUnit, enableTracking, onClick, trackingBaseUrl, trackingInventoryId]);
 
   useEffect(() => {
     if (!containerRef.current) {

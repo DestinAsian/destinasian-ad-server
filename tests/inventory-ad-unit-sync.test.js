@@ -7,7 +7,8 @@ const { syncInventoryAdUnits } = require('../backend/controllers/inventoryContro
 
 const originalMethods = {
   find: AdUnit.find,
-  updateOne: AdUnit.updateOne
+  updateOne: AdUnit.updateOne,
+  bulkWrite: AdUnit.bulkWrite
 };
 
 const inventoryId = new mongoose.Types.ObjectId();
@@ -17,6 +18,7 @@ const accountId = new mongoose.Types.ObjectId();
 test.afterEach(() => {
   AdUnit.find = originalMethods.find;
   AdUnit.updateOne = originalMethods.updateOne;
+  AdUnit.bulkWrite = originalMethods.bulkWrite;
 });
 
 test('unchecking every ad unit clears both primary and secondary channel assignments', async () => {
@@ -30,7 +32,10 @@ test('unchecking every ad unit clears both primary and secondary channel assignm
   const updates = [];
 
   AdUnit.find = () => ({ select: async () => [linkedAdUnit] });
-  AdUnit.updateOne = async (filter, update) => updates.push({ filter, update });
+  AdUnit.bulkWrite = async (operations) => {
+    updates.push(...operations.map((operation) => operation.updateOne));
+    return { matchedCount: operations.length, modifiedCount: operations.length };
+  };
 
   await syncInventoryAdUnits({ inventoryId, accountId, adUnitIds: [] });
 
@@ -58,7 +63,10 @@ test('unchecking one secondary channel preserves the remaining primary assignmen
   const updates = [];
 
   AdUnit.find = () => ({ select: async () => [linkedAdUnit] });
-  AdUnit.updateOne = async (filter, update) => updates.push({ filter, update });
+  AdUnit.bulkWrite = async (operations) => {
+    updates.push(...operations.map((operation) => operation.updateOne));
+    return { matchedCount: operations.length, modifiedCount: operations.length };
+  };
 
   await syncInventoryAdUnits({ inventoryId, accountId, adUnitIds: [] });
 
@@ -78,5 +86,23 @@ test('rejects selected ad units that do not belong to the current account', asyn
   await assert.rejects(
     syncInventoryAdUnits({ inventoryId, accountId, adUnitIds: [selectedId] }),
     (error) => error.statusCode === 400 && /invalid for this account/i.test(error.message)
+  );
+});
+
+test('Ad Channel unlink fails closed when an exact Ad Unit no longer matches', async () => {
+  const linkedAdUnit = {
+    _id: new mongoose.Types.ObjectId(),
+    account: accountId,
+    campaign: new mongoose.Types.ObjectId(),
+    inventory: inventoryId,
+    inventories: [inventoryId]
+  };
+
+  AdUnit.find = () => ({ select: async () => [linkedAdUnit] });
+  AdUnit.bulkWrite = async () => ({ matchedCount: 0, modifiedCount: 0 });
+
+  await assert.rejects(
+    syncInventoryAdUnits({ inventoryId, accountId, adUnitIds: [] }),
+    (error) => error.statusCode === 409 && /relationships changed/i.test(error.message)
   );
 });

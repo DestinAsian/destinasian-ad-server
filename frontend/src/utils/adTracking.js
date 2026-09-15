@@ -80,6 +80,7 @@ export async function recordTrackedEvent(options) {
     apiBaseUrl,
     adCode,
     eventType,
+    inventoryId,
     fetchImpl = typeof fetch === 'function' ? fetch : null
   } = options;
 
@@ -88,13 +89,21 @@ export async function recordTrackedEvent(options) {
   }
 
   try {
-    await fetchImpl(`${apiBaseUrl}/tracking/${encodeURIComponent(adCode)}/${eventType}`, {
+    const response = await fetchImpl(`${apiBaseUrl}/tracking/${encodeURIComponent(adCode)}/${eventType}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
+      body: JSON.stringify(inventoryId ? { inventoryId } : {}),
       keepalive: true
     });
+
+    if (!response?.ok) {
+      console.error(
+        `[ResponsiveAd] ${eventType} tracking failed with status ${response?.status || 'unknown'}`
+      );
+      return false;
+    }
 
     return true;
   } catch (error) {
