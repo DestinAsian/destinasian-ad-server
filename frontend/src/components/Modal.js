@@ -36,7 +36,15 @@ const getFocusableElements = (container) => Array.from(
   ) || []
 );
 
-function Modal({ isOpen, title, children, onClose, contentClassName = '' }) {
+function Modal({
+  isOpen,
+  title,
+  children,
+  onClose,
+  contentClassName = '',
+  closeOnEscape = true,
+  closeOnOverlay = true
+}) {
   const titleId = useId();
   const modalTokenRef = useRef(Symbol('modal'));
   const contentRef = useRef(null);
@@ -62,7 +70,7 @@ function Modal({ isOpen, title, children, onClose, contentClassName = '' }) {
     const handleKeyDown = (event) => {
       if (openModalStack[openModalStack.length - 1] !== modalToken) return;
 
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && closeOnEscape) {
         event.preventDefault();
         onCloseRef.current?.();
         return;
@@ -98,7 +106,7 @@ function Modal({ isOpen, title, children, onClose, contentClassName = '' }) {
         previouslyFocused.focus();
       }
     };
-  }, [isOpen]);
+  }, [isOpen, closeOnEscape]);
 
   if (!isOpen) return null;
 
@@ -106,7 +114,7 @@ function Modal({ isOpen, title, children, onClose, contentClassName = '' }) {
     <div
       className="modal-overlay"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose?.();
+        if (closeOnOverlay && event.target === event.currentTarget) onClose?.();
       }}
     >
       <div

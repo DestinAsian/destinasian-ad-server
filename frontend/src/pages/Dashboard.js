@@ -1054,8 +1054,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       } else {
         await campaignAPI.create(formData);
         setSuccessMessage("Campaign created successfully!");
+        handleCloseCampaignModal();
       }
-      handleCloseCampaignModal();
       await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to save campaign"));
@@ -1103,8 +1103,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       } else {
         await adUnitAPI.create(formData);
         setSuccessMessage("Ad unit created successfully!");
+        handleCloseAdUnitModal();
       }
-      handleCloseAdUnitModal();
       if (isCampaignView) {
         await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
       }
@@ -2449,6 +2449,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           }
           onClose={handleCloseCampaignEditor}
           contentClassName="campaign-editor-modal"
+          closeOnEscape={false}
+          closeOnOverlay={false}
         >
           {campaignEditorCampaign && (
             <div className="campaign-editor-content">
@@ -2669,6 +2671,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           title={editingAdUnit ? "Edit Ad Unit" : "Create New Ad Unit"}
           onClose={handleCloseAdUnitModal}
           contentClassName="campaign-editor-modal"
+          closeOnEscape={!editingAdUnit}
+          closeOnOverlay={!editingAdUnit}
         >
           <AdUnitForm
             adUnit={editingAdUnit}

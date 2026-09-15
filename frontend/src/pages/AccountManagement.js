@@ -377,6 +377,8 @@ function AccountManagement() {
         isOpen={Boolean(shareModalAccount)}
         title="Share Account"
         onClose={closeShareModal}
+        closeOnEscape={false}
+        closeOnOverlay={false}
       >
         <div className="share-modal">
           <p className="share-modal-account-name">
