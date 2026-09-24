@@ -5,6 +5,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { getApiErrorMessage } from "../utils/apiError";
+import {
+  doesInventoryMatchSearch,
+  filterCampaignEntriesForInventorySearch,
+} from "../utils/inventorySearch";
 import "../styles/Inventory.css";
 
 const isAdUnitLinkedToChannel = (adUnit, channelId) => {
@@ -19,20 +23,6 @@ const isAdUnitLinkedToChannel = (adUnit, channelId) => {
     : null;
 
   return inventoryIds.includes(targetId) || primaryInventoryId === targetId;
-};
-
-const filterCampaignEntriesByAdUnitName = (campaignEntries, searchQuery) => {
-  const normalizedSearch = String(searchQuery || "").trim().toLowerCase();
-  if (!normalizedSearch) return campaignEntries;
-
-  return campaignEntries
-    .map((campaignEntry) => ({
-      ...campaignEntry,
-      adUnits: (campaignEntry.adUnits || []).filter((adUnit) =>
-        String(adUnit?.name || "").toLowerCase().includes(normalizedSearch),
-      ),
-    }))
-    .filter((campaignEntry) => campaignEntry.adUnits.length > 0);
 };
 
 function Inventory({ searchQuery = "" }) {
@@ -330,12 +320,10 @@ function Inventory({ searchQuery = "" }) {
             ? details.runningCampaigns
             : details.linkedCampaigns;
 
-        return campaignEntries.some((campaignEntry) =>
-          (campaignEntry?.adUnits || []).some((adUnit) =>
-            String(adUnit?.name || "")
-              .toLowerCase()
-              .includes(normalizedSearch),
-          ),
+        return doesInventoryMatchSearch(
+          inventory,
+          campaignEntries,
+          normalizedSearch,
         );
       })
       .filter(({ inventory }) => {
@@ -1124,9 +1112,10 @@ function Inventory({ searchQuery = "" }) {
                             ? details.runningCampaigns
                             : details.linkedCampaigns;
                         const currentCampaigns =
-                          filterCampaignEntriesByAdUnitName(
+                          filterCampaignEntriesForInventorySearch(
                             unfilteredCampaigns,
                             searchQuery,
+                            inventory.name,
                           );
                         const isSnippetExpanded = Boolean(
                           expandedSnippets[inventory._id],
