@@ -1695,7 +1695,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 onChange={(e) => setSelectedInventoryId(e.target.value)}
               >
                 <option value="">All Ad Channels</option>
-                {inventories.map((inventory) => (
+                {sortedAdChannelOptions.map((inventory) => (
                   <option key={inventory._id} value={inventory._id}>
                     {inventory.name}
                   </option>
