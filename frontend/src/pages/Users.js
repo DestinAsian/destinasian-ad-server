@@ -148,7 +148,8 @@ function Users() {
         newPassword: '',
         passwordConfirm: ''
       });
-      showSuccess('Password updated successfully.');
+      showSuccess('Password updated successfully. Please log in again.');
+      setTimeout(() => logout(), 1200);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to update password'));
     } finally {
@@ -301,6 +302,7 @@ function Users() {
             onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
             placeholder="Current password"
             required
+            autoComplete="current-password"
           />
           <input
             type="password"
@@ -308,7 +310,9 @@ function Users() {
             onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
             placeholder="New password"
             required
-            minLength={6}
+            minLength={12}
+            maxLength={128}
+            autoComplete="new-password"
           />
           <input
             type="password"
@@ -316,7 +320,9 @@ function Users() {
             onChange={(e) => setPasswordForm((prev) => ({ ...prev, passwordConfirm: e.target.value }))}
             placeholder="Confirm new password"
             required
-            minLength={6}
+            minLength={12}
+            maxLength={128}
+            autoComplete="new-password"
           />
           <button type="submit" className="btn btn-secondary" disabled={Boolean(pendingAction)}>
             {pendingAction?.type === 'password' ? 'Updating…' : 'Change Password'}
@@ -341,6 +347,7 @@ function Users() {
               onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))}
               placeholder="Email"
               required
+              autoComplete="email"
             />
             <input
               type="password"
@@ -348,7 +355,9 @@ function Users() {
               onChange={(e) => setCreateForm((prev) => ({ ...prev, password: e.target.value }))}
               placeholder="Temporary password"
               required
-              minLength={6}
+              minLength={12}
+              maxLength={128}
+              autoComplete="new-password"
             />
             <input
               type="password"
@@ -356,7 +365,9 @@ function Users() {
               onChange={(e) => setCreateForm((prev) => ({ ...prev, passwordConfirm: e.target.value }))}
               placeholder="Confirm temporary password"
               required
-              minLength={6}
+              minLength={12}
+              maxLength={128}
+              autoComplete="new-password"
             />
             <button type="submit" className="btn btn-primary" disabled={Boolean(pendingAction)}>
               {pendingAction?.type === 'create' ? 'Creating…' : 'Create Editor'}
@@ -379,6 +390,7 @@ function Users() {
               onChange={(e) => setTransferForm((prev) => ({ ...prev, targetEmail: e.target.value }))}
               placeholder="Target editor email"
               required
+              autoComplete="email"
             />
             <input
               type="password"
@@ -386,6 +398,7 @@ function Users() {
               onChange={(e) => setTransferForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
               placeholder="Current owner password"
               required
+              autoComplete="current-password"
             />
             <input
               type="text"
@@ -396,6 +409,7 @@ function Users() {
               pattern="[0-9]{6}"
               maxLength={6}
               required
+              autoComplete="one-time-code"
             />
             <input
               type="text"
@@ -424,6 +438,7 @@ function Users() {
               pattern="[0-9]{6}"
               maxLength={6}
               placeholder="6-digit code"
+              autoComplete="one-time-code"
             />
           </div>
         )}
@@ -532,14 +547,18 @@ function Users() {
                 value={resetPasswordForm.newPassword}
                 onChange={(e) => setResetPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
                 placeholder="New password"
-                minLength={6}
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
               />
               <input
                 type="password"
                 value={resetPasswordForm.passwordConfirm}
                 onChange={(e) => setResetPasswordForm((prev) => ({ ...prev, passwordConfirm: e.target.value }))}
                 placeholder="Confirm password"
-                minLength={6}
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
               />
               <button
                 type="button"

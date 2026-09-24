@@ -16,6 +16,10 @@ const pageRoutes = {
   inventory: "/inventory",
   users: "/users",
   accounts: "/accounts",
+  login: "/login",
+  signup: "/signup",
+  forgot: "/forgot-password",
+  reset: "/reset-password",
 };
 
 const routePages = Object.entries(pageRoutes).reduce((acc, [page, path]) => {
@@ -30,19 +34,37 @@ const getPageFromPath = () => {
   return routePages[window.location.pathname] || "dashboard";
 };
 
+const getResetTokenFromLocation = () => {
+  if (typeof window === "undefined" || window.location.pathname !== "/reset-password") return "";
+  return new URLSearchParams(window.location.search).get("token") || "";
+};
+
 function App() {
-  const { isAuthenticated, loading, ownerExists, user, logout } = useAuth();
+  const {
+    isAuthenticated,
+    loading,
+    ownerExists,
+    user,
+    logout,
+    sessionValidationWarning,
+  } = useAuth();
   const [currentPage, setCurrentPage] = useState(() => getPageFromPath());
-  const [resetToken, setResetToken] = useState("");
+  const [resetToken, setResetToken] = useState(() => getResetTokenFromLocation());
   const [headerSearch, setHeaderSearch] = useState("");
   const [isAdminDropdownOpen, setIsAdminDropdownOpen] = useState(false);
   const adminDropdownRef = useRef(null);
 
   useEffect(() => {
-    if (isAuthenticated && authPages.has(currentPage)) {
+    if (isAuthenticated && authPages.has(currentPage) && currentPage !== "reset") {
       setCurrentPage("dashboard");
     }
   }, [isAuthenticated, currentPage]);
+
+  useEffect(() => {
+    if (window.location.pathname === "/reset-password" && window.location.search) {
+      window.history.replaceState({}, "", "/reset-password");
+    }
+  }, []);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -87,6 +109,26 @@ function App() {
     );
   }
 
+  const handleAuthNavigate = (page) => {
+    setCurrentPage(page);
+    if (page !== "reset") {
+      setResetToken("");
+    }
+    const nextPath = pageRoutes[page] || "/login";
+    if (window.location.pathname !== nextPath || window.location.search) {
+      window.history.pushState({}, "", nextPath);
+    }
+  };
+
+  if (currentPage === "reset" && resetToken) {
+    return (
+      <ResetPassword
+        onNavigate={handleAuthNavigate}
+        initialToken={resetToken}
+      />
+    );
+  }
+
   if (!isAuthenticated) {
     const availableAuthPages = ownerExists
       ? ["forgot", "reset"]
@@ -97,23 +139,19 @@ function App() {
     return (
       <>
         {authPage === "login" && (
-          <Login onNavigate={setCurrentPage} canRegister={!ownerExists} />
+          <Login onNavigate={handleAuthNavigate} canRegister={!ownerExists} />
         )}
         {authPage === "signup" && (
-          <Signup onNavigate={setCurrentPage} ownerExists={ownerExists} />
+          <Signup onNavigate={handleAuthNavigate} ownerExists={ownerExists} />
         )}
         {authPage === "forgot" && (
           <ForgotPassword
-            onNavigate={setCurrentPage}
-            onResetToken={(token) => {
-              setResetToken(token);
-              setCurrentPage("reset");
-            }}
+            onNavigate={handleAuthNavigate}
           />
         )}
         {authPage === "reset" && (
           <ResetPassword
-            onNavigate={setCurrentPage}
+            onNavigate={handleAuthNavigate}
             initialToken={resetToken}
           />
         )}
@@ -148,6 +186,11 @@ function App() {
 
   return (
     <div className="app-shell">
+      {sessionValidationWarning && (
+        <div className="session-validation-warning" role="status">
+          {sessionValidationWarning} Protected actions will still be verified by the server.
+        </div>
+      )}
       <div className="app-topbar">
         <h1 className="app-title" aria-label="DestinAsian Ad Server Dashboard">
           <span className="app-title-main">DestinAsian</span>

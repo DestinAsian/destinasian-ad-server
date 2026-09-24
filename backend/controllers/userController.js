@@ -5,6 +5,9 @@ const AdUnit = require('../models/AdUnit');
 const Inventory = require('../models/Inventory');
 const mongoose = require('mongoose');
 const { verifyTotpToken, normalizeTotpToken } = require('../utils/twoFactor');
+const { validatePassword } = require('../utils/passwordPolicy');
+const { logSecurityEvent } = require('../services/securityAuditService');
+const { revokeAllUserSessions } = require('../services/authSessionService');
 
 const normalizeEmail = (email) => (typeof email === 'string' ? email.trim().toLowerCase() : '');
 const normalizeRole = (role) => {
@@ -71,10 +74,11 @@ exports.createUser = async (req, res) => {
       });
     }
 
-    if (password.length < 6) {
+    const passwordPolicy = validatePassword(password);
+    if (!passwordPolicy.valid) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters'
+        message: passwordPolicy.message
       });
     }
 
@@ -216,10 +220,11 @@ exports.updateMyPassword = async (req, res) => {
       });
     }
 
-    if (newPassword.length < 6) {
+    const passwordPolicy = validatePassword(newPassword);
+    if (!passwordPolicy.valid) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters'
+        message: passwordPolicy.message
       });
     }
 
@@ -233,11 +238,17 @@ exports.updateMyPassword = async (req, res) => {
     }
 
     user.password = newPassword;
+    user.tokenVersion = Number(user.tokenVersion || 0) + 1;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
     await user.save();
+    await revokeAllUserSessions(user._id);
+    logSecurityEvent('password_changed_by_user', { userId: user._id });
 
     res.json({
       success: true,
-      message: 'Password updated successfully.'
+      message: 'Password updated successfully. Please log in again.',
+      sessionInvalidated: true
     });
   } catch (error) {
     res.status(400).json({
@@ -346,10 +357,11 @@ exports.updateUserPassword = async (req, res) => {
       });
     }
 
-    if (newPassword.length < 6) {
+    const passwordPolicy = validatePassword(newPassword);
+    if (!passwordPolicy.valid) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters'
+        message: passwordPolicy.message
       });
     }
 
@@ -369,7 +381,14 @@ exports.updateUserPassword = async (req, res) => {
     }
 
     targetUser.password = newPassword;
+    targetUser.tokenVersion = Number(targetUser.tokenVersion || 0) + 1;
+    targetUser.resetPasswordToken = undefined;
+    targetUser.resetPasswordExpire = undefined;
     await targetUser.save();
+    await revokeAllUserSessions(targetUser._id);
+    logSecurityEvent('password_changed_by_owner', {
+      userId: targetUser._id
+    });
 
     res.json({
       success: true,

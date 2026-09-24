@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
 const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
@@ -7,22 +9,52 @@ const { connectDatabase } = require('./config/database');
 
 const app = express();
 
+const trustProxy = process.env.TRUST_PROXY;
+if (trustProxy) {
+  app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+}
+
 // Import scheduled jobs
 const { initializeCampaignStatsJob } = require('./jobs/updateCampaignStats');
 const { initializeEndDateEnforcementJob } = require('./jobs/enforceEndDates');
 
+const configuredCorsOrigins = String(process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedCorsOrigins = configuredCorsOrigins.length > 0
+  ? configuredCorsOrigins
+  : ['http://localhost:3000', 'http://localhost:3001'];
+
 const corsOriginHandler = (origin, callback) => {
-  callback(null, true);
+  if (!origin || allowedCorsOrigins.includes(origin)) {
+    return callback(null, true);
+  }
+  console.warn(`[security-audit] ${JSON.stringify({
+    event: 'cors_origin_rejected',
+    timestamp: new Date().toISOString(),
+    origin
+  })}`);
+  const error = new Error('Origin is not allowed by CORS policy.');
+  error.statusCode = 403;
+  return callback(error);
 };
 
 // Middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 app.use(cors({
   origin: corsOriginHandler,
-  credentials: false
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
 }));
-
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
+app.use(cookieParser());
+
+const { csrfProtection } = require('./middleware/csrf');
+app.use('/api', csrfProtection);
 
 app.get('/ad-client.js', (req, res) => {
   res.sendFile(path.resolve(__dirname, '..', 'ad-client.js'));
@@ -75,6 +107,13 @@ app.use((error, req, res, next) => {
   if (error?.type === 'entity.too.large') {
     return res.status(413).json({
       error: 'Upload payload is too large. GIF files must be 10MB or smaller; PNG, JPG, JPEG, and WebP files must be 1MB or smaller.'
+    });
+  }
+
+  if (error?.statusCode === 403 && /CORS/i.test(error.message || '')) {
+    return res.status(403).json({
+      success: false,
+      message: 'Origin is not allowed.'
     });
   }
 

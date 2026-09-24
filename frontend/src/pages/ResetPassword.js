@@ -27,8 +27,13 @@ function ResetPassword({ onNavigate, initialToken = '' }) {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (!token) {
+      setError('This password reset link is missing or invalid. Request a new link.');
+      return;
+    }
+
+    if (password.length < 12) {
+      setError('Password must be at least 12 characters');
       return;
     }
 
@@ -51,17 +56,12 @@ function ResetPassword({ onNavigate, initialToken = '' }) {
         <h2>Reset Password</h2>
         {error && <div className="error-message">{error}</div>}
         {message && <div className="info-message">{message}</div>}
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Reset Token:</label>
-            <input
-              type="text"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              required
-              disabled={loading}
-            />
+        {!token && (
+          <div className="error-message">
+            This password reset link is missing or invalid. Request a new link.
           </div>
+        )}
+        <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>New Password:</label>
             <input
@@ -70,7 +70,9 @@ function ResetPassword({ onNavigate, initialToken = '' }) {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
-              minLength="6"
+              minLength="12"
+              maxLength="128"
+              autoComplete="new-password"
             />
           </div>
           <div className="form-group">
@@ -81,14 +83,26 @@ function ResetPassword({ onNavigate, initialToken = '' }) {
               onChange={(e) => setPasswordConfirm(e.target.value)}
               required
               disabled={loading}
-              minLength="6"
+              minLength="12"
+              maxLength="128"
+              autoComplete="new-password"
             />
           </div>
-          <button type="submit" className="btn-primary" disabled={loading}>
+          <button type="submit" className="btn-primary" disabled={loading || !token}>
             {loading ? 'Resetting...' : 'Reset Password'}
           </button>
         </form>
         <p className="auth-toggle">
+          {!token && (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => onNavigate('forgot')}
+            >
+              Request a new reset link
+            </button>
+          )}
+          {!token && ' · '}
           <button
             type="button"
             className="link-button"

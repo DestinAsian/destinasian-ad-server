@@ -2,6 +2,31 @@ const User = require('../models/User');
 const Account = require('../models/Account');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const { JWT_SECRET } = require('../config/authSecurity');
+const {
+  ACCESS_TOKEN_EXPIRE,
+  ACCESS_TOKEN_MAX_AGE_MS,
+  REFRESH_COOKIE_NAME,
+  setAuthCookies,
+  issueCsrfCookie,
+  clearAuthCookies
+} = require('../config/authCookies');
+const { validatePassword } = require('../utils/passwordPolicy');
+const {
+  consumeAuthRateLimit,
+  clearAuthRateLimit,
+  getRequestIp
+} = require('../services/authRateLimitService');
+const { sendPasswordResetEmail } = require('../services/passwordResetEmailService');
+const { logSecurityEvent } = require('../services/securityAuditService');
+const {
+  createAuthSession,
+  rotateAuthSession,
+  replaceAuthSession,
+  revokeAuthSession,
+  revokeAllUserSessions
+} = require('../services/authSessionService');
 const {
   generateTwoFactorSecret,
   verifyTotpToken,
@@ -9,14 +34,28 @@ const {
   normalizeTotpToken
 } = require('../utils/twoFactor');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_EXPIRE = process.env.JWT_EXPIRE || '7d';
 const OWNER_SETUP_EXPIRE = process.env.OWNER_SETUP_TOKEN_EXPIRE || '1h';
 const TWO_FACTOR_CHALLENGE_EXPIRE = process.env.TWO_FACTOR_CHALLENGE_EXPIRE || '10m';
+const PASSWORD_RESET_EXPIRE_MINUTES = Number(process.env.PASSWORD_RESET_EXPIRE_MINUTES || 10);
 
-const MAX_2FA_ATTEMPTS = Number(process.env.MAX_2FA_ATTEMPTS || 5);
-const TWO_FACTOR_LOCK_WINDOW_MS = Number(process.env.TWO_FACTOR_LOCK_WINDOW_MS || 5 * 60 * 1000);
-const twoFactorAttempts = new Map();
+const AUTH_RATE_LIMITS = {
+  login: {
+    limit: Number(process.env.LOGIN_RATE_LIMIT_MAX || 10),
+    windowMs: Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000)
+  },
+  twoFactor: {
+    limit: Number(process.env.MAX_2FA_ATTEMPTS || 5),
+    windowMs: Number(process.env.TWO_FACTOR_LOCK_WINDOW_MS || 5 * 60 * 1000)
+  },
+  forgotPassword: {
+    limit: Number(process.env.FORGOT_PASSWORD_RATE_LIMIT_MAX || 5),
+    windowMs: Number(process.env.FORGOT_PASSWORD_RATE_LIMIT_WINDOW_MS || 60 * 60 * 1000)
+  },
+  resetPassword: {
+    limit: Number(process.env.RESET_PASSWORD_RATE_LIMIT_MAX || 10),
+    windowMs: Number(process.env.RESET_PASSWORD_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000)
+  }
+};
 
 const normalizeEmail = (email) => (typeof email === 'string' ? email.trim().toLowerCase() : '');
 const ownerRoleQuery = { role: { $in: ['owner', 'admin'] } };
@@ -40,7 +79,7 @@ const toSafeUser = (user) => {
   };
 };
 
-const generateAccessToken = (id, accountId, tokenVersion, extraPayload = {}, expiresIn = JWT_EXPIRE) => {
+const generateAccessToken = (id, accountId, tokenVersion, extraPayload = {}, expiresIn = ACCESS_TOKEN_EXPIRE) => {
   return jwt.sign(
     { id, accountId, tokenVersion: Number(tokenVersion || 0), ...extraPayload },
     JWT_SECRET,
@@ -68,48 +107,31 @@ const generateTwoFactorChallengeToken = (id, accountId, tokenVersion) => {
   );
 };
 
-const recordTwoFactorAttempt = ({ userId, success }) => {
-  const key = String(userId);
-  const now = Date.now();
-  const attempts = twoFactorAttempts.get(key) || { count: 0, resetAt: now + TWO_FACTOR_LOCK_WINDOW_MS };
+const getEmailHash = (email) => crypto
+  .createHash('sha256')
+  .update(normalizeEmail(email))
+  .digest('hex');
 
-  if (now > attempts.resetAt) {
-    attempts.count = 0;
-    attempts.resetAt = now + TWO_FACTOR_LOCK_WINDOW_MS;
-  }
+const enforceAuthRateLimit = async ({ req, res, scope, identifiers, config }) => {
+  const result = await consumeAuthRateLimit({
+    scope,
+    identifiers: [`ip:${getRequestIp(req)}`, ...identifiers],
+    limit: config.limit,
+    windowMs: config.windowMs
+  });
 
-  if (success) {
-    twoFactorAttempts.delete(key);
-    return { blocked: false };
-  }
+  if (!result.blocked) return false;
 
-  attempts.count += 1;
-  twoFactorAttempts.set(key, attempts);
-
-  return {
-    blocked: attempts.count >= MAX_2FA_ATTEMPTS,
-    retryAfterMs: Math.max(0, attempts.resetAt - now)
-  };
+  res.set('Retry-After', String(result.retryAfterSeconds));
+  res.status(429).json({
+    success: false,
+    message: `Too many attempts. Try again in ${result.retryAfterSeconds} seconds.`
+  });
+  return true;
 };
 
-const ensureTwoFactorNotLocked = (userId) => {
-  const key = String(userId);
-  const now = Date.now();
-  const attempts = twoFactorAttempts.get(key);
-  if (!attempts) return null;
-  if (now > attempts.resetAt) {
-    twoFactorAttempts.delete(key);
-    return null;
-  }
-  if (attempts.count >= MAX_2FA_ATTEMPTS) {
-    return Math.ceil((attempts.resetAt - now) / 1000);
-  }
-  return null;
-};
-
-const buildAuthResponse = ({ user, token, currentAccount, accounts, extra = {} }) => ({
+const buildAuthResponse = ({ user, currentAccount, accounts, extra = {} }) => ({
   success: true,
-  token,
   user: toSafeUser(user),
   currentAccount: currentAccount
     ? { id: currentAccount._id || currentAccount.id, name: currentAccount.name }
@@ -120,6 +142,37 @@ const buildAuthResponse = ({ user, token, currentAccount, accounts, extra = {} }
   })),
   ...extra
 });
+
+const establishAuthSession = async ({ req, res, user, currentAccount, setupOnly = false }) => {
+  const accountId = currentAccount?._id || currentAccount?.id;
+  if (!accountId) throw new Error('Cannot create an authenticated session without an account.');
+
+  const currentRefreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  const refreshToken = currentRefreshToken
+    ? await replaceAuthSession({
+        currentRefreshToken,
+        userId: user._id,
+        accountId,
+        tokenVersion: user.tokenVersion,
+        req
+      })
+    : await createAuthSession({
+        userId: user._id,
+        accountId,
+        tokenVersion: user.tokenVersion,
+        req
+      });
+  const accessToken = setupOnly
+    ? generateOwnerSetupToken(user._id, accountId, user.tokenVersion)
+    : generateAccessToken(user._id, accountId, user.tokenVersion);
+
+  setAuthCookies(res, {
+    accessToken,
+    refreshToken,
+    accessMaxAgeMs: setupOnly ? 60 * 60 * 1000 : ACCESS_TOKEN_MAX_AGE_MS
+  });
+  issueCsrfCookie(req, res);
+};
 
 const getAccessibleAccountsForUser = async (userId, role) => {
   const normalizedRole = normalizeRole(role);
@@ -159,6 +212,82 @@ exports.getSetupStatus = async (req, res) => {
   }
 };
 
+// @desc    Issue a readable CSRF token for cookie-authenticated requests
+// @route   GET /api/auth/csrf-token
+// @access  Public
+exports.getCsrfToken = (req, res) => {
+  const csrfToken = issueCsrfCookie(req, res);
+  res.status(200).json({ success: true, csrfToken });
+};
+
+// @desc    Rotate refresh session and issue a short-lived access cookie
+// @route   POST /api/auth/refresh
+// @access  Refresh cookie
+exports.refreshSession = async (req, res) => {
+  const currentRefreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  if (!currentRefreshToken) {
+    clearAuthCookies(res);
+    return res.status(401).json({ success: false, message: 'Session is not available.' });
+  }
+
+  try {
+    const rotated = await rotateAuthSession({ refreshToken: currentRefreshToken, req });
+    if (!rotated) {
+      clearAuthCookies(res);
+      return res.status(401).json({ success: false, message: 'Session has expired.' });
+    }
+
+    const user = await User.findById(rotated.session.user);
+    if (!user || user.isActive === false
+      || Number(user.tokenVersion || 0) !== Number(rotated.session.tokenVersion || 0)) {
+      await revokeAuthSession(rotated.refreshToken);
+      clearAuthCookies(res);
+      return res.status(401).json({ success: false, message: 'Session has expired.' });
+    }
+
+    const accessibleAccounts = await getAccessibleAccountsForUser(user._id, user.role);
+    const currentAccount = getCurrentAccount(accessibleAccounts, rotated.session.account);
+    if (!currentAccount) {
+      await revokeAuthSession(rotated.refreshToken);
+      clearAuthCookies(res);
+      return res.status(401).json({ success: false, message: 'Account access is no longer available.' });
+    }
+
+    const setupOnly = isOwnerUser(user) && !user.twoFactorEnabled;
+    const accessToken = setupOnly
+      ? generateOwnerSetupToken(user._id, currentAccount._id, user.tokenVersion)
+      : generateAccessToken(user._id, currentAccount._id, user.tokenVersion);
+    setAuthCookies(res, {
+      accessToken,
+      refreshToken: rotated.refreshToken,
+      accessMaxAgeMs: setupOnly ? 60 * 60 * 1000 : ACCESS_TOKEN_MAX_AGE_MS
+    });
+    issueCsrfCookie(req, res);
+
+    return res.status(200).json(buildAuthResponse({
+      user,
+      currentAccount,
+      accounts: accessibleAccounts,
+      extra: { twoFactorSetupRequired: setupOnly }
+    }));
+  } catch (error) {
+    clearAuthCookies(res);
+    return res.status(401).json({ success: false, message: 'Session could not be refreshed.' });
+  }
+};
+
+// @desc    Revoke current refresh session and clear authentication cookies
+// @route   POST /api/auth/logout
+// @access  Refresh cookie
+exports.logout = async (req, res) => {
+  try {
+    await revokeAuthSession(req.cookies?.[REFRESH_COOKIE_NAME]);
+  } finally {
+    clearAuthCookies(res);
+  }
+  res.status(200).json({ success: true, message: 'Logged out successfully.' });
+};
+
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
@@ -183,10 +312,11 @@ exports.register = async (req, res) => {
       });
     }
 
-    if (password.length < 6) {
+    const passwordPolicy = validatePassword(password);
+    if (!passwordPolicy.valid) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters'
+        message: passwordPolicy.message
       });
     }
 
@@ -224,10 +354,15 @@ exports.register = async (req, res) => {
     user.accounts.push(account._id);
     await user.save();
 
-    const token = generateOwnerSetupToken(user._id, account._id, user.tokenVersion);
+    await establishAuthSession({
+      req,
+      res,
+      user,
+      currentAccount: account,
+      setupOnly: true
+    });
     res.status(201).json(buildAuthResponse({
       user,
-      token,
       currentAccount: account,
       accounts: [account],
       extra: { twoFactorSetupRequired: true }
@@ -277,6 +412,15 @@ exports.login = async (req, res) => {
       });
     }
 
+    const loginIdentifiers = [`email:${normalizedEmail}`];
+    if (await enforceAuthRateLimit({
+      req,
+      res,
+      scope: 'login',
+      identifiers: loginIdentifiers,
+      config: AUTH_RATE_LIMITS.login
+    })) return;
+
     const user = await User.findOne({ email: normalizedEmail })
       .select('+password +twoFactorSecret +twoFactorTempSecret');
 
@@ -314,14 +458,10 @@ exports.login = async (req, res) => {
     const role = normalizeRole(user.role);
     if (role === 'owner') {
       if (user.twoFactorEnabled) {
-        const lockedForSeconds = ensureTwoFactorNotLocked(user._id);
-        if (lockedForSeconds) {
-          return res.status(429).json({
-            success: false,
-            message: `Too many invalid 2FA attempts. Try again in ${lockedForSeconds} seconds.`
-          });
-        }
-
+        await clearAuthRateLimit({
+          scope: 'login',
+          identifiers: [`ip:${getRequestIp(req)}`, ...loginIdentifiers]
+        });
         const challengeToken = generateTwoFactorChallengeToken(
           user._id,
           currentAccount._id,
@@ -337,20 +477,32 @@ exports.login = async (req, res) => {
         });
       }
 
-      const setupToken = generateOwnerSetupToken(user._id, currentAccount._id, user.tokenVersion);
+      await clearAuthRateLimit({
+        scope: 'login',
+        identifiers: [`ip:${getRequestIp(req)}`, ...loginIdentifiers]
+      });
+      await establishAuthSession({
+        req,
+        res,
+        user,
+        currentAccount,
+        setupOnly: true
+      });
       return res.status(200).json(buildAuthResponse({
         user,
-        token: setupToken,
         currentAccount,
         accounts: accessibleAccounts,
         extra: { twoFactorSetupRequired: true }
       }));
     }
 
-    const token = generateAccessToken(user._id, currentAccount._id, user.tokenVersion);
+    await clearAuthRateLimit({
+      scope: 'login',
+      identifiers: [`ip:${getRequestIp(req)}`, ...loginIdentifiers]
+    });
+    await establishAuthSession({ req, res, user, currentAccount });
     res.status(200).json(buildAuthResponse({
       user,
-      token,
       currentAccount,
       accounts: accessibleAccounts
     }));
@@ -376,6 +528,15 @@ exports.verifyTwoFactorLogin = async (req, res) => {
       });
     }
 
+    const challengeIdentifier = `challenge:${crypto.createHash('sha256').update(challengeToken).digest('hex')}`;
+    if (await enforceAuthRateLimit({
+      req,
+      res,
+      scope: 'two-factor-login',
+      identifiers: [challengeIdentifier],
+      config: AUTH_RATE_LIMITS.twoFactor
+    })) return;
+
     const decoded = jwt.verify(challengeToken, JWT_SECRET);
     if (decoded.purpose !== '2fa_challenge') {
       return res.status(401).json({
@@ -392,6 +553,13 @@ exports.verifyTwoFactorLogin = async (req, res) => {
       });
     }
 
+    if (Number(decoded.tokenVersion || 0) !== Number(user.tokenVersion || 0)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Two-factor challenge has expired. Please log in again.'
+      });
+    }
+
     if (!isOwnerUser(user) || !user.twoFactorEnabled || !user.twoFactorSecret) {
       return res.status(403).json({
         success: false,
@@ -405,21 +573,16 @@ exports.verifyTwoFactorLogin = async (req, res) => {
     });
 
     if (!valid) {
-      const attempt = recordTwoFactorAttempt({ userId: user._id, success: false });
-      if (attempt.blocked) {
-        return res.status(429).json({
-          success: false,
-          message: `Too many invalid 2FA attempts. Try again in ${Math.ceil(attempt.retryAfterMs / 1000)} seconds.`
-        });
-      }
-
       return res.status(401).json({
         success: false,
         message: 'Invalid two-factor code.'
       });
     }
 
-    recordTwoFactorAttempt({ userId: user._id, success: true });
+    await clearAuthRateLimit({
+      scope: 'two-factor-login',
+      identifiers: [`ip:${getRequestIp(req)}`, challengeIdentifier]
+    });
     user.twoFactorLastVerifiedAt = new Date();
     await user.save();
 
@@ -432,10 +595,9 @@ exports.verifyTwoFactorLogin = async (req, res) => {
       });
     }
 
-    const fullToken = generateAccessToken(user._id, currentAccount._id, user.tokenVersion);
+    await establishAuthSession({ req, res, user, currentAccount });
     res.status(200).json(buildAuthResponse({
       user,
-      token: fullToken,
       currentAccount,
       accounts: accessibleAccounts
     }));
@@ -562,27 +724,31 @@ exports.verifyTwoFactorSetup = async (req, res) => {
       });
     }
 
+    const setupIdentifier = `user:${user._id}`;
+    if (await enforceAuthRateLimit({
+      req,
+      res,
+      scope: 'two-factor-setup',
+      identifiers: [setupIdentifier],
+      config: AUTH_RATE_LIMITS.twoFactor
+    })) return;
+
     const valid = verifyTotpToken({
       secret: user.twoFactorTempSecret,
       token: normalizedToken
     });
 
     if (!valid) {
-      const attempt = recordTwoFactorAttempt({ userId: user._id, success: false });
-      if (attempt.blocked) {
-        return res.status(429).json({
-          success: false,
-          message: `Too many invalid 2FA attempts. Try again in ${Math.ceil(attempt.retryAfterMs / 1000)} seconds.`
-        });
-      }
-
       return res.status(400).json({
         success: false,
         message: 'Invalid two-factor code.'
       });
     }
 
-    recordTwoFactorAttempt({ userId: user._id, success: true });
+    await clearAuthRateLimit({
+      scope: 'two-factor-setup',
+      identifiers: [`ip:${getRequestIp(req)}`, setupIdentifier]
+    });
     user.twoFactorSecret = user.twoFactorTempSecret;
     user.twoFactorTempSecret = undefined;
     user.twoFactorEnabled = true;
@@ -593,11 +759,11 @@ exports.verifyTwoFactorSetup = async (req, res) => {
 
     const accessibleAccounts = await getAccessibleAccountsForUser(user._id, user.role);
     const currentAccount = getCurrentAccount(accessibleAccounts, req.user.accountId);
-    const token = generateAccessToken(user._id, currentAccount?._id, user.tokenVersion);
+    await revokeAllUserSessions(user._id);
+    await establishAuthSession({ req, res, user, currentAccount });
 
     res.status(200).json(buildAuthResponse({
       user,
-      token,
       currentAccount,
       accounts: accessibleAccounts,
       extra: { message: 'Two-factor authentication enabled successfully.' }
@@ -634,13 +800,16 @@ exports.selectAccount = async (req, res) => {
     }
 
     const account = accessibleAccounts.find((acc) => acc._id.toString() === accountId);
-    const token = isOwnerUser(user) && !user.twoFactorEnabled
-      ? generateOwnerSetupToken(user._id, accountId, user.tokenVersion)
-      : generateAccessToken(user._id, accountId, user.tokenVersion);
+    await establishAuthSession({
+      req,
+      res,
+      user,
+      currentAccount: account,
+      setupOnly: isOwnerUser(user) && !user.twoFactorEnabled
+    });
 
     res.status(200).json(buildAuthResponse({
       user,
-      token,
       currentAccount: account,
       accounts: accessibleAccounts
     }));
@@ -738,27 +907,54 @@ exports.forgotPassword = async (req, res) => {
       });
     }
 
+    if (await enforceAuthRateLimit({
+      req,
+      res,
+      scope: 'forgot-password',
+      identifiers: [`email:${normalizedEmail}`],
+      config: AUTH_RATE_LIMITS.forgotPassword
+    })) return;
+
+    const genericResponse = {
+      success: true,
+      message: 'If the account exists, reset instructions have been sent.'
+    };
+
     const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
-      return res.status(200).json({
-        success: true,
-        message: 'If the account exists, a reset token has been generated'
-      });
+      return res.status(200).json(genericResponse);
     }
 
-    const resetToken = crypto.randomBytes(20).toString('hex');
+    const resetToken = crypto.randomBytes(32).toString('hex');
     const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
 
     user.resetPasswordToken = resetTokenHash;
-    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
+    user.resetPasswordExpire = Date.now() + PASSWORD_RESET_EXPIRE_MINUTES * 60 * 1000;
     await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: 'Reset token generated',
-      resetToken,
-      expiresInMinutes: 10
-    });
+    try {
+      await sendPasswordResetEmail({
+        recipient: user.email,
+        resetToken,
+        expiresInMinutes: PASSWORD_RESET_EXPIRE_MINUTES
+      });
+      logSecurityEvent('password_reset_requested', {
+        userId: user._id,
+        emailHash: getEmailHash(user.email)
+      });
+    } catch (deliveryError) {
+      await User.updateOne(
+        { _id: user._id, resetPasswordToken: resetTokenHash },
+        { $unset: { resetPasswordToken: '', resetPasswordExpire: '' } }
+      );
+      logSecurityEvent('password_reset_delivery_failed', {
+        userId: user._id,
+        emailHash: getEmailHash(user.email),
+        reason: deliveryError.code || 'delivery_failed'
+      }, 'warn');
+    }
+
+    return res.status(200).json(genericResponse);
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -781,6 +977,15 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
+    const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    if (await enforceAuthRateLimit({
+      req,
+      res,
+      scope: 'reset-password',
+      identifiers: [`token:${resetTokenHash}`],
+      config: AUTH_RATE_LIMITS.resetPassword
+    })) return;
+
     if (password !== passwordConfirm) {
       return res.status(400).json({
         success: false,
@@ -788,18 +993,25 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    if (password.length < 6) {
+    const passwordPolicy = validatePassword(password);
+    if (!passwordPolicy.valid) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters'
+        message: passwordPolicy.message
       });
     }
 
-    const resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const user = await User.findOne({
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await User.findOneAndUpdate({
       resetPasswordToken: resetTokenHash,
       resetPasswordExpire: { $gt: Date.now() }
-    }).select('+password');
+    }, {
+      $set: { password: passwordHash },
+      $unset: { resetPasswordToken: '', resetPasswordExpire: '' },
+      $inc: { tokenVersion: 1 }
+    }, {
+      new: true
+    });
 
     if (!user) {
       return res.status(400).json({
@@ -808,10 +1020,12 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-    await user.save();
+    await clearAuthRateLimit({
+      scope: 'reset-password',
+      identifiers: [`ip:${getRequestIp(req)}`, `token:${resetTokenHash}`]
+    });
+    await revokeAllUserSessions(user._id);
+    logSecurityEvent('password_reset_succeeded', { userId: user._id });
 
     res.status(200).json({
       success: true,

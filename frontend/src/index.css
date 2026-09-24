@@ -60,6 +60,15 @@ textarea {
     linear-gradient(180deg, #fcfbf8 0%, var(--bg-base) 100%);
 }
 
+.session-validation-warning {
+  background: #fff6d8;
+  border-bottom: 1px solid #d9bd65;
+  color: #604b12;
+  font-size: 0.9rem;
+  padding: 0.65rem 1rem;
+  text-align: center;
+}
+
 .app-topbar {
   position: sticky;
   top: 0;

@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const AdUnit = require('../models/AdUnit');
 const Campaign = require('../models/Campaign');
 const Inventory = require('../models/Inventory');
@@ -418,7 +418,7 @@ exports.createAdUnit = async (req, res) => {
       inventories: inventoryDocs.map((inventoryDoc) => inventoryDoc._id),
       startDate: dateValidation.startDate,
       endDate: dateValidation.endDate,
-      adCode: `ad-${uuidv4()}`,
+      adCode: `ad-${randomUUID()}`,
       imageUrl,
       htmlCreative,
       iframeUrl,

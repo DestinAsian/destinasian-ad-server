@@ -27,8 +27,8 @@ function Signup({ onNavigate, ownerExists = false }) {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (password.length < 12) {
+      setError('Password must be at least 12 characters');
       return;
     }
 
@@ -64,6 +64,7 @@ function Signup({ onNavigate, ownerExists = false }) {
               required
               disabled={loading}
               readOnly={ownerExists}
+              autoComplete="email"
             />
           </div>
           <div className="form-group">
@@ -96,8 +97,10 @@ function Signup({ onNavigate, ownerExists = false }) {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
-              minLength="6"
+              minLength="12"
+              maxLength="128"
               readOnly={ownerExists}
+              autoComplete="new-password"
             />
           </div>
           <div className="form-group">
@@ -108,8 +111,10 @@ function Signup({ onNavigate, ownerExists = false }) {
               onChange={(e) => setPasswordConfirm(e.target.value)}
               required
               disabled={loading}
-              minLength="6"
+              minLength="12"
+              maxLength="128"
               readOnly={ownerExists}
+              autoComplete="new-password"
             />
           </div>
           <button type="submit" className="btn-primary" disabled={loading || ownerExists}>

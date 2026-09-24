@@ -1,5 +1,9 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const {
+  MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH
+} = require('../utils/passwordPolicy');
 
 const userSchema = new mongoose.Schema(
   {
@@ -14,7 +18,8 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: true,
-      minlength: 6,
+      minlength: MIN_PASSWORD_LENGTH,
+      maxlength: MAX_PASSWORD_LENGTH,
       select: false
     },
     name: {
@@ -79,9 +84,9 @@ userSchema.index(
 );
 
 // Hash password before saving
-userSchema.pre('save', async function(next) {
+userSchema.pre('save', async function() {
   if (!this.isModified('password')) {
-    return next();
+    return;
   }
 
   const salt = await bcrypt.genSalt(10);

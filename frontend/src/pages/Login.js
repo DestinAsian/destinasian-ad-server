@@ -65,6 +65,7 @@ function Login({ onNavigate, canRegister = true }) {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
+                autoComplete="email"
               />
             </div>
             <div className="form-group">
@@ -75,6 +76,7 @@ function Login({ onNavigate, canRegister = true }) {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
+                autoComplete="current-password"
               />
             </div>
             <button type="submit" className="btn-primary" disabled={loading}>
@@ -98,6 +100,7 @@ function Login({ onNavigate, canRegister = true }) {
                 maxLength={6}
                 required
                 disabled={loading}
+                autoComplete="one-time-code"
               />
             </div>
             <button type="submit" className="btn-primary" disabled={loading}>

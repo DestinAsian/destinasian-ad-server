@@ -3,6 +3,9 @@ const router = express.Router();
 const {
   register,
   getSetupStatus,
+  getCsrfToken,
+  refreshSession,
+  logout,
   login,
   verifyTwoFactorLogin,
   getMe,
@@ -18,6 +21,9 @@ const { protect } = require('../middleware/auth');
 
 router.post('/register', register);
 router.get('/setup-status', getSetupStatus);
+router.get('/csrf-token', getCsrfToken);
+router.post('/refresh', refreshSession);
+router.post('/logout', logout);
 router.post('/login', login);
 router.post('/2fa/verify-login', verifyTwoFactorLogin);
 router.post('/forgot-password', forgotPassword);

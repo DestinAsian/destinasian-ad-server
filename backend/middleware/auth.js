@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Account = require('../models/Account');
 const { verifyTotpToken, normalizeTotpToken } = require('../utils/twoFactor');
+const { JWT_SECRET } = require('../config/authSecurity');
+const { ACCESS_COOKIE_NAME } = require('../config/authCookies');
 
 const normalizeRole = (role) => {
   if (role === 'owner' || role === 'admin') return 'owner';
@@ -26,10 +28,12 @@ const isAllowedOwnerSetupPath = (req) => {
 
 // Protect routes - verify JWT
 exports.protect = async (req, res, next) => {
-  let token;
+  let token = req.cookies?.[ACCESS_COOKIE_NAME];
+  let source = token ? 'cookie' : null;
 
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
+    source = 'bearer';
   }
 
   if (!token) {
@@ -40,7 +44,7 @@ exports.protect = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key-change-in-production');
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.user = await User.findById(decoded.id);
 
     if (!req.user) {
@@ -61,7 +65,8 @@ exports.protect = async (req, res, next) => {
     req.user.accountId = decoded.accountId;
     req.auth = {
       setupOnly: Boolean(decoded.setupOnly),
-      purpose: decoded.purpose || null
+      purpose: decoded.purpose || null,
+      source
     };
 
     const tokenVersion = Number(decoded.tokenVersion || 0);
