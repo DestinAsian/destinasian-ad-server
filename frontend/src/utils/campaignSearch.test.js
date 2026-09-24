@@ -1,4 +1,5 @@
 import {
+  getCampaignIdsForAutomaticExpansion,
   getCampaignIdsWithAdUnitSearchResults,
   getCampaignTitleSearchRows,
 } from "./campaignSearch";
@@ -28,6 +29,55 @@ test("does not force campaigns open when search is empty", () => {
   );
 
   expect(expandedIds.size).toBe(0);
+});
+
+test("automatically expands campaigns returned by an Ad Channel filter", () => {
+  const expandedIds = getCampaignIdsForAutomaticExpansion(
+    [
+      {
+        _id: "campaign-with-filtered-ad-unit",
+        adUnits: [{ _id: "ad-unit-1", name: "Kyoto Banner" }],
+      },
+      {
+        _id: "campaign-without-filtered-ad-unit",
+        adUnits: [],
+      },
+    ],
+    { hasAdChannelFilter: true },
+  );
+
+  expect([...expandedIds]).toEqual(["campaign-with-filtered-ad-unit"]);
+});
+
+test("does not automatically expand campaigns without search or Ad Channel filter", () => {
+  const expandedIds = getCampaignIdsForAutomaticExpansion(
+    [
+      {
+        _id: "campaign-1",
+        adUnits: [{ _id: "ad-unit-1", name: "Kyoto Banner" }],
+      },
+    ],
+  );
+
+  expect(expandedIds.size).toBe(0);
+});
+
+test("keeps title-search expansion rules when an Ad Channel filter is also active", () => {
+  const expandedIds = getCampaignIdsForAutomaticExpansion(
+    [
+      {
+        _id: "matching-campaign",
+        adUnits: [{ _id: "ad-unit-1", name: "Kyoto Banner" }],
+      },
+      {
+        _id: "non-matching-campaign",
+        adUnits: [{ _id: "ad-unit-2", name: "Tokyo Banner" }],
+      },
+    ],
+    { searchQuery: "Kyoto", hasAdChannelFilter: true },
+  );
+
+  expect([...expandedIds]).toEqual(["matching-campaign"]);
 });
 
 test("shows only an Ad Unit row when only its title matches", () => {

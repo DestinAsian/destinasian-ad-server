@@ -24,6 +24,29 @@ export const getCampaignIdsWithAdUnitSearchResults = (
   );
 };
 
+export const getCampaignIdsForAutomaticExpansion = (
+  campaigns = [],
+  { searchQuery = "", hasAdChannelFilter = false } = {},
+) => {
+  if (String(searchQuery).trim()) {
+    return getCampaignIdsWithAdUnitSearchResults(campaigns, searchQuery);
+  }
+
+  if (!hasAdChannelFilter) {
+    return new Set();
+  }
+
+  return new Set(
+    (Array.isArray(campaigns) ? campaigns : [])
+      .filter(
+        (campaign) =>
+          Array.isArray(campaign?.adUnits) && campaign.adUnits.length > 0,
+      )
+      .map((campaign) => campaign._id)
+      .filter(Boolean),
+  );
+};
+
 const titleIncludes = (title, searchQuery) =>
   String(title || "")
     .toLowerCase()

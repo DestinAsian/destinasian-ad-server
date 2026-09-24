@@ -30,7 +30,7 @@ import { useToast } from "../contexts/ToastContext";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { getApiErrorMessage } from "../utils/apiError";
 import {
-  getCampaignIdsWithAdUnitSearchResults,
+  getCampaignIdsForAutomaticExpansion,
   getCampaignTitleSearchRows,
 } from "../utils/campaignSearch";
 
@@ -527,15 +527,21 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         setCampaignPage(resultingPage);
         loadedCampaignAccountRef.current = accountId;
 
-        const searchResultCampaignIds = getCampaignIdsWithAdUnitSearchResults(
+        const automaticExpansionCampaignIds = getCampaignIdsForAutomaticExpansion(
           campaignRows,
-          debouncedSearchQuery,
+          {
+            searchQuery: debouncedSearchQuery,
+            hasAdChannelFilter: Boolean(selectedInventoryId),
+          },
         );
         setSearchExpandedCampaignIds((previousIds) => {
-          if (reset || !debouncedSearchQuery) {
-            return searchResultCampaignIds;
+          if (reset) {
+            return automaticExpansionCampaignIds;
           }
-          return new Set([...previousIds, ...searchResultCampaignIds]);
+          if (!debouncedSearchQuery && !selectedInventoryId) {
+            return new Set();
+          }
+          return new Set([...previousIds, ...automaticExpansionCampaignIds]);
         });
 
         const nextSelectedCampaignId = dedupedRows.some(
