@@ -191,8 +191,8 @@ function AdUnitForm({
     }
 
     if (
-      !Array.isArray(formData.inventoryIds) ||
-      formData.inventoryIds.length === 0
+      !isEditingAdUnit &&
+      (!Array.isArray(formData.inventoryIds) || formData.inventoryIds.length === 0)
     ) {
       newErrors.inventoryIds = "At least one ad channel is required";
     }

@@ -57,6 +57,65 @@ const parsePositiveInt = (value, fallback) => {
   return fallback;
 };
 
+const CAMPAIGN_SORT_FIELDS = new Set([
+  'startDate',
+  'name',
+  'impressions',
+  'impressionsToday',
+  'clicks',
+  'clicksToday',
+  'ctr'
+]);
+
+const getCampaignSortValue = (campaign, stats, sortBy) => {
+  switch (sortBy) {
+    case 'name':
+      return String(campaign.name || '').toLocaleLowerCase();
+    case 'impressions':
+      return Number(stats.impressions || 0);
+    case 'impressionsToday':
+      return Number(stats.impressionsToday || 0);
+    case 'clicks':
+      return Number(stats.clicks || 0);
+    case 'clicksToday':
+      return Number(stats.clicksToday || 0);
+    case 'ctr':
+      return Number(stats.ctr || 0);
+    case 'startDate':
+    default: {
+      const timestamp = new Date(campaign.startDate).getTime();
+      return Number.isFinite(timestamp) ? timestamp : null;
+    }
+  }
+};
+
+const sortCampaigns = ({ campaigns, statsById, sortBy, sortDirection }) => {
+  const direction = sortDirection === 'asc' ? 1 : -1;
+  return [...campaigns].sort((left, right) => {
+    const leftStats = statsById.get(String(left._id)) || {};
+    const rightStats = statsById.get(String(right._id)) || {};
+    const leftValue = getCampaignSortValue(left, leftStats, sortBy);
+    const rightValue = getCampaignSortValue(right, rightStats, sortBy);
+
+    if (leftValue === null && rightValue !== null) return 1;
+    if (rightValue === null && leftValue !== null) return -1;
+
+    let comparison = 0;
+    if (typeof leftValue === 'string' || typeof rightValue === 'string') {
+      comparison = String(leftValue).localeCompare(String(rightValue), undefined, {
+        sensitivity: 'base'
+      });
+    } else {
+      comparison = Number(leftValue || 0) - Number(rightValue || 0);
+    }
+
+    if (comparison !== 0) return comparison * direction;
+    return String(left._id).localeCompare(String(right._id)) * direction;
+  });
+};
+
+exports.sortCampaigns = sortCampaigns;
+
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const getAdUnitTextSearch = (searchRegex) => ({
@@ -401,6 +460,13 @@ exports.getAllCampaigns = async (req, res) => {
     const limitProvided = req.query.limit !== undefined;
     const page = parsePositiveInt(req.query.page, 1);
     const limit = Math.min(parsePositiveInt(req.query.limit, 20), 100);
+    const requestedSortBy = normalizeString(req.query.sortBy);
+    const sortBy = CAMPAIGN_SORT_FIELDS.has(requestedSortBy)
+      ? requestedSortBy
+      : null;
+    const sortDirection = String(req.query.sortDirection || '').toLowerCase() === 'asc'
+      ? 'asc'
+      : 'desc';
 
     const sendEmptyCampaigns = () => {
       if (pageProvided || limitProvided) {
@@ -530,20 +596,37 @@ exports.getAllCampaigns = async (req, res) => {
       return sendEmptyCampaigns();
     }
 
-    const total = (pageProvided || limitProvided)
-      ? await Campaign.countDocuments(filter)
-      : null;
+    let total = null;
+    let campaigns;
+    let campaignStatsById = null;
 
-    let campaignQuery = Campaign.find(filter);
-
-    if (pageProvided || limitProvided) {
-      campaignQuery = campaignQuery
-        .sort({ createdAt: -1, _id: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit);
+    if ((pageProvided || limitProvided) && sortBy) {
+      const matchingCampaigns = await Campaign.find(filter);
+      total = matchingCampaigns.length;
+      campaignStatsById = await getTableStatsByIds({
+        accountId: req.user.accountId,
+        dimension: 'campaign',
+        ids: matchingCampaigns.map((campaign) => campaign._id)
+      });
+      campaigns = sortCampaigns({
+        campaigns: matchingCampaigns,
+        statsById: campaignStatsById,
+        sortBy,
+        sortDirection
+      }).slice((page - 1) * limit, page * limit);
+    } else {
+      total = (pageProvided || limitProvided)
+        ? await Campaign.countDocuments(filter)
+        : null;
+      let campaignQuery = Campaign.find(filter);
+      if (pageProvided || limitProvided) {
+        campaignQuery = campaignQuery
+          .sort({ createdAt: -1, _id: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit);
+      }
+      campaigns = await campaignQuery;
     }
-
-    const campaigns = await campaignQuery;
     const campaignIds = campaigns.map((campaignDoc) => campaignDoc._id);
     const nestedSearchRegex = searchTerm
       ? new RegExp(escapeRegex(searchTerm), 'i')
@@ -562,8 +645,8 @@ exports.getAllCampaigns = async (req, res) => {
       : [];
 
     const campaignAdUnitIds = campaignAdUnits.map((adUnitDoc) => adUnitDoc._id);
-    const [campaignStatsById, adUnitStatsById, imageCreativeIds] = await Promise.all([
-      getTableStatsByIds({
+    const [resolvedCampaignStatsById, adUnitStatsById, imageCreativeIds] = await Promise.all([
+      campaignStatsById || getTableStatsByIds({
         accountId: req.user.accountId,
         dimension: 'campaign',
         ids: campaignIds
@@ -591,7 +674,7 @@ exports.getAllCampaigns = async (req, res) => {
     }, new Map());
 
     const enrichedCampaigns = campaigns.map((campaign) => {
-      const stats = campaignStatsById.get(String(campaign._id)) || {
+      const stats = resolvedCampaignStatsById.get(String(campaign._id)) || {
         impressions: 0,
         impressionsToday: 0,
         clicks: 0,

@@ -8,6 +8,10 @@
 
 # testing
 **/coverage
+**/tests/
+**/__tests__/
+**/*.test.js
+**/*.spec.js
 
 # next.js
 **/.next/

@@ -476,6 +476,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             page: requestedPage,
             limit: CAMPAIGN_PAGE_SIZE,
             view: "summary",
+            sortBy: campaignSort.key,
+            sortDirection: campaignSort.direction,
           };
           if (selectedInventoryId) params.inventoryId = selectedInventoryId;
           if (debouncedSearchQuery) {
@@ -564,7 +566,14 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         }
       }
     },
-    [currentAccount?.id, selectedInventoryId, debouncedSearchQuery, setError],
+    [
+      currentAccount?.id,
+      selectedInventoryId,
+      debouncedSearchQuery,
+      campaignSort.key,
+      campaignSort.direction,
+      setError,
+    ],
   );
 
   useEffect(() => () => campaignAbortControllerRef.current?.abort(), []);

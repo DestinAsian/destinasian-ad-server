@@ -18,6 +18,14 @@
   color: var(--ink-muted);
 }
 
+.users-refresh-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
 .users-card {
   background: var(--bg-elevated);
   border: 1px solid var(--line-soft);

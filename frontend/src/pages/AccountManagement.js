@@ -12,6 +12,8 @@ function AccountManagement() {
   const { user, selectAccount } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
   const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
   const confirmAction = useConfirm();
 
@@ -38,18 +40,23 @@ function AccountManagement() {
     });
   }, [accounts]);
 
-  const fetchAccounts = useCallback(async () => {
+  const fetchAccounts = useCallback(async ({ silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (silent) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       const response = await accountAPI.getAll();
       const rows = Array.isArray(response.data?.accounts)
         ? response.data.accounts
         : (Array.isArray(response.data) ? response.data : []);
       setAccounts(rows);
-      setLoading(false);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to load accounts'));
+    } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [setError]);
 
@@ -62,11 +69,17 @@ function AccountManagement() {
   };
 
   const handleSwitchAccount = async (accountId) => {
-    const result = await selectAccount(accountId);
-    if (result.success) {
-      showSuccess('Switched to account successfully');
-    } else if (result.error) {
-      setError(result.error);
+    if (pendingAction) return;
+    setPendingAction({ type: 'switch', id: accountId });
+    try {
+      const result = await selectAccount(accountId);
+      if (result.success) {
+        showSuccess('Switched to account successfully');
+      } else if (result.error) {
+        setError(result.error);
+      }
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -82,12 +95,16 @@ function AccountManagement() {
     }
 
     try {
+      if (pendingAction) return;
+      setPendingAction({ type: 'edit', id: accountId });
       await accountAPI.update(accountId, { name: editName.trim() });
       setEditingId(null);
       showSuccess('Account updated successfully');
-      await fetchAccounts();
+      await fetchAccounts({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to update account'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -103,7 +120,7 @@ function AccountManagement() {
       await accountAPI.create({ name: newAccountName.trim() });
       setNewAccountName('');
       showSuccess('Account created successfully');
-      await fetchAccounts();
+      await fetchAccounts({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to create account'));
     } finally {
@@ -120,11 +137,15 @@ function AccountManagement() {
     if (!confirmed) return;
 
     try {
+      if (pendingAction) return;
+      setPendingAction({ type: 'delete', id: account._id });
       await accountAPI.delete(account._id);
       showSuccess('Account deleted successfully');
-      await fetchAccounts();
+      await fetchAccounts({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to delete account'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -186,7 +207,7 @@ function AccountManagement() {
       await accountAPI.syncShare(shareModalAccount._id, { userIds: selectedUserIds });
       showSuccess('Account sharing updated successfully');
       closeShareModal();
-      await fetchAccounts();
+      await fetchAccounts({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to share account'));
     } finally {
@@ -203,6 +224,7 @@ function AccountManagement() {
           <h2>My Accounts</h2>
           <p>Manage account access, sharing, and account-level campaign and ad channel overview.</p>
         </div>
+        {refreshing && <span className="users-refresh-status">Refreshing…</span>}
       </header>
 
       {isOwner && (
@@ -250,7 +272,15 @@ function AccountManagement() {
                       className="edit-input"
                       autoFocus
                     />
-                    <button type="submit" className="btn-save">Save</button>
+                    <button
+                      type="submit"
+                      className="btn-save"
+                      disabled={Boolean(pendingAction)}
+                    >
+                      {pendingAction?.type === 'edit' && pendingAction.id === account._id
+                        ? 'Saving…'
+                        : 'Save'}
+                    </button>
                     <button type="button" className="btn-cancel-edit" onClick={() => setEditingId(null)}>
                       Cancel
                     </button>
@@ -328,14 +358,18 @@ function AccountManagement() {
                 <button
                   className="btn btn-primary btn-sm"
                   onClick={() => handleSwitchAccount(account._id)}
+                  disabled={Boolean(pendingAction)}
                 >
-                  Switch to Account
+                  {pendingAction?.type === 'switch' && pendingAction.id === account._id
+                    ? 'Switching…'
+                    : 'Switch to Account'}
                 </button>
 
                 {editingId !== account._id && (
                   <button
                     className="btn btn-secondary btn-sm"
                     onClick={() => handleStartEdit(account)}
+                    disabled={Boolean(pendingAction)}
                   >
                     Edit Name
                   </button>
@@ -346,14 +380,18 @@ function AccountManagement() {
                     <button
                       className="btn btn-secondary btn-sm"
                       onClick={() => openShareModal(account)}
+                      disabled={Boolean(pendingAction)}
                     >
                       Share
                     </button>
                     <button
                       className="btn btn-danger btn-sm"
                       onClick={() => handleDeleteAccount(account)}
+                      disabled={Boolean(pendingAction)}
                     >
-                      Delete
+                      {pendingAction?.type === 'delete' && pendingAction.id === account._id
+                        ? 'Deleting…'
+                        : 'Delete'}
                     </button>
                   </>
                 )}

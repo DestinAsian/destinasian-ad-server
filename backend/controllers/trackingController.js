@@ -539,13 +539,17 @@ exports.recordClick = async (req, res) => {
     const clickRevenue = getNumericValue(req.body?.revenue);
     const eventMeta = getEventMeta(req.body, clickRevenue);
 
-    const adUnit = await AdUnit.findOne({ adCode: adUnitId });
+    const adUnit = await AdUnit.findOne({ adCode: adUnitId }).populate('campaign');
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
+    if (!isAdUnitDeliverable(adUnit, occurredAt)) {
+      return res.status(204).end();
+    }
+    const campaignId = adUnit.campaign?._id || adUnit.campaign;
     const trackingInventoryId = resolveTrackingInventoryId(adUnit, req.body?.inventoryId);
 
     const click = new Click({
       adUnit: adUnit._id,
-      campaign: adUnit.campaign,
+      campaign: campaignId,
       account: adUnit.account,
       userIp,
       userAgent,
@@ -554,7 +558,7 @@ exports.recordClick = async (req, res) => {
 
     const clickEvent = new AdClickEvent({
       adUnit: adUnit._id,
-      campaign: adUnit.campaign,
+      campaign: campaignId,
       account: adUnit.account,
       inventory: trackingInventoryId,
       adCode: adUnit.adCode,
@@ -574,14 +578,14 @@ exports.recordClick = async (req, res) => {
       await adUnit.save(session ? { session } : undefined);
 
       await Campaign.findByIdAndUpdate(
-        adUnit.campaign,
+        campaignId,
         { $inc: { totalClicks: 1 } },
         session ? { session } : undefined
       );
 
       await updateDailyStat({
         account: adUnit.account,
-        campaign: adUnit.campaign,
+        campaign: campaignId,
         adUnit: adUnit._id,
         inventory: trackingInventoryId,
         adCode: adUnit.adCode,

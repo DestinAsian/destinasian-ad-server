@@ -124,7 +124,13 @@ function App() {
   const ownerNeedsTwoFactorSetup =
     user?.role === "owner" && user?.twoFactorSetupRequired;
 
-  const topbarSearchPlaceholder = "Search Ad Units / Banners...";
+  const topbarSearchCopy = {
+    dashboard: "Search Ad Units / Banners...",
+    campaigns: "Search Campaigns or Ad Units...",
+    inventory: "Search Ad Channels or Ad Units...",
+  };
+  const topbarSearchPlaceholder =
+    topbarSearchCopy[currentPage] || "Search...";
 
   const handleNavigate = (page) => {
     setHeaderSearch("");
@@ -157,7 +163,7 @@ function App() {
               value={headerSearch}
               onChange={(e) => setHeaderSearch(e.target.value)}
               placeholder={topbarSearchPlaceholder}
-              aria-label="Global search"
+              aria-label={topbarSearchPlaceholder}
             />
           </div>
         )}

@@ -17,6 +17,8 @@ function Users() {
   const { user, updateCurrentUser, logout } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
   const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
   const confirmAction = useConfirm();
 
@@ -48,15 +50,20 @@ function Users() {
     }
   }, [user]);
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async ({ silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (silent) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       const response = await userAPI.getAll();
       setUsers(response.data?.users || []);
-      setLoading(false);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to load users'));
+    } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [setError]);
 
@@ -82,6 +89,7 @@ function Users() {
 
   const handleCreateEditor = async (e) => {
     e.preventDefault();
+    if (pendingAction) return;
     setError('');
 
     if (createForm.password !== createForm.passwordConfirm) {
@@ -90,20 +98,25 @@ function Users() {
     }
 
     try {
+      setPendingAction({ type: 'create', id: 'new' });
       await userAPI.create(createForm);
       setCreateForm(emptyCreateForm);
       showSuccess('User created successfully.');
-      await loadUsers();
+      await loadUsers({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to create user'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
+    if (pendingAction) return;
     setError('');
 
     try {
+      setPendingAction({ type: 'profile', id: user?.id });
       const response = await userAPI.updateMe(profileForm);
       if (response.data?.user) {
         updateCurrentUser({
@@ -114,17 +127,21 @@ function Users() {
         });
       }
       showSuccess('User updated successfully.');
-      await loadUsers();
+      await loadUsers({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to update profile'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleUpdateMyPassword = async (e) => {
     e.preventDefault();
+    if (pendingAction) return;
     setError('');
 
     try {
+      setPendingAction({ type: 'password', id: user?.id });
       await userAPI.updateMyPassword(passwordForm);
       setPasswordForm({
         currentPassword: '',
@@ -134,6 +151,8 @@ function Users() {
       showSuccess('Password updated successfully.');
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to update password'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -146,29 +165,37 @@ function Users() {
   };
 
   const saveEditUser = async (targetUserId) => {
+    if (pendingAction) return;
     setError('');
     try {
+      setPendingAction({ type: 'edit', id: targetUserId });
       await userAPI.update(targetUserId, editForm);
       setEditingUserId(null);
       showSuccess('User updated successfully.');
-      await loadUsers();
+      await loadUsers({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to update user'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleToggleStatus = async (targetUser) => {
+    if (pendingAction) return;
     setError('');
     try {
+      setPendingAction({ type: 'status', id: targetUser.id });
       const nextStatus = targetUser.isActive ? 'disabled' : 'active';
       await userAPI.updateStatus(targetUser.id, {
         status: nextStatus,
         twoFactorToken: ownerActionTwoFactorToken
       });
       showSuccess('User updated successfully.');
-      await loadUsers();
+      await loadUsers({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to update user status'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -179,19 +206,25 @@ function Users() {
       confirmLabel: 'Delete user'
     });
     if (!confirmed) return;
+    if (pendingAction) return;
     setError('');
     try {
+      setPendingAction({ type: 'delete', id: targetUser.id });
       await userAPI.delete(targetUser.id, { twoFactorToken: ownerActionTwoFactorToken });
       showSuccess('User deleted successfully.');
-      await loadUsers();
+      await loadUsers({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to delete user'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleOwnerResetPassword = async (targetUserId) => {
+    if (pendingAction) return;
     setError('');
     try {
+      setPendingAction({ type: 'reset-password', id: targetUserId });
       await userAPI.updatePassword(targetUserId, {
         ...resetPasswordForm,
         twoFactorToken: ownerActionTwoFactorToken
@@ -201,14 +234,18 @@ function Users() {
       showSuccess('Password updated successfully.');
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to update password'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
   const handleTransferOwnership = async (e) => {
     e.preventDefault();
+    if (pendingAction) return;
     setError('');
 
     try {
+      setPendingAction({ type: 'transfer', id: user?.id });
       await userAPI.reassignOwner(transferForm);
       showSuccess('Ownership transferred successfully. You will be logged out.');
       setTransferForm({
@@ -220,6 +257,8 @@ function Users() {
       setTimeout(() => logout(), 1500);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Failed to transfer ownership'));
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -230,6 +269,7 @@ function Users() {
       <header className="users-header">
         <h2>Users</h2>
         <p>{isOwner ? 'Manage editor access and user permissions.' : 'View users and update your own profile.'}</p>
+        {refreshing && <span className="users-refresh-status">Refreshing…</span>}
       </header>
 
       <section className="users-card">
@@ -249,7 +289,9 @@ function Users() {
             placeholder="Your email"
             required
           />
-          <button type="submit" className="btn btn-primary">Update Profile</button>
+          <button type="submit" className="btn btn-primary" disabled={Boolean(pendingAction)}>
+            {pendingAction?.type === 'profile' ? 'Updating…' : 'Update Profile'}
+          </button>
         </form>
 
         <form className="users-form-grid password-grid" onSubmit={handleUpdateMyPassword}>
@@ -276,7 +318,9 @@ function Users() {
             required
             minLength={6}
           />
-          <button type="submit" className="btn btn-secondary">Change Password</button>
+          <button type="submit" className="btn btn-secondary" disabled={Boolean(pendingAction)}>
+            {pendingAction?.type === 'password' ? 'Updating…' : 'Change Password'}
+          </button>
         </form>
       </section>
 
@@ -314,7 +358,9 @@ function Users() {
               required
               minLength={6}
             />
-            <button type="submit" className="btn btn-primary">Create Editor</button>
+            <button type="submit" className="btn btn-primary" disabled={Boolean(pendingAction)}>
+              {pendingAction?.type === 'create' ? 'Creating…' : 'Create Editor'}
+            </button>
           </form>
         </section>
       )}
@@ -358,7 +404,9 @@ function Users() {
               placeholder='Type "TRANSFER OWNERSHIP"'
               required
             />
-            <button type="submit" className="btn btn-danger">Transfer Ownership</button>
+            <button type="submit" className="btn btn-danger" disabled={Boolean(pendingAction)}>
+              {pendingAction?.type === 'transfer' ? 'Transferring…' : 'Transfer Ownership'}
+            </button>
           </form>
         </section>
       )}
@@ -430,8 +478,15 @@ function Users() {
                           <div className="users-actions">
                             {isRowEditing ? (
                               <>
-                                <button type="button" className="btn btn-primary btn-sm" onClick={() => saveEditUser(row.id)}>
-                                  Save
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => saveEditUser(row.id)}
+                                  disabled={Boolean(pendingAction)}
+                                >
+                                  {pendingAction?.type === 'edit' && pendingAction.id === row.id
+                                    ? 'Saving…'
+                                    : 'Save'}
                                 </button>
                                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditingUserId(null)}>
                                   Cancel
@@ -439,17 +494,21 @@ function Users() {
                               </>
                             ) : (
                               <>
-                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => beginEditUser(row)}>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => beginEditUser(row)} disabled={Boolean(pendingAction)}>
                                   Edit
                                 </button>
-                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setResetPasswordUserId(row.id)}>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setResetPasswordUserId(row.id)} disabled={Boolean(pendingAction)}>
                                   Reset Password
                                 </button>
-                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleToggleStatus(row)}>
-                                  {row.isActive ? 'Disable' : 'Activate'}
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleToggleStatus(row)} disabled={Boolean(pendingAction)}>
+                                  {pendingAction?.type === 'status' && pendingAction.id === row.id
+                                    ? 'Updating…'
+                                    : (row.isActive ? 'Disable' : 'Activate')}
                                 </button>
-                                <button type="button" className="btn btn-danger btn-sm" onClick={() => handleDeleteUser(row)}>
-                                  Delete
+                                <button type="button" className="btn btn-danger btn-sm" onClick={() => handleDeleteUser(row)} disabled={Boolean(pendingAction)}>
+                                  {pendingAction?.type === 'delete' && pendingAction.id === row.id
+                                    ? 'Deleting…'
+                                    : 'Delete'}
                                 </button>
                               </>
                             )}
@@ -486,8 +545,11 @@ function Users() {
                 type="button"
                 className="btn btn-primary btn-sm"
                 onClick={() => handleOwnerResetPassword(resetPasswordUserId)}
+                disabled={Boolean(pendingAction)}
               >
-                Update Password
+                {pendingAction?.type === 'reset-password'
+                  ? 'Updating…'
+                  : 'Update Password'}
               </button>
               <button
                 type="button"
