@@ -280,6 +280,8 @@ textarea {
     margin-left: 0;
     min-width: 0;
     max-width: none;
+    width: 100%;
+    flex: 0 0 auto;
   }
 }
 
@@ -296,5 +298,20 @@ textarea {
 
   .app-title-sub {
     font-size: 16px;
+  }
+
+  .app-toolbar {
+    gap: 6px;
+  }
+
+  .app-nav-button,
+  .app-logout-button {
+    min-height: 38px;
+    padding-inline: 12px;
+  }
+
+  .app-greeting {
+    flex-basis: 100%;
+    margin-left: 0;
   }
 }
