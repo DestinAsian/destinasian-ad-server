@@ -33,6 +33,7 @@ import {
   getCampaignIdsForAutomaticExpansion,
   getCampaignTitleSearchRows,
 } from "../utils/campaignSearch";
+import { sortAlphabetically } from "../utils/listOrdering";
 
 ChartJS.register(
   BarElement,
@@ -379,8 +380,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const [isAdChannelFilterOpen, setIsAdChannelFilterOpen] = useState(false);
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [campaignSort, setCampaignSort] = useState({
-    key: "startDate",
-    direction: "desc",
+    key: "name",
+    direction: "asc",
     userSelected: false,
   });
   const [campaignEditorId, setCampaignEditorId] = useState(null);
@@ -749,8 +750,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     setIsAdChannelFilterOpen(false);
     setSelectedInventoryId("");
     setCampaignSort({
-      key: "startDate",
-      direction: "desc",
+      key: "name",
+      direction: "asc",
       userSelected: false,
     });
     setCampaignEditorId(null);
@@ -2568,7 +2569,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             <div
               className={`campaign-editor-adunit-list ${(campaignEditorCampaign.adUnits || []).length > 20 ? "is-scrollable" : ""}`}
             >
-              {(campaignEditorCampaign.adUnits || []).map((adUnit) => (
+              {sortAlphabetically(campaignEditorCampaign.adUnits || []).map((adUnit) => (
                 <div key={adUnit._id} className="campaign-editor-adunit-row">
                   <div className="campaign-editor-adunit-summary">
                     <strong>{adUnit.name || "Untitled Ad Unit"}</strong>
@@ -2670,6 +2671,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           isOpen={showCampaignModal}
           title={editingCampaign ? "Edit Campaign" : "Create New Campaign"}
           onClose={handleCloseCampaignModal}
+          contentClassName="campaign-editor-modal"
         >
           <CampaignForm
             campaign={editingCampaign}

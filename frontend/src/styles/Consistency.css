@@ -1,0 +1,444 @@
+/* Shared visual system. This file is intentionally loaded after page styles so
+   controls remain consistent without changing component or business logic. */
+
+:where(button, input, select, textarea) {
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+:where(button, input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.app-topbar {
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  backdrop-filter: blur(8px);
+}
+
+.app-search-input,
+.app-nav-button,
+.app-logout-button {
+  min-height: var(--control-height);
+}
+
+.app-nav-button,
+.app-logout-button {
+  padding-inline: var(--space-4);
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.app-nav-button:hover,
+.app-logout-button:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.app-nav-dropdown-menu {
+  border-radius: var(--radius-section);
+  box-shadow: var(--shadow-soft);
+}
+
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-save,
+.btn-cancel-edit,
+.btn-create-account,
+.create-account-form .btn-submit,
+.create-account-form .btn-cancel {
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  line-height: 1.2;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.btn-sm,
+.users-actions .btn-sm,
+.account-card-footer .btn-sm {
+  min-height: var(--control-height-sm);
+  padding: 0 var(--space-3);
+}
+
+.btn:hover,
+.btn-primary:hover,
+.btn-secondary:hover,
+.btn-icon:hover,
+.btn-icon-small:hover,
+.btn-save:hover,
+.btn-cancel-edit:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.btn-icon {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  padding: 0;
+}
+
+.btn-icon-small {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 var(--space-2);
+}
+
+.form-group input:not([type="checkbox"]):not([type="radio"]),
+.form-group select,
+.ad-unit-form input:not([type="checkbox"]):not([type="radio"]),
+.ad-unit-form select,
+.inventory-form input:not([type="checkbox"]):not([type="radio"]),
+.inventory-form select,
+.inventory-edit-form input:not([type="checkbox"]):not([type="radio"]),
+.inventory-edit-form select,
+.users-form-grid input,
+.users-table input,
+.account-create-form input,
+.edit-input,
+.account-select,
+.dashboard-filter-input,
+.dashboard-date-input {
+  min-height: var(--control-height);
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+}
+
+.form-group textarea,
+.ad-unit-form textarea {
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-control);
+  line-height: 1.45;
+}
+
+.form-group,
+.ad-unit-form .form-group {
+  gap: var(--space-2);
+}
+
+.form-group label,
+.ad-unit-form .form-group label {
+  margin-bottom: 0;
+}
+
+.modal-content {
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.modal-header,
+.modal-body {
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
+}
+
+.modal-header {
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.modal-body {
+  padding-top: var(--space-5);
+  padding-bottom: var(--space-5);
+}
+
+.modal-close:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Assignment and selection surfaces */
+.campaign-inline-assignment-panel,
+.ad-unit-inline-assignment-panel {
+  padding: var(--space-4);
+  border-radius: var(--radius-section);
+  background: rgba(247, 249, 248, 0.72);
+}
+
+.assignment-popup-list {
+  gap: var(--space-4);
+}
+
+.campaign-mapping-row {
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-section);
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.campaign-mapping-row + .campaign-mapping-row {
+  margin-top: 0;
+}
+
+.campaign-mapping-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.inventory-mapping-grid {
+  gap: var(--space-2);
+}
+
+.inventory-mapping-pill {
+  min-height: 34px;
+  padding: 0 11px;
+  gap: 7px;
+  border-radius: var(--radius-control);
+  letter-spacing: 0.035em;
+  line-height: 1.2;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.inventory-mapping-pill:hover {
+  border-color: var(--accent-strong);
+  background: rgba(223, 236, 240, 0.35);
+}
+
+.inventory-mapping-pill.selected {
+  background: rgba(219, 236, 239, 0.7);
+  border-color: var(--accent-strong);
+}
+
+.inventory-mapping-pill > input[type="checkbox"],
+.selectable-checkbox-item > input[type="checkbox"],
+.share-checkbox-item > input[type="checkbox"],
+.inventory-filter-option > input[type="checkbox"] {
+  accent-color: #4f91a1;
+}
+
+.selectable-checkbox-list,
+.share-checkbox-list {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-section);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.selectable-checkbox-item,
+.share-checkbox-item {
+  min-height: 40px;
+  padding: var(--space-2) 10px;
+  border-radius: var(--radius-control);
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.selectable-checkbox-item:hover,
+.share-checkbox-item:hover {
+  background: rgba(223, 236, 240, 0.32);
+  box-shadow: none;
+}
+
+.form-popup-summary,
+.campaign-editor-section-summary {
+  min-height: var(--control-height-lg);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-section);
+}
+
+.form-row,
+.campaign-editor-form-grid,
+.ad-unit-form-grid {
+  gap: var(--space-4);
+}
+
+.form-actions,
+.share-modal-actions,
+.campaign-editor-actions {
+  gap: var(--space-3);
+}
+
+.modal-content-fullscreen .form-actions,
+.modal-content-fullscreen .share-modal-actions {
+  border-top: 1px solid var(--line-soft);
+  background: var(--bg-elevated);
+}
+
+/* Cards, tables and data-heavy pages */
+.inventory-page,
+.users-page,
+.account-management {
+  padding-left: var(--space-6);
+  padding-right: var(--space-6);
+}
+
+.campaigns-section-panel,
+.dashboard-breakdown-panel,
+.dashboard-chart-panel,
+.dashboard-ad-unit-daily-panel,
+.inventory-card,
+.users-card,
+.account-card,
+.stat-card,
+.auth-card {
+  border-radius: var(--radius-panel);
+  box-shadow: none;
+}
+
+.campaigns-section-panel,
+.dashboard-breakdown-panel,
+.inventory-card,
+.users-card {
+  padding: var(--space-5);
+}
+
+.inventory-card:hover,
+.users-card:hover,
+.account-card:hover,
+.stat-card:hover,
+.dashboard-breakdown-panel:hover,
+.dashboard-chart-panel:hover,
+.dashboard-ad-unit-daily-panel:hover,
+.ad-unit-card:hover,
+.campaign-list li:hover,
+.campaign-item:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.campaign-list li,
+.campaign-item,
+.ad-unit-card,
+.dashboard-breakdown-row,
+.campaign-table-row {
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.dashboard-breakdown-row:hover,
+.dashboard-breakdown-reset:hover {
+  transform: none;
+}
+
+.dashboard-filter-options,
+.inventory-filter-menu,
+.app-nav-dropdown-menu {
+  box-shadow: var(--shadow-soft);
+}
+
+.campaign-table-wrap,
+.users-table-wrap {
+  border-radius: var(--radius-section);
+  box-shadow: none;
+}
+
+.campaign-table th,
+.campaign-table td,
+.users-table th,
+.users-table td {
+  padding: var(--space-3) var(--space-4);
+}
+
+.campaign-table th,
+.users-table th {
+  min-height: var(--control-height);
+  font-size: 0.78rem;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.campaign-table td:nth-child(n + 3),
+.campaign-table th:nth-child(n + 3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.campaign-table-row {
+  box-shadow: none;
+}
+
+.campaign-table-campaign-row > td:first-child {
+  border-left: 3px solid rgba(111, 152, 166, 0.48);
+}
+
+.campaign-table-campaign-row.is-expanded > td:first-child {
+  border-left-color: rgba(111, 152, 166, 0.82);
+}
+
+.campaign-table-adunit-row > td:first-child {
+  border-left: 3px solid rgba(111, 152, 166, 0.18);
+}
+
+.campaign-table-expand-toggle {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+}
+
+.inventory-toolbar {
+  gap: var(--space-3);
+}
+
+.inventory-form,
+.inventory-edit-form,
+.users-form-grid {
+  gap: var(--space-4);
+}
+
+.inventory-actions,
+.inventory-edit-actions,
+.users-actions,
+.account-card-footer {
+  gap: var(--space-2);
+}
+
+.auth-card {
+  padding: var(--space-6);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+.auth-card .btn-primary:hover:not(:disabled),
+.auth-card .btn-secondary:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+.toast {
+  box-shadow: var(--shadow-soft);
+}
+
+@media (max-width: 768px) {
+  .app-topbar {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .modal-header,
+  .modal-body {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .inventory-page,
+  .users-page,
+  .account-management {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .campaigns-section-panel,
+  .dashboard-breakdown-panel,
+  .inventory-card,
+  .users-card,
+  .auth-card {
+    padding: var(--space-4);
+  }
+}

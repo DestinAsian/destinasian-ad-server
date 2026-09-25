@@ -3551,3 +3551,142 @@
     }
   }
 }
+
+/* Full-screen workspace modals keep one predictable scroll container. */
+.modal-overlay {
+  padding: 0;
+}
+
+.modal-content.modal-content-fullscreen {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.modal-content-fullscreen.campaign-editor-modal,
+.modal-content-fullscreen.assignment-editor-modal,
+.modal-content-fullscreen.banner-library-modal {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+}
+
+.modal-content-fullscreen > .modal-header {
+  flex: 0 0 auto;
+  padding-top: max(18px, env(safe-area-inset-top));
+}
+
+.modal-content-fullscreen > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+.modal-content-fullscreen .assignment-popup-list.is-scrollable,
+.modal-content-fullscreen .campaign-editor-adunit-list.is-scrollable,
+.modal-content-fullscreen .selectable-checkbox-list,
+.modal-content-fullscreen .banner-library-list,
+.modal-content-fullscreen .share-checkbox-list {
+  max-height: none;
+  overflow: visible;
+}
+
+.modal-content-fullscreen .form-actions,
+.modal-content-fullscreen .share-modal-actions {
+  position: sticky;
+  bottom: calc(-1 * max(24px, env(safe-area-inset-bottom)));
+  z-index: 20;
+  margin-top: 18px;
+  padding: 14px 0 max(12px, env(safe-area-inset-bottom));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0) 0%,
+    rgba(255, 254, 253, 0.96) 22%,
+    var(--bg-elevated) 48%
+  );
+}
+
+.campaign-inline-assignment-panel,
+.ad-unit-inline-assignment-panel {
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(247, 249, 248, 0.58);
+}
+
+.campaign-editor-inline-status,
+.inventory-selector-order-note {
+  color: var(--ink-muted);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+.inventory-selector-toggle-static {
+  cursor: default;
+}
+
+/* Keep every checkbox beside its label, including inside form groups whose
+   generic input styles add padding intended for text fields. */
+.inventory-mapping-pill,
+.selectable-checkbox-item,
+.share-checkbox-item,
+.inventory-filter-option {
+  flex-direction: row !important;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.inventory-mapping-pill > input[type="checkbox"],
+.selectable-checkbox-item > input[type="checkbox"],
+.share-checkbox-item > input[type="checkbox"],
+.inventory-filter-option > input[type="checkbox"] {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 16px;
+}
+
+.inventory-mapping-pill > span {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .modal-content.modal-content-fullscreen,
+  .modal-content-fullscreen.campaign-editor-modal,
+  .modal-content-fullscreen.assignment-editor-modal,
+  .modal-content-fullscreen.banner-library-modal {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+  }
+
+  .modal-content-fullscreen > .modal-header,
+  .modal-content-fullscreen > .modal-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .campaign-editor-inline-status,
+  .inventory-selector-order-note {
+    text-align: left;
+  }
+}

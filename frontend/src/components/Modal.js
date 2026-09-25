@@ -42,6 +42,7 @@ function Modal({
   children,
   onClose,
   contentClassName = '',
+  fullScreen = true,
   closeOnEscape = true,
   closeOnOverlay = true
 }) {
@@ -119,7 +120,7 @@ function Modal({
     >
       <div
         ref={contentRef}
-        className={`modal-content ${contentClassName}`.trim()}
+        className={`modal-content ${fullScreen ? 'modal-content-fullscreen' : ''} ${contentClassName}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

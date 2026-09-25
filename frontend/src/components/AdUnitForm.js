@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { adUnitAPI, inventoryAPI } from "../services/api";
 import Modal from "./Modal";
+import { sortSelectedFirst } from "../utils/listOrdering";
 
 const formatToLocalDateTime = (date) => {
   if (!date) return "";
@@ -53,7 +54,6 @@ function AdUnitForm({
   const [inventories, setInventories] = useState([]);
   const [inventoryError, setInventoryError] = useState(null);
   const [inventoryLoading, setInventoryLoading] = useState(true);
-  const [isInventoriesModalOpen, setIsInventoriesModalOpen] = useState(false);
   const [isBannerLibraryModalOpen, setIsBannerLibraryModalOpen] = useState(false);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
   const [startDateTouched, setStartDateTouched] = useState(false);
@@ -107,7 +107,6 @@ function AdUnitForm({
       setInitialStartDateValue(defaultStartDate);
       setImagePreview(null);
     }
-    setIsInventoriesModalOpen(false);
     setIsBannerLibraryModalOpen(false);
     setInventorySearchQuery("");
     if (bannerLibraryRequestRef.current) {
@@ -324,23 +323,34 @@ function AdUnitForm({
       : "No ad channels selected";
   const normalizedInventorySearch = String(inventorySearchQuery || "").trim().toLowerCase();
   const visibleInventories = useMemo(() => {
-    if (!normalizedInventorySearch) return inventories;
-    return inventories.filter((inventory) =>
-      String(inventory?.name || "").toLowerCase().includes(normalizedInventorySearch)
+    const matchingInventories = normalizedInventorySearch
+      ? inventories.filter((inventory) =>
+          String(inventory?.name || "").toLowerCase().includes(normalizedInventorySearch),
+        )
+      : inventories;
+    const selectedIds = new Set(formData.inventoryIds.map(String));
+    return sortSelectedFirst(
+      matchingInventories,
+      (inventory) => selectedIds.has(String(inventory?._id || "")),
     );
-  }, [inventories, normalizedInventorySearch]);
+  }, [formData.inventoryIds, inventories, normalizedInventorySearch]);
   const normalizedBannerLibrarySearch = String(bannerLibrarySearch || "").trim().toLowerCase();
   const visibleBannerLibrary = useMemo(() => {
-    if (!normalizedBannerLibrarySearch) return bannerLibrary;
-    return bannerLibrary.filter((banner) => {
+    const matchingBanners = normalizedBannerLibrarySearch
+      ? bannerLibrary.filter((banner) => {
       const searchableText = [
         banner?.name,
         banner?.campaign?.name,
         banner?.mimeType
       ].filter(Boolean).join(" ").toLowerCase();
       return searchableText.includes(normalizedBannerLibrarySearch);
-    });
-  }, [bannerLibrary, normalizedBannerLibrarySearch]);
+        })
+      : bannerLibrary;
+    return sortSelectedFirst(
+      matchingBanners,
+      (banner) => banner?.imageUrl === formData.imageUrl,
+    );
+  }, [bannerLibrary, formData.imageUrl, normalizedBannerLibrarySearch]);
 
   const applyImageSelection = (imageUrl) => {
     setFormData((prev) => ({
@@ -748,19 +758,18 @@ function AdUnitForm({
 
       <div className="form-group form-full-width">
         <div className="inventory-selector-panel inventory-selector-summary-panel">
-          <button
-            type="button"
-            className="inventory-selector-toggle"
-            onClick={() => setIsInventoriesModalOpen(true)}
-          >
+          <div className="inventory-selector-toggle inventory-selector-toggle-static">
             <span className="inventory-selector-title-wrap">
               <span className="inventory-selector-title">Ad Channels *</span>
               <span className="inventory-selector-summary">
                 {inventorySummaryLabel}
               </span>
             </span>
-            <span className="btn btn-secondary btn-sm">Manage</span>
-          </button>
+            <span className="inventory-selector-order-note">Selected items are shown first</span>
+          </div>
+          <div className="ad-unit-inline-assignment-panel">
+            {inventorySelectorContent}
+          </div>
         </div>
         {inventoryError && (
           <span className="error-message">{inventoryError}</span>
@@ -788,25 +797,6 @@ function AdUnitForm({
         </button>
       </div>
     </form>
-    <Modal
-      isOpen={isInventoriesModalOpen}
-      title="Ad Channel Assignments"
-      onClose={() => setIsInventoriesModalOpen(false)}
-      contentClassName="assignment-editor-modal"
-    >
-      <div className="assignment-popup-content">
-        {inventorySelectorContent}
-        <div className="form-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setIsInventoriesModalOpen(false)}
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    </Modal>
     <Modal
       isOpen={isBannerLibraryModalOpen}
       title="Banner Ads Library"

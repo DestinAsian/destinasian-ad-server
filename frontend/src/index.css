@@ -16,7 +16,22 @@
   --danger-text: #8a4d44;
   --success-soft: #e6efe8;
   --success-text: #355444;
-  --shadow-soft: 0 16px 40px rgba(17, 24, 28, 0.05);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --control-height-sm: 36px;
+  --control-height: 44px;
+  --control-height-lg: 48px;
+  --radius-control: 10px;
+  --radius-panel: 16px;
+  --radius-section: 12px;
+  --shadow-soft: 0 4px 14px rgba(17, 24, 28, 0.045);
+  --focus-ring: 0 0 0 3px rgba(140, 184, 193, 0.2);
+  --transition-fast: 120ms ease;
 }
 
 body {
