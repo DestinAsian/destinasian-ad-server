@@ -128,8 +128,8 @@
   gap: var(--space-2);
 }
 
-.form-group label,
-.ad-unit-form .form-group label {
+.form-group > label,
+.ad-unit-form .form-group > label {
   margin-bottom: 0;
 }
 
@@ -184,8 +184,6 @@
 }
 
 .campaign-mapping-title {
-  font-size: 0.88rem;
-  font-weight: 600;
   color: var(--ink-strong);
 }
 
@@ -352,7 +350,6 @@
 .campaign-table th,
 .users-table th {
   min-height: var(--control-height);
-  font-size: 0.78rem;
   letter-spacing: 0.045em;
   text-transform: uppercase;
 }
@@ -441,7 +438,7 @@ body {
 }
 
 :where(
-  .form-group label,
+  .form-group > label,
   .inventory-field > span,
   .inventory-toolbar label,
   .account-list-label,
@@ -449,7 +446,6 @@ body {
   .users-owner-action-token label
 ) {
   color: var(--ink-body);
-  font-weight: 600;
 }
 
 :where(
@@ -551,16 +547,6 @@ body {
 .stat-card h4,
 .dashboard-kpi-card h4 {
   color: #47545a;
-  font-weight: 600;
-}
-
-.inventory-inline-metrics span,
-.inventory-summary-toggle,
-.inventory-collapsed-summary span,
-.role-pill,
-.status-pill,
-.share-level {
-  font-weight: 600;
 }
 
 .inventory-status.active,
@@ -591,6 +577,350 @@ body {
   color: var(--ink-muted);
 }
 
+/* Compact account control: visually belongs to the toolbar instead of
+   reading as a separate oversized card. */
+.account-selector {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-section);
+}
+
+.account-header {
+  width: 100%;
+  min-height: var(--control-height);
+  gap: var(--space-3);
+}
+
+.account-dropdown {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.account-label {
+  flex: 0 0 auto;
+  color: var(--ink-body);
+}
+
+.account-select {
+  width: 100%;
+  min-width: 0;
+  padding-right: 40px;
+}
+
+/* Consistent native-light checkbox treatment across forms and assignment
+   surfaces. It remains a real input, but no longer changes appearance by OS. */
+:where(input[type="checkbox"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  padding: 0 !important;
+  border: 1.5px solid #788589;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+  flex: 0 0 16px;
+}
+
+:where(input[type="checkbox"])::before {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg) scale(0);
+  transform-origin: center;
+}
+
+:where(input[type="checkbox"]):checked {
+  border-color: #447f8d;
+  background: #4f91a1;
+}
+
+:where(input[type="checkbox"]):checked::before {
+  transform: translateY(-1px) rotate(45deg) scale(1);
+}
+
+:where(input[type="checkbox"]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+:where(input[type="checkbox"]):disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.inventory-mapping-pill > input[type="checkbox"],
+.selectable-checkbox-item > input[type="checkbox"],
+.share-checkbox-item > input[type="checkbox"],
+.inventory-filter-option > input[type="checkbox"],
+.inventory-toggle > input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  padding: 0 !important;
+  border: 1.5px solid #788589;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  flex: 0 0 16px;
+}
+
+.inventory-mapping-pill > input[type="checkbox"]:checked,
+.selectable-checkbox-item > input[type="checkbox"]:checked,
+.share-checkbox-item > input[type="checkbox"]:checked,
+.inventory-filter-option > input[type="checkbox"]:checked,
+.inventory-toggle > input[type="checkbox"]:checked {
+  border-color: #447f8d;
+  background: #4f91a1;
+}
+
+.inventory-mapping-grid {
+  gap: 9px;
+}
+
+.inventory-mapping-pill {
+  min-height: 38px;
+  padding: 0 12px;
+  gap: 9px;
+}
+
+.inventory-mapping-pill > span {
+  line-height: 1.25;
+}
+
+.selectable-checkbox-item,
+.share-checkbox-item,
+.inventory-filter-option,
+.inventory-toggle {
+  gap: 10px;
+}
+
+/* Lightweight, platform-independent action icons. */
+.ui-icon {
+  display: block;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.btn-icon {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  padding: 0;
+  border-color: var(--line-soft);
+  background: var(--bg-elevated);
+}
+
+.btn-icon.btn-status {
+  padding: 0;
+}
+
+.btn-icon.btn-edit {
+  color: var(--accent-text);
+}
+
+.btn-icon.btn-delete {
+  color: var(--danger-text);
+  background: #fff9f7;
+  border-color: #dfc1ba;
+}
+
+.btn-icon:disabled,
+.btn-icon-small:disabled {
+  color: var(--ink-muted);
+  background: var(--bg-subtle);
+  opacity: 0.62;
+}
+
+.campaign-editor-actions,
+.campaign-editor-adunit-actions {
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.campaign-table-expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--accent-text);
+}
+
+.campaign-table-expand-toggle:hover:not(:disabled),
+.campaign-table-expand-toggle:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+}
+
+.campaign-table-expand-toggle:disabled {
+  color: var(--ink-muted);
+  opacity: 0.7;
+}
+
+/* Modal chrome and action areas use one spacing rhythm. */
+.modal-header {
+  min-height: 68px;
+  gap: var(--space-4);
+}
+
+.modal-header h2 {
+  line-height: 1.15;
+}
+
+.modal-close {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-elevated);
+  line-height: 1;
+}
+
+.campaign-editor-actions {
+  min-height: var(--control-height-sm);
+}
+
+.campaign-editor-adunit-row {
+  min-height: 58px;
+  padding: var(--space-3) var(--space-4);
+}
+
+.form-popup-summary,
+.campaign-editor-section-summary {
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.form-actions,
+.share-modal-actions,
+.campaign-editor-actions {
+  padding-block: var(--space-1);
+}
+
+.btn-primary.new-ad-unit-button {
+  width: auto;
+  min-width: 160px;
+}
+
+.banner-library-open-button {
+  width: auto !important;
+  min-width: 120px;
+}
+
+.campaign-editor-modal .ad-unit-form > .form-full-width {
+  grid-column: 1 / -1;
+}
+
+.campaign-editor-modal .image-upload-actions {
+  justify-content: flex-start;
+  margin-bottom: var(--space-2);
+}
+
+.campaign-editor-modal .image-preview {
+  width: 140px;
+  max-width: 140px;
+}
+
+/* Assignment choices keep the roomy pill treatment used in the approved UI.
+   Labels remain in their original casing and the checkbox stays beside text. */
+.inventory-mapping-grid {
+  gap: 12px 14px;
+}
+
+.inventory-mapping-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 16px;
+  gap: 10px;
+  border-radius: 999px;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.inventory-mapping-pill > input[type="checkbox"] {
+  align-self: center;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex-basis: 18px;
+}
+
+.inventory-mapping-pill > span {
+  display: block;
+  align-self: center;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+/* Creative artwork must retain its natural rectangular edges. Rounded UI
+   containers remain unchanged; only images and image-preview frames are square. */
+img,
+.ad-unit-image,
+.ad-unit-preview-slot,
+.banner-library-thumb,
+.image-preview,
+.campaign-table-preview,
+.campaign-table-preview-empty,
+.dashboard-breakdown-preview,
+.dashboard-ad-unit-daily-preview {
+  border-radius: 0 !important;
+}
+
+.btn-remove-image {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
+  transition:
+    background-color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.btn-remove-image:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.upload-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+  color: var(--accent-text);
+}
+
+.modal-content-fullscreen .form-actions,
+.modal-content-fullscreen .share-modal-actions {
+  justify-content: flex-end;
+}
+
+.modal-content-fullscreen .form-actions > .btn,
+.modal-content-fullscreen .share-modal-actions > .btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 180px;
+}
+
 @media (max-width: 768px) {
   .app-topbar {
     padding: var(--space-3) var(--space-4);
@@ -615,5 +945,17 @@ body {
   .users-card,
   .auth-card {
     padding: var(--space-4);
+  }
+
+  .modal-content-fullscreen .form-actions,
+  .modal-content-fullscreen .share-modal-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .modal-content-fullscreen .form-actions > .btn,
+  .modal-content-fullscreen .share-modal-actions > .btn {
+    width: 100%;
+    min-width: 0;
   }
 }

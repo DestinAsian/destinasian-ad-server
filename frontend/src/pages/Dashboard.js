@@ -25,6 +25,7 @@ import CampaignForm from "../components/CampaignForm";
 import AdUnitForm from "../components/AdUnitForm";
 import AccountSelector from "../components/AccountSelector";
 import Modal from "../components/Modal";
+import UiIcon from "../components/UiIcon";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useConfirm } from "../contexts/ConfirmContext";
@@ -2383,11 +2384,16 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                                       }
                                     }}
                                   >
-                                    {campaignAdUnits.length > 0
-                                      ? isExpanded
-                                        ? "−"
-                                        : "+"
-                                      : "·"}
+                                    <UiIcon
+                                      name={
+                                        campaignAdUnits.length > 0
+                                          ? isExpanded
+                                            ? "chevron-up"
+                                            : "chevron-down"
+                                          : "minus"
+                                      }
+                                      size={17}
+                                    />
                                   </button>
                                 </div>
                               </td>
@@ -2496,7 +2502,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                       : "Activate campaign"
                   }
                 >
-                  {effectiveCampaignEditorStatus === "active" ? "⏸" : "▶"}
+                  <UiIcon
+                    name={effectiveCampaignEditorStatus === "active" ? "pause" : "play"}
+                  />
                 </button>
                 <button
                   className="btn-icon btn-edit"
@@ -2512,7 +2520,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                   title="Duplicate"
                   aria-label="Duplicate campaign"
                 >
-                  📄
+                  <UiIcon name="duplicate" />
                 </button>
                 <button
                   className="btn-icon btn-delete"
@@ -2528,7 +2536,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                   title="Delete"
                   aria-label="Delete campaign"
                 >
-                  🗑️
+                  <UiIcon name="delete" />
                 </button>
               </div>
 
@@ -2594,7 +2602,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                           : "Activate ad unit"
                       }
                     >
-                      {adUnit.status === "active" ? "⏸" : "▶"}
+                      <UiIcon name={adUnit.status === "active" ? "pause" : "play"} />
                     </button>
                     <button
                       className="btn-icon btn-edit"
@@ -2608,7 +2616,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                       title="Duplicate"
                       aria-label="Duplicate ad unit"
                     >
-                      📄
+                      <UiIcon name="duplicate" />
                     </button>
                     <button
                       className="btn-icon btn-edit"
@@ -2627,7 +2635,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                       title="Edit"
                       aria-label="Edit ad unit"
                     >
-                      ✏️
+                      <UiIcon name="edit" />
                     </button>
                     <button
                       className="btn-icon btn-delete"
@@ -2641,7 +2649,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                       title="Delete"
                       aria-label="Delete ad unit"
                     >
-                      🗑️
+                      <UiIcon name="delete" />
                     </button>
                   </div>
                 </div>

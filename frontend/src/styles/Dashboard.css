@@ -630,14 +630,14 @@
   gap: 6px;
 }
 
-.form-group label {
+.form-group > label {
   font-weight: 500;
   color: #333;
   font-size: 14px;
 }
 
-.form-group input,
-.form-group textarea {
+.form-group > input,
+.form-group > textarea {
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -646,15 +646,15 @@
   transition: border-color 0.2s;
 }
 
-.form-group input:focus,
-.form-group textarea:focus {
+.form-group > input:focus,
+.form-group > textarea:focus {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
 
-.form-group input.error,
-.form-group textarea.error {
+.form-group > input.error,
+.form-group > textarea.error {
   border-color: #dc3545;
 }
 
@@ -927,15 +927,15 @@
   flex-direction: column;
 }
 
-.ad-unit-form .form-group label {
+.ad-unit-form .form-group > label {
   margin-bottom: 5px;
   font-weight: 500;
   color: #333;
   font-size: 14px;
 }
 
-.ad-unit-form select,
-.ad-unit-form input {
+.ad-unit-form .form-group > select,
+.ad-unit-form .form-group > input {
   padding: 10px 12px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -944,20 +944,20 @@
   transition: border-color 0.3s ease;
 }
 
-.ad-unit-form select:hover,
-.ad-unit-form input:hover {
+.ad-unit-form .form-group > select:hover,
+.ad-unit-form .form-group > input:hover {
   border-color: #999;
 }
 
-.ad-unit-form select:focus,
-.ad-unit-form input:focus {
+.ad-unit-form .form-group > select:focus,
+.ad-unit-form .form-group > input:focus {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
 
-.ad-unit-form select.error,
-.ad-unit-form input.error {
+.ad-unit-form .form-group > select.error,
+.ad-unit-form .form-group > input.error {
   border-color: #dc3545;
 }
 
@@ -3180,8 +3180,8 @@
   gap: 8px;
 }
 
-.form-group label,
-.ad-unit-form .form-group label {
+.form-group > label,
+.ad-unit-form .form-group > label {
   font-size: 0.8rem;
   font-weight: 500;
   letter-spacing: 0.08em;
@@ -3189,10 +3189,10 @@
   color: var(--ink-muted);
 }
 
-.form-group input,
-.form-group textarea,
-.ad-unit-form select,
-.ad-unit-form input,
+.form-group > input,
+.form-group > textarea,
+.ad-unit-form .form-group > select,
+.ad-unit-form .form-group > input,
 .account-select,
 .create-account-form input {
   border: 1px solid var(--line-strong);
@@ -3202,10 +3202,10 @@
   color: var(--ink-body);
 }
 
-.form-group input:focus,
-.form-group textarea:focus,
-.ad-unit-form select:focus,
-.ad-unit-form input:focus,
+.form-group > input:focus,
+.form-group > textarea:focus,
+.ad-unit-form .form-group > select:focus,
+.ad-unit-form .form-group > input:focus,
 .account-select:focus,
 .create-account-form input:focus {
   border-color: rgba(124, 170, 184, 0.75);
@@ -3631,7 +3631,6 @@
 .campaign-editor-inline-status,
 .inventory-selector-order-note {
   color: var(--ink-muted);
-  font-size: 0.76rem;
   text-align: right;
 }
 

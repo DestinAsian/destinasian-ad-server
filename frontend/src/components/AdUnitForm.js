@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { adUnitAPI, inventoryAPI } from "../services/api";
 import Modal from "./Modal";
+import UiIcon from "./UiIcon";
 import { sortSelectedFirst } from "../utils/listOrdering";
 
 const formatToLocalDateTime = (date) => {
@@ -637,7 +638,7 @@ function AdUnitForm({
   return (
     <>
     <form onSubmit={handleSubmit} className="ad-unit-form">
-      <div className="form-group">
+      <div className="form-group form-full-width">
         <label htmlFor="name">Ad Unit Name *</label>
         <input
           type="text"
@@ -686,7 +687,7 @@ function AdUnitForm({
       </div>
 
       <div className="form-row">
-        <div className="form-group">
+        <div className="form-group ad-unit-image-field">
           <label htmlFor="image">Ad Image (1:1 Square) *</label>
           <div className="image-upload-container">
             <div className="image-upload-actions">
@@ -708,7 +709,8 @@ function AdUnitForm({
                   onClick={removeImage}
                   disabled={submitting}
                 >
-                  ✕ Remove
+                  <UiIcon name="close" size={14} />
+                  <span>Remove</span>
                 </button>
               </div>
             ) : (
@@ -719,7 +721,7 @@ function AdUnitForm({
                 onDragLeave={handleImageDragLeave}
                 onDrop={handleImageDrop}
               >
-                <div className="upload-icon">📸</div>
+                <div className="upload-icon"><UiIcon name="image" size={28} /></div>
                 <div className="upload-text">Drag and drop image here, or click to upload</div>
                 <div className="upload-hint">PNG, JPG, WebP up to 1MB. GIF up to 10MB.</div>
               </label>
@@ -739,7 +741,7 @@ function AdUnitForm({
           )}
         </div>
 
-        <div className="form-group">
+        <div className="form-group ad-unit-url-field">
           <label htmlFor="clickUrl">Click-Through URL *</label>
           <input
             type="url"
