@@ -389,8 +389,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const [campaignEditorStatus, setCampaignEditorStatus] = useState(null);
   const [campaignStatusUpdatingId, setCampaignStatusUpdatingId] =
     useState(null);
-  const [isCampaignAdUnitsModalOpen, setIsCampaignAdUnitsModalOpen] =
-    useState(false);
   const [expandedCampaignIds, setExpandedCampaignIds] = useState(
     () => new Set(),
   );
@@ -760,7 +758,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     setCampaignStatusUpdatingId(null);
     setPendingCampaignAction(null);
     setPendingAdUnitAction(null);
-    setIsCampaignAdUnitsModalOpen(false);
     setExpandedCampaignIds(new Set());
     setDateRange(getDefaultDateRange());
     loadInventories();
@@ -997,7 +994,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     }
     setCampaignEditorId(null);
     setCampaignEditorStatus(null);
-    setIsCampaignAdUnitsModalOpen(false);
     setEditingCampaign(null);
     setError(null);
   };
@@ -1006,7 +1002,6 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     setShowCampaignModal(false);
     setCampaignEditorId(null);
     setCampaignEditorStatus(null);
-    setIsCampaignAdUnitsModalOpen(false);
     setEditingCampaign(null);
     setError(null);
   };
@@ -1026,7 +1021,11 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     handleOpenCreateAdUnitModal(campaignId);
   };
 
-  const handleOpenEditAdUnitModal = async (adUnit, campaignId = null) => {
+  const handleOpenEditAdUnitModal = async (
+    adUnit,
+    campaignId = null,
+    closeCampaignEditor = false,
+  ) => {
     if (pendingAdUnitAction) return;
     setError(null);
     setPendingAdUnitAction({ type: "load", id: adUnit._id });
@@ -1042,6 +1041,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         selectedCampaignRef.current = resolvedCampaignId;
         setSelectedCampaign(resolvedCampaignId);
       }
+      if (closeCampaignEditor) handleCloseCampaignEditor();
       setEditingAdUnit(detailedAdUnit);
       setShowAdUnitModal(true);
     } catch (err) {
@@ -2543,131 +2543,144 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 submitting={submitting}
                 onSubmit={handleSubmitCampaign}
                 onCancel={handleCloseCampaignEditor}
-                onManageAdUnits={() => setIsCampaignAdUnitsModalOpen(true)}
+                adUnitManagementContent={(
+                  <div className="assignment-popup-content">
+                    <div className="campaign-inline-adunit-header">
+                      <div>
+                        <strong>Campaign Ad Units</strong>
+                        <span>Manage the Ad Units without leaving this editor.</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm new-ad-unit-button"
+                        onClick={() =>
+                          handleOpenCreateAdUnitFromCampaignEditor(
+                            campaignEditorCampaign._id,
+                          )
+                        }
+                      >
+                        + New Ad Unit
+                      </button>
+                    </div>
+                    <div
+                      className={`campaign-editor-adunit-list ${(campaignEditorCampaign.adUnits || []).length > 20 ? "is-scrollable" : ""}`}
+                    >
+                      {sortAlphabetically(
+                        campaignEditorCampaign.adUnits || [],
+                      ).map((adUnit) => (
+                        <div
+                          key={adUnit._id}
+                          className="campaign-editor-adunit-row"
+                        >
+                          <div className="campaign-editor-adunit-summary">
+                            <strong>{adUnit.name || "Untitled Ad Unit"}</strong>
+                            <span>{adUnit.status || "active"}</span>
+                          </div>
+                          <div className="campaign-editor-adunit-actions">
+                            <button
+                              className={`btn-icon btn-status ${adUnit.status}`}
+                              type="button"
+                              disabled={Boolean(pendingAdUnitAction)}
+                              aria-busy={
+                                pendingAdUnitAction?.type === "status" &&
+                                pendingAdUnitAction?.id === adUnit._id
+                              }
+                              onClick={() =>
+                                handleToggleAdUnitStatus(
+                                  adUnit._id,
+                                  adUnit.status,
+                                )
+                              }
+                              title={
+                                adUnit.status === "active"
+                                  ? "Pause"
+                                  : "Activate"
+                              }
+                              aria-label={
+                                adUnit.status === "active"
+                                  ? "Pause ad unit"
+                                  : "Activate ad unit"
+                              }
+                            >
+                              <UiIcon
+                                name={
+                                  adUnit.status === "active" ? "pause" : "play"
+                                }
+                              />
+                            </button>
+                            <button
+                              className="btn-icon btn-edit"
+                              type="button"
+                              disabled={Boolean(pendingAdUnitAction)}
+                              aria-busy={
+                                pendingAdUnitAction?.type === "duplicate" &&
+                                pendingAdUnitAction?.id === adUnit._id
+                              }
+                              onClick={() => handleDuplicateAdUnit(adUnit)}
+                              title="Duplicate"
+                              aria-label="Duplicate ad unit"
+                            >
+                              <UiIcon name="duplicate" />
+                            </button>
+                            <button
+                              className="btn-icon btn-edit"
+                              type="button"
+                              disabled={Boolean(pendingAdUnitAction)}
+                              aria-busy={
+                                pendingAdUnitAction?.type === "load" &&
+                                pendingAdUnitAction?.id === adUnit._id
+                              }
+                              onClick={() =>
+                                handleOpenEditAdUnitModal(
+                                  adUnit,
+                                  campaignEditorCampaign._id,
+                                  true,
+                                )
+                              }
+                              title="Edit"
+                              aria-label="Edit ad unit"
+                            >
+                              <UiIcon name="edit" />
+                            </button>
+                            <button
+                              className="btn-icon btn-delete"
+                              type="button"
+                              disabled={Boolean(pendingAdUnitAction)}
+                              aria-busy={
+                                pendingAdUnitAction?.type === "delete" &&
+                                pendingAdUnitAction?.id === adUnit._id
+                              }
+                              onClick={() => handleDeleteAdUnit(adUnit._id)}
+                              title="Delete"
+                              aria-label="Delete ad unit"
+                            >
+                              <UiIcon name="delete" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {(campaignEditorCampaign.adUnits || []).length === 0 && (
+                      <p className="no-data">
+                        No ad units in this campaign.{" "}
+                        <button
+                          type="button"
+                          className="link-btn"
+                          onClick={() =>
+                            handleOpenCreateAdUnitFromCampaignEditor(
+                              campaignEditorCampaign._id,
+                            )
+                          }
+                        >
+                          Create one
+                        </button>
+                      </p>
+                    )}
+                  </div>
+                )}
               />
             </div>
           )}
-        </Modal>
-      )}
-
-      {isCampaignView && campaignEditorCampaign && (
-        <Modal
-          isOpen={isCampaignAdUnitsModalOpen}
-          title={`Ad Units for ${campaignEditorCampaign.name}`}
-          onClose={() => setIsCampaignAdUnitsModalOpen(false)}
-          contentClassName="assignment-editor-modal"
-        >
-          <div className="assignment-popup-content">
-            <div className="form-group form-full-width">
-              <button
-                type="button"
-                className="btn btn-primary btn-sm new-ad-unit-button"
-                onClick={() =>
-                  handleOpenCreateAdUnitFromCampaignEditor(
-                    campaignEditorCampaign._id,
-                  )
-                }
-              >
-                + New Ad Unit
-              </button>
-            </div>
-            <div
-              className={`campaign-editor-adunit-list ${(campaignEditorCampaign.adUnits || []).length > 20 ? "is-scrollable" : ""}`}
-            >
-              {sortAlphabetically(campaignEditorCampaign.adUnits || []).map((adUnit) => (
-                <div key={adUnit._id} className="campaign-editor-adunit-row">
-                  <div className="campaign-editor-adunit-summary">
-                    <strong>{adUnit.name || "Untitled Ad Unit"}</strong>
-                    <span>{adUnit.status || "active"}</span>
-                  </div>
-                  <div className="campaign-editor-adunit-actions">
-                    <button
-                      className={`btn-icon btn-status ${adUnit.status}`}
-                      type="button"
-                      disabled={Boolean(pendingAdUnitAction)}
-                      aria-busy={
-                        pendingAdUnitAction?.type === "status" &&
-                        pendingAdUnitAction?.id === adUnit._id
-                      }
-                      onClick={() =>
-                        handleToggleAdUnitStatus(adUnit._id, adUnit.status)
-                      }
-                      title={adUnit.status === "active" ? "Pause" : "Activate"}
-                      aria-label={
-                        adUnit.status === "active"
-                          ? "Pause ad unit"
-                          : "Activate ad unit"
-                      }
-                    >
-                      <UiIcon name={adUnit.status === "active" ? "pause" : "play"} />
-                    </button>
-                    <button
-                      className="btn-icon btn-edit"
-                      type="button"
-                      disabled={Boolean(pendingAdUnitAction)}
-                      aria-busy={
-                        pendingAdUnitAction?.type === "duplicate" &&
-                        pendingAdUnitAction?.id === adUnit._id
-                      }
-                      onClick={() => handleDuplicateAdUnit(adUnit)}
-                      title="Duplicate"
-                      aria-label="Duplicate ad unit"
-                    >
-                      <UiIcon name="duplicate" />
-                    </button>
-                    <button
-                      className="btn-icon btn-edit"
-                      type="button"
-                      disabled={Boolean(pendingAdUnitAction)}
-                      aria-busy={
-                        pendingAdUnitAction?.type === "load" &&
-                        pendingAdUnitAction?.id === adUnit._id
-                      }
-                      onClick={() =>
-                        handleOpenEditAdUnitModal(
-                          adUnit,
-                          campaignEditorCampaign._id,
-                        )
-                      }
-                      title="Edit"
-                      aria-label="Edit ad unit"
-                    >
-                      <UiIcon name="edit" />
-                    </button>
-                    <button
-                      className="btn-icon btn-delete"
-                      type="button"
-                      disabled={Boolean(pendingAdUnitAction)}
-                      aria-busy={
-                        pendingAdUnitAction?.type === "delete" &&
-                        pendingAdUnitAction?.id === adUnit._id
-                      }
-                      onClick={() => handleDeleteAdUnit(adUnit._id)}
-                      title="Delete"
-                      aria-label="Delete ad unit"
-                    >
-                      <UiIcon name="delete" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {(campaignEditorCampaign.adUnits || []).length === 0 && (
-              <p className="no-data">
-                No ad units in this campaign.{" "}
-                <button
-                  className="link-btn"
-                  onClick={() =>
-                    handleOpenCreateAdUnitFromCampaignEditor(
-                      campaignEditorCampaign._id,
-                    )
-                  }
-                >
-                  Create one
-                </button>
-              </p>
-            )}
-          </div>
         </Modal>
       )}
 

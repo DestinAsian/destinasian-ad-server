@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { adUnitAPI, inventoryAPI } from "../services/api";
-import Modal from "./Modal";
 import UiIcon from "./UiIcon";
 import { sortSelectedFirst } from "../utils/listOrdering";
 
@@ -55,7 +54,7 @@ function AdUnitForm({
   const [inventories, setInventories] = useState([]);
   const [inventoryError, setInventoryError] = useState(null);
   const [inventoryLoading, setInventoryLoading] = useState(true);
-  const [isBannerLibraryModalOpen, setIsBannerLibraryModalOpen] = useState(false);
+  const [isBannerLibraryOpen, setIsBannerLibraryOpen] = useState(false);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
   const [startDateTouched, setStartDateTouched] = useState(false);
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
@@ -108,7 +107,7 @@ function AdUnitForm({
       setInitialStartDateValue(defaultStartDate);
       setImagePreview(null);
     }
-    setIsBannerLibraryModalOpen(false);
+    setIsBannerLibraryOpen(false);
     setInventorySearchQuery("");
     if (bannerLibraryRequestRef.current) {
       bannerLibraryRequestRef.current.abort();
@@ -172,7 +171,7 @@ function AdUnitForm({
   };
 
   const openBannerLibrary = () => {
-    setIsBannerLibraryModalOpen(true);
+    setIsBannerLibraryOpen(true);
     if (bannerLibraryStatus === "idle") {
       loadBannerLibrary();
     }
@@ -359,7 +358,6 @@ function AdUnitForm({
       imageUrl,
     }));
     setImagePreview(imageUrl);
-    setIsBannerLibraryModalOpen(false);
     setImageError(null);
     if (errors.imageUrl) {
       setErrors((prev) => {
@@ -694,10 +692,18 @@ function AdUnitForm({
               <button
                 type="button"
                 className="btn btn-secondary btn-sm banner-library-open-button"
-                onClick={openBannerLibrary}
+                onClick={() => {
+                  if (isBannerLibraryOpen) {
+                    setIsBannerLibraryOpen(false);
+                  } else {
+                    openBannerLibrary();
+                  }
+                }}
                 disabled={submitting}
+                aria-expanded={isBannerLibraryOpen}
+                aria-controls="banner-library-inline"
               >
-                Library
+                {isBannerLibraryOpen ? "Hide Library" : "Banner Library"}
               </button>
             </div>
             {imagePreview ? (
@@ -758,6 +764,15 @@ function AdUnitForm({
         </div>
       </div>
 
+      {isBannerLibraryOpen && (
+        <div
+          id="banner-library-inline"
+          className="banner-library-inline form-group form-full-width"
+        >
+          {bannerLibraryContent}
+        </div>
+      )}
+
       <div className="form-group form-full-width">
         <div className="inventory-selector-panel inventory-selector-summary-panel">
           <div className="inventory-selector-toggle inventory-selector-toggle-static">
@@ -799,14 +814,6 @@ function AdUnitForm({
         </button>
       </div>
     </form>
-    <Modal
-      isOpen={isBannerLibraryModalOpen}
-      title="Banner Ads Library"
-      onClose={() => setIsBannerLibraryModalOpen(false)}
-      contentClassName="banner-library-modal"
-    >
-      {bannerLibraryContent}
-    </Modal>
     </>
   );
 }

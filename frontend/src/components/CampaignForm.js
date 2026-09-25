@@ -62,7 +62,7 @@ function CampaignForm({
   campaign,
   onSubmit,
   onCancel,
-  onManageAdUnits,
+  adUnitManagementContent,
   statusOverride,
   submitting = false,
 }) {
@@ -437,16 +437,15 @@ function CampaignForm({
                   {(campaign.adUnits || []).length} ad units in this campaign
                 </span>
               </div>
-              {onManageAdUnits && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={onManageAdUnits}
-                >
-                  Manage Ad Units
-                </button>
-              )}
+              <span className="campaign-editor-inline-status">
+                Manage Ad Units below
+              </span>
             </div>
+            {adUnitManagementContent && (
+              <div className="campaign-inline-adunit-panel form-group form-full-width">
+                {adUnitManagementContent}
+              </div>
+            )}
             <div className="form-group form-full-width">
               <label>Ad Unit Ad Channel Assignments</label>
               <div className="form-popup-summary">

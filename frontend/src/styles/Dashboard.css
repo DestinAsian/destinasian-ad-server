@@ -2574,6 +2574,31 @@
   gap: 10px;
 }
 
+.campaign-inline-adunit-panel {
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(247, 249, 248, 0.58);
+}
+
+.campaign-inline-adunit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.campaign-inline-adunit-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.campaign-inline-adunit-header span {
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
 .campaign-editor-adunit-row {
   display: flex;
   align-items: center;
@@ -3679,6 +3704,14 @@
   background: rgba(247, 249, 248, 0.58);
 }
 
+.banner-library-inline {
+  margin-bottom: 12px;
+}
+
+.banner-library-inline .banner-library-panel {
+  margin-bottom: 0;
+}
+
 .campaign-editor-inline-status,
 .inventory-selector-order-note {
   color: var(--ink-muted);
@@ -3727,6 +3760,15 @@
     height: 100dvh;
     max-width: none;
     max-height: none;
+  }
+
+  .campaign-inline-adunit-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .campaign-inline-adunit-header .new-ad-unit-button {
+    width: 100%;
   }
 
   .modal-content-fullscreen > .modal-header,
