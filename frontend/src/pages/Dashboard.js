@@ -2384,16 +2384,13 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                                       }
                                     }}
                                   >
-                                    <UiIcon
-                                      name={
-                                        campaignAdUnits.length > 0
-                                          ? isExpanded
-                                            ? "chevron-up"
-                                            : "chevron-down"
-                                          : "minus"
-                                      }
-                                      size={17}
-                                    />
+                                    {campaignAdUnits.length > 0 ? (
+                                      <span aria-hidden="true">
+                                        {isExpanded ? "−" : "+"}
+                                      </span>
+                                    ) : (
+                                      <UiIcon name="minus" size={17} />
+                                    )}
                                   </button>
                                 </div>
                               </td>
