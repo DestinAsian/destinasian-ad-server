@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { adUnitAPI, inventoryAPI } from "../services/api";
-import Modal from "./Modal";
+import UiIcon from "./UiIcon";
+import { sortSelectedFirst } from "../utils/listOrdering";
 
 const formatToLocalDateTime = (date) => {
   if (!date) return "";
@@ -53,8 +54,7 @@ function AdUnitForm({
   const [inventories, setInventories] = useState([]);
   const [inventoryError, setInventoryError] = useState(null);
   const [inventoryLoading, setInventoryLoading] = useState(true);
-  const [isInventoriesModalOpen, setIsInventoriesModalOpen] = useState(false);
-  const [isBannerLibraryModalOpen, setIsBannerLibraryModalOpen] = useState(false);
+  const [isBannerLibraryOpen, setIsBannerLibraryOpen] = useState(false);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
   const [startDateTouched, setStartDateTouched] = useState(false);
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
@@ -107,8 +107,7 @@ function AdUnitForm({
       setInitialStartDateValue(defaultStartDate);
       setImagePreview(null);
     }
-    setIsInventoriesModalOpen(false);
-    setIsBannerLibraryModalOpen(false);
+    setIsBannerLibraryOpen(false);
     setInventorySearchQuery("");
     if (bannerLibraryRequestRef.current) {
       bannerLibraryRequestRef.current.abort();
@@ -172,7 +171,7 @@ function AdUnitForm({
   };
 
   const openBannerLibrary = () => {
-    setIsBannerLibraryModalOpen(true);
+    setIsBannerLibraryOpen(true);
     if (bannerLibraryStatus === "idle") {
       loadBannerLibrary();
     }
@@ -324,23 +323,34 @@ function AdUnitForm({
       : "No ad channels selected";
   const normalizedInventorySearch = String(inventorySearchQuery || "").trim().toLowerCase();
   const visibleInventories = useMemo(() => {
-    if (!normalizedInventorySearch) return inventories;
-    return inventories.filter((inventory) =>
-      String(inventory?.name || "").toLowerCase().includes(normalizedInventorySearch)
+    const matchingInventories = normalizedInventorySearch
+      ? inventories.filter((inventory) =>
+          String(inventory?.name || "").toLowerCase().includes(normalizedInventorySearch),
+        )
+      : inventories;
+    const selectedIds = new Set(formData.inventoryIds.map(String));
+    return sortSelectedFirst(
+      matchingInventories,
+      (inventory) => selectedIds.has(String(inventory?._id || "")),
     );
-  }, [inventories, normalizedInventorySearch]);
+  }, [formData.inventoryIds, inventories, normalizedInventorySearch]);
   const normalizedBannerLibrarySearch = String(bannerLibrarySearch || "").trim().toLowerCase();
   const visibleBannerLibrary = useMemo(() => {
-    if (!normalizedBannerLibrarySearch) return bannerLibrary;
-    return bannerLibrary.filter((banner) => {
+    const matchingBanners = normalizedBannerLibrarySearch
+      ? bannerLibrary.filter((banner) => {
       const searchableText = [
         banner?.name,
         banner?.campaign?.name,
         banner?.mimeType
       ].filter(Boolean).join(" ").toLowerCase();
       return searchableText.includes(normalizedBannerLibrarySearch);
-    });
-  }, [bannerLibrary, normalizedBannerLibrarySearch]);
+        })
+      : bannerLibrary;
+    return sortSelectedFirst(
+      matchingBanners,
+      (banner) => banner?.imageUrl === formData.imageUrl,
+    );
+  }, [bannerLibrary, formData.imageUrl, normalizedBannerLibrarySearch]);
 
   const applyImageSelection = (imageUrl) => {
     setFormData((prev) => ({
@@ -348,7 +358,6 @@ function AdUnitForm({
       imageUrl,
     }));
     setImagePreview(imageUrl);
-    setIsBannerLibraryModalOpen(false);
     setImageError(null);
     if (errors.imageUrl) {
       setErrors((prev) => {
@@ -627,7 +636,7 @@ function AdUnitForm({
   return (
     <>
     <form onSubmit={handleSubmit} className="ad-unit-form">
-      <div className="form-group">
+      <div className="form-group form-full-width">
         <label htmlFor="name">Ad Unit Name *</label>
         <input
           type="text"
@@ -676,17 +685,25 @@ function AdUnitForm({
       </div>
 
       <div className="form-row">
-        <div className="form-group">
+        <div className="form-group ad-unit-image-field">
           <label htmlFor="image">Ad Image (1:1 Square) *</label>
           <div className="image-upload-container">
             <div className="image-upload-actions">
               <button
                 type="button"
                 className="btn btn-secondary btn-sm banner-library-open-button"
-                onClick={openBannerLibrary}
+                onClick={() => {
+                  if (isBannerLibraryOpen) {
+                    setIsBannerLibraryOpen(false);
+                  } else {
+                    openBannerLibrary();
+                  }
+                }}
                 disabled={submitting}
+                aria-expanded={isBannerLibraryOpen}
+                aria-controls="banner-library-inline"
               >
-                Library
+                {isBannerLibraryOpen ? "Hide Library" : "Banner Library"}
               </button>
             </div>
             {imagePreview ? (
@@ -698,7 +715,8 @@ function AdUnitForm({
                   onClick={removeImage}
                   disabled={submitting}
                 >
-                  ✕ Remove
+                  <UiIcon name="close" size={14} />
+                  <span>Remove</span>
                 </button>
               </div>
             ) : (
@@ -709,7 +727,7 @@ function AdUnitForm({
                 onDragLeave={handleImageDragLeave}
                 onDrop={handleImageDrop}
               >
-                <div className="upload-icon">📸</div>
+                <div className="upload-icon"><UiIcon name="image" size={28} /></div>
                 <div className="upload-text">Drag and drop image here, or click to upload</div>
                 <div className="upload-hint">PNG, JPG, WebP up to 1MB. GIF up to 10MB.</div>
               </label>
@@ -729,7 +747,7 @@ function AdUnitForm({
           )}
         </div>
 
-        <div className="form-group">
+        <div className="form-group ad-unit-url-field">
           <label htmlFor="clickUrl">Click-Through URL *</label>
           <input
             type="url"
@@ -746,21 +764,29 @@ function AdUnitForm({
         </div>
       </div>
 
+      {isBannerLibraryOpen && (
+        <div
+          id="banner-library-inline"
+          className="banner-library-inline form-group form-full-width"
+        >
+          {bannerLibraryContent}
+        </div>
+      )}
+
       <div className="form-group form-full-width">
         <div className="inventory-selector-panel inventory-selector-summary-panel">
-          <button
-            type="button"
-            className="inventory-selector-toggle"
-            onClick={() => setIsInventoriesModalOpen(true)}
-          >
+          <div className="inventory-selector-toggle inventory-selector-toggle-static">
             <span className="inventory-selector-title-wrap">
               <span className="inventory-selector-title">Ad Channels *</span>
               <span className="inventory-selector-summary">
                 {inventorySummaryLabel}
               </span>
             </span>
-            <span className="btn btn-secondary btn-sm">Manage</span>
-          </button>
+            <span className="inventory-selector-order-note">Selected items are shown first</span>
+          </div>
+          <div className="ad-unit-inline-assignment-panel">
+            {inventorySelectorContent}
+          </div>
         </div>
         {inventoryError && (
           <span className="error-message">{inventoryError}</span>
@@ -788,33 +814,6 @@ function AdUnitForm({
         </button>
       </div>
     </form>
-    <Modal
-      isOpen={isInventoriesModalOpen}
-      title="Ad Channel Assignments"
-      onClose={() => setIsInventoriesModalOpen(false)}
-      contentClassName="assignment-editor-modal"
-    >
-      <div className="assignment-popup-content">
-        {inventorySelectorContent}
-        <div className="form-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setIsInventoriesModalOpen(false)}
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    </Modal>
-    <Modal
-      isOpen={isBannerLibraryModalOpen}
-      title="Banner Ads Library"
-      onClose={() => setIsBannerLibraryModalOpen(false)}
-      contentClassName="banner-library-modal"
-    >
-      {bannerLibraryContent}
-    </Modal>
     </>
   );
 }

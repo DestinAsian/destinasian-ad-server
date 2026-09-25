@@ -630,14 +630,14 @@
   gap: 6px;
 }
 
-.form-group label {
+.form-group > label {
   font-weight: 500;
   color: #333;
   font-size: 14px;
 }
 
-.form-group input,
-.form-group textarea {
+.form-group > input,
+.form-group > textarea {
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -646,15 +646,15 @@
   transition: border-color 0.2s;
 }
 
-.form-group input:focus,
-.form-group textarea:focus {
+.form-group > input:focus,
+.form-group > textarea:focus {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
 
-.form-group input.error,
-.form-group textarea.error {
+.form-group > input.error,
+.form-group > textarea.error {
   border-color: #dc3545;
 }
 
@@ -927,15 +927,15 @@
   flex-direction: column;
 }
 
-.ad-unit-form .form-group label {
+.ad-unit-form .form-group > label {
   margin-bottom: 5px;
   font-weight: 500;
   color: #333;
   font-size: 14px;
 }
 
-.ad-unit-form select,
-.ad-unit-form input {
+.ad-unit-form .form-group > select,
+.ad-unit-form .form-group > input {
   padding: 10px 12px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -944,20 +944,20 @@
   transition: border-color 0.3s ease;
 }
 
-.ad-unit-form select:hover,
-.ad-unit-form input:hover {
+.ad-unit-form .form-group > select:hover,
+.ad-unit-form .form-group > input:hover {
   border-color: #999;
 }
 
-.ad-unit-form select:focus,
-.ad-unit-form input:focus {
+.ad-unit-form .form-group > select:focus,
+.ad-unit-form .form-group > input:focus {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
 
-.ad-unit-form select.error,
-.ad-unit-form input.error {
+.ad-unit-form .form-group > select.error,
+.ad-unit-form .form-group > input.error {
   border-color: #dc3545;
 }
 
@@ -2574,6 +2574,31 @@
   gap: 10px;
 }
 
+.campaign-inline-adunit-panel {
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(247, 249, 248, 0.58);
+}
+
+.campaign-inline-adunit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.campaign-inline-adunit-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.campaign-inline-adunit-header span {
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
 .campaign-editor-adunit-row {
   display: flex;
   align-items: center;
@@ -3180,8 +3205,8 @@
   gap: 8px;
 }
 
-.form-group label,
-.ad-unit-form .form-group label {
+.form-group > label,
+.ad-unit-form .form-group > label {
   font-size: 0.8rem;
   font-weight: 500;
   letter-spacing: 0.08em;
@@ -3189,10 +3214,10 @@
   color: var(--ink-muted);
 }
 
-.form-group input,
-.form-group textarea,
-.ad-unit-form select,
-.ad-unit-form input,
+.form-group > input,
+.form-group > textarea,
+.ad-unit-form .form-group > select,
+.ad-unit-form .form-group > input,
 .account-select,
 .create-account-form input {
   border: 1px solid var(--line-strong);
@@ -3202,10 +3227,10 @@
   color: var(--ink-body);
 }
 
-.form-group input:focus,
-.form-group textarea:focus,
-.ad-unit-form select:focus,
-.ad-unit-form input:focus,
+.form-group > input:focus,
+.form-group > textarea:focus,
+.ad-unit-form .form-group > select:focus,
+.ad-unit-form .form-group > input:focus,
 .account-select:focus,
 .create-account-form input:focus {
   border-color: rgba(124, 170, 184, 0.75);
@@ -3414,6 +3439,27 @@
 }
 
 @media (max-width: 640px) {
+  .dashboard-header {
+    padding: 18px 16px 12px;
+    gap: 16px;
+  }
+
+  .campaigns-header-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .btn-primary.campaigns-new-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .campaigns-header-filter,
+  .campaigns-header-controls .account-selector {
+    width: 100%;
+  }
+
   .dashboard-filter-grid,
   .dashboard-kpi-grid {
     grid-template-columns: 1fr;
@@ -3428,7 +3474,37 @@
   }
 
   .campaigns-section-panel {
-    padding: 18px;
+    padding: 12px;
+  }
+
+  .campaign-table-wrap {
+    border-radius: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .campaign-table {
+    min-width: 720px;
+    font-size: 0.82rem;
+  }
+
+  .campaign-table th,
+  .campaign-table td {
+    padding: 10px 9px;
+  }
+
+  .campaign-table-name {
+    min-width: 240px;
+  }
+
+  .campaign-table-preview,
+  .campaign-table-preview-empty {
+    width: 56px;
+    height: 56px;
+  }
+
+  .campaign-table-adunit-row .campaign-table-preview {
+    width: 50px;
+    height: 50px;
   }
 
   .campaign-editor-modal {
@@ -3473,7 +3549,7 @@
   }
 
   .dashboard-overview-mode {
-    width: auto;
+    width: 100%;
   }
 
   .dashboard-overview-mode button {
@@ -3549,5 +3625,160 @@
     .app-greeting {
       font-size: 10px;
     }
+  }
+}
+
+/* Full-screen workspace modals keep one predictable scroll container. */
+.modal-overlay {
+  padding: 0;
+}
+
+.modal-content.modal-content-fullscreen {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.modal-content-fullscreen.campaign-editor-modal,
+.modal-content-fullscreen.assignment-editor-modal,
+.modal-content-fullscreen.banner-library-modal {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+}
+
+.modal-content-fullscreen > .modal-header {
+  flex: 0 0 auto;
+  padding-top: max(18px, env(safe-area-inset-top));
+}
+
+.modal-content-fullscreen > .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+.modal-content-fullscreen .assignment-popup-list.is-scrollable,
+.modal-content-fullscreen .campaign-editor-adunit-list.is-scrollable,
+.modal-content-fullscreen .selectable-checkbox-list,
+.modal-content-fullscreen .banner-library-list,
+.modal-content-fullscreen .share-checkbox-list {
+  max-height: none;
+  overflow: visible;
+}
+
+.modal-content-fullscreen .form-actions,
+.modal-content-fullscreen .share-modal-actions {
+  position: sticky;
+  bottom: calc(-1 * max(24px, env(safe-area-inset-bottom)));
+  z-index: 20;
+  margin-top: 18px;
+  padding: 14px 0 max(12px, env(safe-area-inset-bottom));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0) 0%,
+    rgba(255, 254, 253, 0.96) 22%,
+    var(--bg-elevated) 48%
+  );
+}
+
+.campaign-inline-assignment-panel,
+.ad-unit-inline-assignment-panel {
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(247, 249, 248, 0.58);
+}
+
+.banner-library-inline {
+  margin-bottom: 12px;
+}
+
+.banner-library-inline .banner-library-panel {
+  margin-bottom: 0;
+}
+
+.campaign-editor-inline-status,
+.inventory-selector-order-note {
+  color: var(--ink-muted);
+  text-align: right;
+}
+
+.inventory-selector-toggle-static {
+  cursor: default;
+}
+
+/* Keep every checkbox beside its label, including inside form groups whose
+   generic input styles add padding intended for text fields. */
+.inventory-mapping-pill,
+.selectable-checkbox-item,
+.share-checkbox-item,
+.inventory-filter-option {
+  flex-direction: row !important;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.inventory-mapping-pill > input[type="checkbox"],
+.selectable-checkbox-item > input[type="checkbox"],
+.share-checkbox-item > input[type="checkbox"],
+.inventory-filter-option > input[type="checkbox"] {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 16px;
+}
+
+.inventory-mapping-pill > span {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .modal-content.modal-content-fullscreen,
+  .modal-content-fullscreen.campaign-editor-modal,
+  .modal-content-fullscreen.assignment-editor-modal,
+  .modal-content-fullscreen.banner-library-modal {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+  }
+
+  .campaign-inline-adunit-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .campaign-inline-adunit-header .new-ad-unit-button {
+    width: 100%;
+  }
+
+  .modal-content-fullscreen > .modal-header,
+  .modal-content-fullscreen > .modal-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .campaign-editor-inline-status,
+  .inventory-selector-order-note {
+    text-align: left;
   }
 }

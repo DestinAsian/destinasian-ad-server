@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { sortAlphabetically } from '../utils/listOrdering';
 
 function AccountSelector() {
   const { currentAccount, accounts, selectAccount } = useAuth();
   const { notifyError, notifySuccess } = useToast();
   const [switchingAccount, setSwitchingAccount] = useState(false);
+  const sortedAccounts = useMemo(() => sortAlphabetically(accounts), [accounts]);
 
   const handleSelectAccount = async (accountId) => {
     if (!accountId || accountId === currentAccount?.id || switchingAccount) return;
@@ -42,7 +44,7 @@ function AccountSelector() {
             disabled={switchingAccount}
             aria-busy={switchingAccount}
           >
-            {accounts.map((account) => (
+            {sortedAccounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name}
               </option>

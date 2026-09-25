@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { campaignAPI, inventoryAPI } from "../services/api";
-import Modal from "./Modal";
+import { sortAlphabetically, sortSelectedFirst } from "../utils/listOrdering";
 
 const getInventoryId = (inventory) => {
   if (!inventory) return null;
@@ -62,7 +62,7 @@ function CampaignForm({
   campaign,
   onSubmit,
   onCancel,
-  onManageAdUnits,
+  adUnitManagementContent,
   statusOverride,
   submitting = false,
 }) {
@@ -81,7 +81,6 @@ function CampaignForm({
     campaign ? "loading" : "success",
   );
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
-  const [isAssignmentsModalOpen, setIsAssignmentsModalOpen] = useState(false);
 
   const isEditingCampaign = Boolean(campaign);
   const effectiveCampaignStatus = statusOverride || campaign?.status;
@@ -90,6 +89,10 @@ function CampaignForm({
   const assignedAdUnitCount = mappingRows.filter(
     (row) => (inventoryMappings[row.adUnitId] || []).length > 0,
   ).length;
+  const sortedMappingRows = useMemo(
+    () => sortAlphabetically(mappingRows, (row) => row.adUnitName),
+    [mappingRows],
+  );
   const assignmentSummary =
     assignmentStatus === "loading"
       ? "Loading assignments…"
@@ -330,14 +333,16 @@ function CampaignForm({
       {assignmentStatus === "success" && mappingRows.length === 0 && (
         <p className="no-data">No ad units in this campaign yet.</p>
       )}
-      {mappingRows.map((row) => (
+      {sortedMappingRows.map((row) => (
         <div key={row.adUnitId} className="campaign-mapping-row">
           <div className="campaign-mapping-title">{row.adUnitName}</div>
           <div className="inventory-mapping-grid">
-            {inventories.map((inventory) => {
-              const checked = (inventoryMappings[row.adUnitId] || []).includes(
-                inventory._id,
-              );
+            {sortSelectedFirst(
+              inventories,
+              (inventory) =>
+                (inventoryMappings[row.adUnitId] || []).includes(inventory._id),
+            ).map((inventory) => {
+              const checked = (inventoryMappings[row.adUnitId] || []).includes(inventory._id);
               return (
                 <label
                   key={`${row.adUnitId}-${inventory._id}`}
@@ -432,30 +437,27 @@ function CampaignForm({
                   {(campaign.adUnits || []).length} ad units in this campaign
                 </span>
               </div>
-              {onManageAdUnits && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={onManageAdUnits}
-                >
-                  Manage Ad Units
-                </button>
-              )}
+              <span className="campaign-editor-inline-status">
+                Manage Ad Units below
+              </span>
             </div>
+            {adUnitManagementContent && (
+              <div className="campaign-inline-adunit-panel form-group form-full-width">
+                {adUnitManagementContent}
+              </div>
+            )}
             <div className="form-group form-full-width">
               <label>Ad Unit Ad Channel Assignments</label>
               <div className="form-popup-summary">
                 <div>
                   <span>{assignmentSummary}</span>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setIsAssignmentsModalOpen(true)}
-                  disabled={assignmentStatus !== "success"}
-                >
-                  Manage Assignments
-                </button>
+                <span className="campaign-editor-inline-status">
+                  {assignmentStatus === "success" ? "Selected items are shown first" : "Unavailable"}
+                </span>
+              </div>
+              <div className="campaign-inline-assignment-panel">
+                {assignmentContent}
               </div>
             </div>
           </>
@@ -484,25 +486,6 @@ function CampaignForm({
           </button>
         </div>
       </form>
-      <Modal
-        isOpen={isAssignmentsModalOpen}
-        title="Ad Unit Ad Channel Assignments"
-        onClose={() => setIsAssignmentsModalOpen(false)}
-        contentClassName="assignment-editor-modal"
-      >
-        <div className="assignment-popup-content">
-          {assignmentContent}
-          <div className="form-actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setIsAssignmentsModalOpen(false)}
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      </Modal>
     </>
   );
 }

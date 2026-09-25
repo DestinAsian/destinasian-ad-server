@@ -9,6 +9,7 @@ import {
   doesInventoryMatchSearch,
   filterCampaignEntriesForInventorySearch,
 } from "../utils/inventorySearch";
+import { sortSelectedFirst } from "../utils/listOrdering";
 import "../styles/Inventory.css";
 
 const isAdUnitLinkedToChannel = (adUnit, channelId) => {
@@ -301,6 +302,14 @@ function Inventory({ searchQuery = "" }) {
   );
 
   const hasInventorySelectionFilter = selectedInventoryFilterIds.length > 0;
+  const orderedInventoryFilterOptions = useMemo(
+    () =>
+      sortSelectedFirst(
+        inventoryFilterOptions,
+        (option) => selectedInventoryFilterSet.has(option.id),
+      ),
+    [inventoryFilterOptions, selectedInventoryFilterSet],
+  );
 
   const sortedInventories = useMemo(() => {
     const normalizedSearch = String(searchQuery || "")
@@ -651,6 +660,22 @@ function Inventory({ searchQuery = "" }) {
     () => new Set(editForm.adUnitIds.map((id) => String(id))),
     [editForm.adUnitIds],
   );
+  const createAdUnitOptions = useMemo(
+    () =>
+      sortSelectedFirst(
+        sortedAdUnits,
+        (adUnit) => createAdUnitSelection.has(String(adUnit?._id || "")),
+      ),
+    [createAdUnitSelection, sortedAdUnits],
+  );
+  const editAdUnitOptions = useMemo(
+    () =>
+      sortSelectedFirst(
+        sortedAdUnits,
+        (adUnit) => editAdUnitSelection.has(String(adUnit?._id || "")),
+      ),
+    [editAdUnitSelection, sortedAdUnits],
+  );
 
   if (
     user?.role === "editor" &&
@@ -776,7 +801,7 @@ function Inventory({ searchQuery = "" }) {
                   <p className="no-data">No ad units available.</p>
                 ) : (
                   <div className="selectable-checkbox-list inventory-adunit-list">
-                    {sortedAdUnits.map((adUnit) => {
+                    {createAdUnitOptions.map((adUnit) => {
                       const adUnitId = String(adUnit._id);
                       const checked = createAdUnitSelection.has(adUnitId);
                       const campaignName =
@@ -908,7 +933,7 @@ function Inventory({ searchQuery = "" }) {
                       <p className="no-data">No Ad Channels available.</p>
                     ) : (
                       <div className="inventory-filter-options">
-                        {inventoryFilterOptions.map((option) => {
+                        {orderedInventoryFilterOptions.map((option) => {
                           const checked = selectedInventoryFilterSet.has(
                             option.id,
                           );
@@ -1023,7 +1048,7 @@ function Inventory({ searchQuery = "" }) {
                           <p className="no-data">No ad units available.</p>
                         ) : (
                           <div className="selectable-checkbox-list inventory-adunit-list">
-                            {sortedAdUnits.map((adUnit) => {
+                            {editAdUnitOptions.map((adUnit) => {
                               const adUnitId = String(adUnit._id);
                               const checked = editAdUnitSelection.has(adUnitId);
                               const campaignName =

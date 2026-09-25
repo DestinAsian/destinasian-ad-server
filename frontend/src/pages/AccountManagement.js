@@ -5,6 +5,7 @@ import { accountAPI, userAPI } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { getApiErrorMessage } from '../utils/apiError';
+import { sortSelectedFirst } from '../utils/listOrdering';
 import '../styles/Users.css';
 import '../styles/AccountManagement.css';
 
@@ -30,6 +31,18 @@ function AccountManagement() {
   const [sharingSubmitting, setSharingSubmitting] = useState(false);
 
   const isOwner = user?.role === 'owner';
+  const selectedShareUserIdSet = useMemo(
+    () => new Set(selectedUserIds.map(String)),
+    [selectedUserIds]
+  );
+  const orderedShareUsers = useMemo(
+    () => sortSelectedFirst(
+      availableShareUsers,
+      (candidate) => selectedShareUserIdSet.has(String(candidate?.id || '')),
+      (candidate) => candidate?.name || candidate?.email || ''
+    ),
+    [availableShareUsers, selectedShareUserIdSet]
+  );
 
   const sortedAccounts = useMemo(() => {
     return [...accounts].sort((a, b) => {
@@ -431,7 +444,7 @@ function AccountManagement() {
             <>
               <p className="share-modal-label">Select users</p>
               <div className="selectable-checkbox-list share-checkbox-list" role="group" aria-label="Share account users">
-                {availableShareUsers.map((candidate) => (
+                {orderedShareUsers.map((candidate) => (
                   <label key={candidate.id} className="selectable-checkbox-item share-checkbox-item">
                     <input
                       type="checkbox"

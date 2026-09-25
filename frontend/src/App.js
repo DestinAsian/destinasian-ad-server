@@ -9,6 +9,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Inventory from "./pages/Inventory";
 import Users from "./pages/Users";
 import TwoFactorSetup from "./pages/TwoFactorSetup";
+import "./styles/Consistency.css";
 
 const pageRoutes = {
   dashboard: "/dashboard",

@@ -1,0 +1,961 @@
+/* Shared visual system. This file is intentionally loaded after page styles so
+   controls remain consistent without changing component or business logic. */
+
+:where(button, input, select, textarea) {
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+:where(button, input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.app-topbar {
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  backdrop-filter: blur(8px);
+}
+
+.app-search-input,
+.app-nav-button,
+.app-logout-button {
+  min-height: var(--control-height);
+}
+
+.app-nav-button,
+.app-logout-button {
+  padding-inline: var(--space-4);
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.app-nav-button:hover,
+.app-logout-button:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.app-nav-dropdown-menu {
+  border-radius: var(--radius-section);
+  box-shadow: var(--shadow-soft);
+}
+
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-save,
+.btn-cancel-edit,
+.btn-create-account,
+.create-account-form .btn-submit,
+.create-account-form .btn-cancel {
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  line-height: 1.2;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.btn-sm,
+.users-actions .btn-sm,
+.account-card-footer .btn-sm {
+  min-height: var(--control-height-sm);
+  padding: 0 var(--space-3);
+}
+
+.btn:hover,
+.btn-primary:hover,
+.btn-secondary:hover,
+.btn-icon:hover,
+.btn-icon-small:hover,
+.btn-save:hover,
+.btn-cancel-edit:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.btn-icon {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  padding: 0;
+}
+
+.btn-icon-small {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 var(--space-2);
+}
+
+.form-group input:not([type="checkbox"]):not([type="radio"]),
+.form-group select,
+.ad-unit-form input:not([type="checkbox"]):not([type="radio"]),
+.ad-unit-form select,
+.inventory-form input:not([type="checkbox"]):not([type="radio"]),
+.inventory-form select,
+.inventory-edit-form input:not([type="checkbox"]):not([type="radio"]),
+.inventory-edit-form select,
+.users-form-grid input,
+.users-table input,
+.account-create-form input,
+.edit-input,
+.account-select,
+.dashboard-filter-input,
+.dashboard-date-input {
+  min-height: var(--control-height);
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+}
+
+.form-group textarea,
+.ad-unit-form textarea {
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-control);
+  line-height: 1.45;
+}
+
+.form-group,
+.ad-unit-form .form-group {
+  gap: var(--space-2);
+}
+
+.form-group > label,
+.ad-unit-form .form-group > label {
+  margin-bottom: 0;
+}
+
+.modal-content {
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.modal-header,
+.modal-body {
+  padding-left: var(--space-5);
+  padding-right: var(--space-5);
+}
+
+.modal-header {
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.modal-body {
+  padding-top: var(--space-5);
+  padding-bottom: var(--space-5);
+}
+
+.modal-close:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Assignment and selection surfaces */
+.campaign-inline-assignment-panel,
+.ad-unit-inline-assignment-panel {
+  padding: var(--space-4);
+  border-radius: var(--radius-section);
+  background: rgba(247, 249, 248, 0.72);
+}
+
+.assignment-popup-list {
+  gap: var(--space-4);
+}
+
+.campaign-mapping-row {
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-section);
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.campaign-mapping-row + .campaign-mapping-row {
+  margin-top: 0;
+}
+
+.campaign-mapping-title {
+  color: var(--ink-strong);
+}
+
+.inventory-mapping-grid {
+  gap: var(--space-2);
+}
+
+.inventory-mapping-pill {
+  min-height: 34px;
+  padding: 0 11px;
+  gap: 7px;
+  border-radius: var(--radius-control);
+  letter-spacing: 0.035em;
+  line-height: 1.2;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.inventory-mapping-pill:hover {
+  border-color: var(--accent-strong);
+  background: rgba(223, 236, 240, 0.35);
+}
+
+.inventory-mapping-pill.selected {
+  background: rgba(219, 236, 239, 0.7);
+  border-color: var(--accent-strong);
+}
+
+.inventory-mapping-pill > input[type="checkbox"],
+.selectable-checkbox-item > input[type="checkbox"],
+.share-checkbox-item > input[type="checkbox"],
+.inventory-filter-option > input[type="checkbox"] {
+  accent-color: #4f91a1;
+}
+
+.selectable-checkbox-list,
+.share-checkbox-list {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-section);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.selectable-checkbox-item,
+.share-checkbox-item {
+  min-height: 40px;
+  padding: var(--space-2) 10px;
+  border-radius: var(--radius-control);
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.selectable-checkbox-item:hover,
+.share-checkbox-item:hover {
+  background: rgba(223, 236, 240, 0.32);
+  box-shadow: none;
+}
+
+.form-popup-summary,
+.campaign-editor-section-summary {
+  min-height: var(--control-height-lg);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-section);
+}
+
+.form-row,
+.campaign-editor-form-grid,
+.ad-unit-form-grid {
+  gap: var(--space-4);
+}
+
+.form-actions,
+.share-modal-actions,
+.campaign-editor-actions {
+  gap: var(--space-3);
+}
+
+.modal-content-fullscreen .form-actions,
+.modal-content-fullscreen .share-modal-actions {
+  border-top: 1px solid var(--line-soft);
+  background: var(--bg-elevated);
+}
+
+/* Cards, tables and data-heavy pages */
+.inventory-page,
+.users-page,
+.account-management {
+  padding-left: var(--space-6);
+  padding-right: var(--space-6);
+}
+
+.campaigns-section-panel,
+.dashboard-breakdown-panel,
+.dashboard-chart-panel,
+.dashboard-ad-unit-daily-panel,
+.inventory-card,
+.users-card,
+.account-card,
+.stat-card,
+.auth-card {
+  border-radius: var(--radius-panel);
+  box-shadow: none;
+}
+
+.campaigns-section-panel,
+.dashboard-breakdown-panel,
+.inventory-card,
+.users-card {
+  padding: var(--space-5);
+}
+
+.inventory-card:hover,
+.users-card:hover,
+.account-card:hover,
+.stat-card:hover,
+.dashboard-breakdown-panel:hover,
+.dashboard-chart-panel:hover,
+.dashboard-ad-unit-daily-panel:hover,
+.ad-unit-card:hover,
+.campaign-list li:hover,
+.campaign-item:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.campaign-list li,
+.campaign-item,
+.ad-unit-card,
+.dashboard-breakdown-row,
+.campaign-table-row {
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.dashboard-breakdown-row:hover,
+.dashboard-breakdown-reset:hover {
+  transform: none;
+}
+
+.dashboard-filter-options,
+.inventory-filter-menu,
+.app-nav-dropdown-menu {
+  box-shadow: var(--shadow-soft);
+}
+
+.campaign-table-wrap,
+.users-table-wrap {
+  border-radius: var(--radius-section);
+  box-shadow: none;
+}
+
+.campaign-table th,
+.campaign-table td,
+.users-table th,
+.users-table td {
+  padding: var(--space-3) var(--space-4);
+}
+
+.campaign-table th,
+.users-table th {
+  min-height: var(--control-height);
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.campaign-table td:nth-child(n + 3),
+.campaign-table th:nth-child(n + 3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.campaign-table-row {
+  box-shadow: none;
+}
+
+.campaign-table-campaign-row > td:first-child {
+  border-left: 3px solid rgba(111, 152, 166, 0.48);
+}
+
+.campaign-table-campaign-row.is-expanded > td:first-child {
+  border-left-color: rgba(111, 152, 166, 0.82);
+}
+
+.campaign-table-adunit-row > td:first-child {
+  border-left: 3px solid rgba(111, 152, 166, 0.18);
+}
+
+.campaign-table-expand-toggle {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+}
+
+.inventory-toolbar {
+  gap: var(--space-3);
+}
+
+.inventory-form,
+.inventory-edit-form,
+.users-form-grid {
+  gap: var(--space-4);
+}
+
+.inventory-actions,
+.inventory-edit-actions,
+.users-actions,
+.account-card-footer {
+  gap: var(--space-2);
+}
+
+.auth-card {
+  padding: var(--space-6);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+.auth-card .btn-primary:hover:not(:disabled),
+.auth-card .btn-secondary:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+.toast {
+  box-shadow: var(--shadow-soft);
+}
+
+/* Readability and contrast. Keep the warm editorial palette while making
+   secondary copy, controls and selected states easier to scan. */
+body {
+  color: var(--ink-body);
+}
+
+:where(input, select, textarea) {
+  color: var(--ink-body);
+  background-color: var(--bg-elevated);
+  border-color: var(--line-strong);
+}
+
+:where(input, textarea)::placeholder {
+  color: var(--ink-placeholder);
+  opacity: 1;
+}
+
+:where(input, select, textarea):disabled {
+  color: var(--ink-muted);
+  background-color: var(--bg-subtle);
+  border-color: var(--line-soft);
+  opacity: 1;
+}
+
+:where(
+  .form-group > label,
+  .inventory-field > span,
+  .inventory-toolbar label,
+  .account-list-label,
+  .share-modal-label,
+  .users-owner-action-token label
+) {
+  color: var(--ink-body);
+}
+
+:where(
+  .dashboard-header-copy,
+  .dashboard-filter-helper,
+  .dashboard-filter-option-empty,
+  .dashboard-chart-header p,
+  .dashboard-chart-meta span,
+  .dashboard-breakdown-header p,
+  .dashboard-breakdown-header-actions > span,
+  .dashboard-breakdown-caption,
+  .dashboard-ad-unit-daily-section-header p,
+  .dashboard-ad-unit-daily-section-header > span,
+  .dashboard-ad-unit-daily-header p,
+  .dashboard-ad-unit-daily-metrics,
+  .inventory-header p,
+  .inventory-key,
+  .inventory-desc,
+  .inventory-performance-empty,
+  .inventory-campaign-status,
+  .inventory-snippet-label,
+  .inventory-adunit-choice-meta,
+  .account-page-header p,
+  .account-info .label,
+  .stat-label,
+  .share-empty,
+  .no-accounts p,
+  .users-header p,
+  .users-refresh-status,
+  .users-note,
+  .campaign-table-channel-line,
+  .campaign-editor-adunit-summary span,
+  .form-popup-summary span,
+  .campaign-editor-section-summary span,
+  .ad-code,
+  .ad-unit-schedule,
+  .ad-unit-details small,
+  .stat-item span,
+  .ad-unit-cms-label,
+  .ad-unit-cms-description,
+  .no-data,
+  .no-campaigns,
+  .no-selection,
+  .loading
+) {
+  color: var(--ink-muted);
+}
+
+.app-greeting,
+.campaign-table-sort-icon,
+.campaign-table-preview-empty,
+.campaign-item.campaign-item-expanded .campaign-schedule {
+  color: var(--ink-muted);
+}
+
+.app-topbar,
+.modal-content,
+.campaigns-section-panel,
+.dashboard-breakdown-panel,
+.dashboard-chart-panel,
+.dashboard-ad-unit-daily-section,
+.dashboard-ad-unit-daily-panel,
+.inventory-card,
+.users-card,
+.account-card,
+.account-create-card,
+.account-list-card {
+  border-color: var(--line-soft);
+}
+
+.campaign-mapping-row,
+.campaign-editor-adunit-row,
+.inventory-item,
+.dashboard-breakdown-row,
+.stat,
+.selectable-checkbox-list,
+.share-checkbox-list {
+  background-color: var(--bg-elevated);
+  border-color: var(--line-soft);
+}
+
+.inventory-mapping-pill.selected,
+.selectable-checkbox-item.selected,
+.share-checkbox-item.selected,
+.dashboard-breakdown-row.is-selected,
+.dashboard-overview-mode button.is-active,
+.dashboard-filter-option.selected {
+  color: var(--accent-text);
+  background-color: var(--bg-selected);
+  border-color: var(--accent-strong);
+}
+
+.stat-card,
+.dashboard-kpi-card {
+  background: #eaf2f3;
+  border-color: #abc4c9;
+}
+
+.stat-card h4,
+.dashboard-kpi-card h4 {
+  color: #47545a;
+}
+
+.inventory-status.active,
+.role-owner,
+.status-pill.active,
+.btn-save {
+  color: var(--success-text);
+  background: var(--success-soft);
+}
+
+.inventory-status.inactive,
+.status-pill.disabled {
+  color: var(--danger-text);
+  background: var(--danger-soft);
+}
+
+.campaign-table th,
+.users-table th {
+  color: var(--ink-body);
+  background-color: var(--bg-subtle);
+}
+
+.campaign-table-adunit-row .campaign-table-row-label {
+  color: #40545b;
+}
+
+.toast-close {
+  color: var(--ink-muted);
+}
+
+/* Compact account control: visually belongs to the toolbar instead of
+   reading as a separate oversized card. */
+.account-selector {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-section);
+}
+
+.account-header {
+  width: 100%;
+  min-height: var(--control-height);
+  gap: var(--space-3);
+}
+
+.account-dropdown {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.account-label {
+  flex: 0 0 auto;
+  color: var(--ink-body);
+}
+
+.account-select {
+  width: 100%;
+  min-width: 0;
+  padding-right: 40px;
+}
+
+/* Consistent native-light checkbox treatment across forms and assignment
+   surfaces. It remains a real input, but no longer changes appearance by OS. */
+:where(input[type="checkbox"]) {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  padding: 0 !important;
+  border: 1.5px solid #788589;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+  flex: 0 0 16px;
+}
+
+:where(input[type="checkbox"])::before {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg) scale(0);
+  transform-origin: center;
+}
+
+:where(input[type="checkbox"]):checked {
+  border-color: #447f8d;
+  background: #4f91a1;
+}
+
+:where(input[type="checkbox"]):checked::before {
+  transform: translateY(-1px) rotate(45deg) scale(1);
+}
+
+:where(input[type="checkbox"]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+:where(input[type="checkbox"]):disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.inventory-mapping-pill > input[type="checkbox"],
+.selectable-checkbox-item > input[type="checkbox"],
+.share-checkbox-item > input[type="checkbox"],
+.inventory-filter-option > input[type="checkbox"],
+.inventory-toggle > input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  padding: 0 !important;
+  border: 1.5px solid #788589;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  flex: 0 0 16px;
+}
+
+.inventory-mapping-pill > input[type="checkbox"]:checked,
+.selectable-checkbox-item > input[type="checkbox"]:checked,
+.share-checkbox-item > input[type="checkbox"]:checked,
+.inventory-filter-option > input[type="checkbox"]:checked,
+.inventory-toggle > input[type="checkbox"]:checked {
+  border-color: #447f8d;
+  background: #4f91a1;
+}
+
+.inventory-mapping-grid {
+  gap: 9px;
+}
+
+.inventory-mapping-pill {
+  min-height: 38px;
+  padding: 0 12px;
+  gap: 9px;
+}
+
+.inventory-mapping-pill > span {
+  line-height: 1.25;
+}
+
+.selectable-checkbox-item,
+.share-checkbox-item,
+.inventory-filter-option,
+.inventory-toggle {
+  gap: 10px;
+}
+
+/* Lightweight, platform-independent action icons. */
+.ui-icon {
+  display: block;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.btn-icon {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  padding: 0;
+  border-color: var(--line-soft);
+  background: var(--bg-elevated);
+}
+
+.btn-icon.btn-status {
+  padding: 0;
+}
+
+.btn-icon.btn-edit {
+  color: var(--accent-text);
+}
+
+.btn-icon.btn-delete {
+  color: var(--danger-text);
+  background: #fff9f7;
+  border-color: #dfc1ba;
+}
+
+.btn-icon:disabled,
+.btn-icon-small:disabled {
+  color: var(--ink-muted);
+  background: var(--bg-subtle);
+  opacity: 0.62;
+}
+
+.campaign-editor-actions,
+.campaign-editor-adunit-actions {
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.campaign-table-expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--accent-text);
+}
+
+.campaign-table-expand-toggle:hover:not(:disabled),
+.campaign-table-expand-toggle:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+}
+
+.campaign-table-expand-toggle:disabled {
+  color: var(--ink-muted);
+  opacity: 0.7;
+}
+
+/* Modal chrome and action areas use one spacing rhythm. */
+.modal-header {
+  min-height: 68px;
+  gap: var(--space-4);
+}
+
+.modal-header h2 {
+  line-height: 1.15;
+}
+
+.modal-close {
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-elevated);
+  line-height: 1;
+}
+
+.campaign-editor-actions {
+  min-height: var(--control-height-sm);
+}
+
+.campaign-editor-adunit-row {
+  min-height: 58px;
+  padding: var(--space-3) var(--space-4);
+}
+
+.form-popup-summary,
+.campaign-editor-section-summary {
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.form-actions,
+.share-modal-actions,
+.campaign-editor-actions {
+  padding-block: var(--space-1);
+}
+
+.btn-primary.new-ad-unit-button {
+  width: auto;
+  min-width: 160px;
+}
+
+.banner-library-open-button {
+  width: auto !important;
+  min-width: 120px;
+}
+
+.campaign-editor-modal .ad-unit-form > .form-full-width {
+  grid-column: 1 / -1;
+}
+
+.campaign-editor-modal .image-upload-actions {
+  justify-content: flex-start;
+  margin-bottom: var(--space-2);
+}
+
+.campaign-editor-modal .image-preview {
+  width: 140px;
+  max-width: 140px;
+}
+
+/* Assignment choices keep the roomy pill treatment used in the approved UI.
+   Labels remain in their original casing and the checkbox stays beside text. */
+.inventory-mapping-grid {
+  gap: 12px 14px;
+}
+
+.inventory-mapping-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 16px;
+  gap: 10px;
+  border-radius: 999px;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.inventory-mapping-pill > input[type="checkbox"] {
+  align-self: center;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex-basis: 18px;
+}
+
+.inventory-mapping-pill > span {
+  display: block;
+  align-self: center;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+/* Creative artwork must retain its natural rectangular edges. Rounded UI
+   containers remain unchanged; only images and image-preview frames are square. */
+img,
+.ad-unit-image,
+.ad-unit-preview-slot,
+.banner-library-thumb,
+.image-preview,
+.campaign-table-preview,
+.campaign-table-preview-empty,
+.dashboard-breakdown-preview,
+.dashboard-ad-unit-daily-preview {
+  border-radius: 0 !important;
+}
+
+.btn-remove-image {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
+  transition:
+    background-color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.btn-remove-image:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.upload-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+  color: var(--accent-text);
+}
+
+.modal-content-fullscreen .form-actions,
+.modal-content-fullscreen .share-modal-actions {
+  justify-content: flex-end;
+}
+
+.modal-content-fullscreen .form-actions > .btn,
+.modal-content-fullscreen .share-modal-actions > .btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 180px;
+}
+
+@media (max-width: 768px) {
+  .app-topbar {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .modal-header,
+  .modal-body {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .inventory-page,
+  .users-page,
+  .account-management {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .campaigns-section-panel,
+  .dashboard-breakdown-panel,
+  .inventory-card,
+  .users-card,
+  .auth-card {
+    padding: var(--space-4);
+  }
+
+  .modal-content-fullscreen .form-actions,
+  .modal-content-fullscreen .share-modal-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .modal-content-fullscreen .form-actions > .btn,
+  .modal-content-fullscreen .share-modal-actions > .btn {
+    width: 100%;
+    min-width: 0;
+  }
+}

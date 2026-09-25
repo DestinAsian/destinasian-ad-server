@@ -69,7 +69,7 @@ function TwoFactorSetup() {
           <>
             {qrCodeDataUrl && (
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
-                <img src={qrCodeDataUrl} alt="2FA QR Code" style={{ width: 220, height: 220, borderRadius: 8 }} />
+                <img src={qrCodeDataUrl} alt="2FA QR Code" style={{ width: 220, height: 220 }} />
               </div>
             )}
             <div className="token-box">
