@@ -80,6 +80,7 @@ function CampaignForm({
   const [assignmentStatus, setAssignmentStatus] = useState(
     campaign ? "loading" : "success",
   );
+  const [isAssignmentOpen, setIsAssignmentOpen] = useState(true);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
 
   const isEditingCampaign = Boolean(campaign);
@@ -103,6 +104,7 @@ function CampaignForm({
           : "No ad units to assign";
 
   useEffect(() => {
+    setIsAssignmentOpen(true);
     if (campaign) {
       const formattedStart = formatToLocalDateTime(campaign.startDate);
       setFormData({
@@ -452,13 +454,34 @@ function CampaignForm({
                 <div>
                   <span>{assignmentSummary}</span>
                 </div>
-                <span className="campaign-editor-inline-status">
-                  {assignmentStatus === "success" ? "Selected items are shown first" : "Unavailable"}
-                </span>
+                <button
+                  type="button"
+                  className="campaign-assignment-toggle"
+                  onClick={() => setIsAssignmentOpen((isOpen) => !isOpen)}
+                  aria-expanded={isAssignmentOpen}
+                  aria-controls="campaign-ad-channel-assignments"
+                  aria-label={
+                    isAssignmentOpen
+                      ? "Close Ad Unit Ad Channel Assignments"
+                      : "Open Ad Unit Ad Channel Assignments"
+                  }
+                  title={
+                    isAssignmentOpen
+                      ? "Close assignments"
+                      : "Open assignments"
+                  }
+                >
+                  <span aria-hidden="true">{isAssignmentOpen ? "−" : "+"}</span>
+                </button>
               </div>
-              <div className="campaign-inline-assignment-panel">
-                {assignmentContent}
-              </div>
+              {isAssignmentOpen && (
+                <div
+                  id="campaign-ad-channel-assignments"
+                  className="campaign-inline-assignment-panel"
+                >
+                  {assignmentContent}
+                </div>
+              )}
             </div>
           </>
         )}

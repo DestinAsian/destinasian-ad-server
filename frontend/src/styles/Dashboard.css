@@ -3718,6 +3718,34 @@
   text-align: right;
 }
 
+.campaign-assignment-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--ink-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.campaign-assignment-toggle:hover {
+  border-color: rgba(124, 170, 184, 0.65);
+  background: rgba(223, 236, 240, 0.58);
+}
+
+.campaign-assignment-toggle:focus-visible {
+  outline: 3px solid rgba(140, 184, 193, 0.28);
+  outline-offset: 2px;
+}
+
 .inventory-selector-toggle-static {
   cursor: default;
 }
