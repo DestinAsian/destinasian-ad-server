@@ -416,6 +416,181 @@
   box-shadow: var(--shadow-soft);
 }
 
+/* Readability and contrast. Keep the warm editorial palette while making
+   secondary copy, controls and selected states easier to scan. */
+body {
+  color: var(--ink-body);
+}
+
+:where(input, select, textarea) {
+  color: var(--ink-body);
+  background-color: var(--bg-elevated);
+  border-color: var(--line-strong);
+}
+
+:where(input, textarea)::placeholder {
+  color: var(--ink-placeholder);
+  opacity: 1;
+}
+
+:where(input, select, textarea):disabled {
+  color: var(--ink-muted);
+  background-color: var(--bg-subtle);
+  border-color: var(--line-soft);
+  opacity: 1;
+}
+
+:where(
+  .form-group label,
+  .inventory-field > span,
+  .inventory-toolbar label,
+  .account-list-label,
+  .share-modal-label,
+  .users-owner-action-token label
+) {
+  color: var(--ink-body);
+  font-weight: 600;
+}
+
+:where(
+  .dashboard-header-copy,
+  .dashboard-filter-helper,
+  .dashboard-filter-option-empty,
+  .dashboard-chart-header p,
+  .dashboard-chart-meta span,
+  .dashboard-breakdown-header p,
+  .dashboard-breakdown-header-actions > span,
+  .dashboard-breakdown-caption,
+  .dashboard-ad-unit-daily-section-header p,
+  .dashboard-ad-unit-daily-section-header > span,
+  .dashboard-ad-unit-daily-header p,
+  .dashboard-ad-unit-daily-metrics,
+  .inventory-header p,
+  .inventory-key,
+  .inventory-desc,
+  .inventory-performance-empty,
+  .inventory-campaign-status,
+  .inventory-snippet-label,
+  .inventory-adunit-choice-meta,
+  .account-page-header p,
+  .account-info .label,
+  .stat-label,
+  .share-empty,
+  .no-accounts p,
+  .users-header p,
+  .users-refresh-status,
+  .users-note,
+  .campaign-table-channel-line,
+  .campaign-editor-adunit-summary span,
+  .form-popup-summary span,
+  .campaign-editor-section-summary span,
+  .ad-code,
+  .ad-unit-schedule,
+  .ad-unit-details small,
+  .stat-item span,
+  .ad-unit-cms-label,
+  .ad-unit-cms-description,
+  .no-data,
+  .no-campaigns,
+  .no-selection,
+  .loading
+) {
+  color: var(--ink-muted);
+}
+
+.app-greeting,
+.campaign-table-sort-icon,
+.campaign-table-preview-empty,
+.campaign-item.campaign-item-expanded .campaign-schedule {
+  color: var(--ink-muted);
+}
+
+.app-topbar,
+.modal-content,
+.campaigns-section-panel,
+.dashboard-breakdown-panel,
+.dashboard-chart-panel,
+.dashboard-ad-unit-daily-section,
+.dashboard-ad-unit-daily-panel,
+.inventory-card,
+.users-card,
+.account-card,
+.account-create-card,
+.account-list-card {
+  border-color: var(--line-soft);
+}
+
+.campaign-mapping-row,
+.campaign-editor-adunit-row,
+.inventory-item,
+.dashboard-breakdown-row,
+.stat,
+.selectable-checkbox-list,
+.share-checkbox-list {
+  background-color: var(--bg-elevated);
+  border-color: var(--line-soft);
+}
+
+.inventory-mapping-pill.selected,
+.selectable-checkbox-item.selected,
+.share-checkbox-item.selected,
+.dashboard-breakdown-row.is-selected,
+.dashboard-overview-mode button.is-active,
+.dashboard-filter-option.selected {
+  color: var(--accent-text);
+  background-color: var(--bg-selected);
+  border-color: var(--accent-strong);
+}
+
+.stat-card,
+.dashboard-kpi-card {
+  background: #eaf2f3;
+  border-color: #abc4c9;
+}
+
+.stat-card h4,
+.dashboard-kpi-card h4 {
+  color: #47545a;
+  font-weight: 600;
+}
+
+.inventory-inline-metrics span,
+.inventory-summary-toggle,
+.inventory-collapsed-summary span,
+.role-pill,
+.status-pill,
+.share-level {
+  font-weight: 600;
+}
+
+.inventory-status.active,
+.role-owner,
+.status-pill.active,
+.btn-save {
+  color: var(--success-text);
+  background: var(--success-soft);
+}
+
+.inventory-status.inactive,
+.status-pill.disabled {
+  color: var(--danger-text);
+  background: var(--danger-soft);
+}
+
+.campaign-table th,
+.users-table th {
+  color: var(--ink-body);
+  background-color: var(--bg-subtle);
+}
+
+.campaign-table-adunit-row .campaign-table-row-label {
+  color: #40545b;
+}
+
+.toast-close {
+  color: var(--ink-muted);
+}
+
 @media (max-width: 768px) {
   .app-topbar {
     padding: var(--space-3) var(--space-4);
