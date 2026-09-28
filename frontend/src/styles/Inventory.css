@@ -567,6 +567,52 @@
   background: #fff;
 }
 
+/* The edit list renders a name, campaign and status on separate lines.
+   Keep each grid row tall enough for all three so metadata cannot overlap. */
+.inventory-edit-form .inventory-adunit-list {
+  align-content: start;
+  grid-auto-rows: minmax(68px, max-content);
+  gap: 10px;
+}
+
+.inventory-edit-form
+  .inventory-adunit-list
+  > .selectable-checkbox-item {
+  align-items: flex-start;
+  height: auto;
+  min-height: 68px;
+  padding: 8px 10px;
+}
+
+.inventory-edit-form
+  .inventory-adunit-list
+  > .selectable-checkbox-item
+  > input[type="checkbox"] {
+  margin-top: 2px;
+}
+
+.inventory-edit-form .inventory-adunit-choice-text {
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.inventory-edit-form .inventory-adunit-choice-name,
+.inventory-edit-form .inventory-adunit-choice-meta {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.inventory-edit-form
+  .inventory-adunit-list
+  > .selectable-checkbox-item.selected {
+  background: #edf6f7;
+  border-color: #8db5be;
+}
+
+.inventory-edit-form .inventory-adunit-choice-meta {
+  color: #151412;
+}
+
 .selectable-checkbox-item {
   display: flex;
   align-items: flex-start;
