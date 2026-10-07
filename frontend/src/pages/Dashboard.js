@@ -36,6 +36,7 @@ import {
   getCampaignTitleSearchRows,
 } from "../utils/campaignSearch";
 import { sortAlphabetically } from "../utils/listOrdering";
+import { belongsToChannelReport } from "../utils/reportMembership";
 
 ChartJS.register(
   BarElement,
@@ -434,6 +435,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const [submitting, setSubmitting] = useState(false);
   const [pendingCampaignAction, setPendingCampaignAction] = useState(null);
   const [pendingAdUnitAction, setPendingAdUnitAction] = useState(null);
+  const campaignMutationBusy = submitting || Boolean(pendingCampaignAction)
+    || Boolean(campaignStatusUpdatingId) || Boolean(pendingAdUnitAction);
   const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
   const confirmAction = useConfirm();
 
@@ -668,6 +671,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
         inventoryId: selectedOverviewAdChannelId || undefined,
+        includeReportItems: selectedOverviewAdChannelId ? true : undefined,
         campaignId:
           overviewMode === "campaign"
             ? selectedOverviewCampaignId || undefined
@@ -1126,7 +1130,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleSubmitCampaign = async (formData) => {
-    if (submitting) return;
+    if (campaignMutationBusy) return;
     const requestId = editorRequestRef.current;
     setSubmitting(true);
     setError(null);
@@ -1154,7 +1158,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleDeleteCampaign = async (campaignId) => {
-    if (pendingCampaignAction) return;
+    if (campaignMutationBusy) return;
     const confirmed = await confirmAction({
       title: "Delete campaign?",
       message:
@@ -1236,7 +1240,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleToggleCampaignStatus = async (campaignId, currentStatus) => {
-    if (campaignStatusUpdatingId === campaignId) return;
+    if (campaignMutationBusy) return;
 
     const newStatus = currentStatus === "active" ? "paused" : "active";
     const requestId = editorRequestRef.current;
@@ -1258,7 +1262,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleToggleAdUnitStatus = async (adUnitId, currentStatus) => {
-    if (pendingAdUnitAction) return;
+    if (campaignMutationBusy) return;
     try {
       setPendingAdUnitAction({ type: "status", id: adUnitId });
       const newStatus = currentStatus === "active" ? "paused" : "active";
@@ -1315,7 +1319,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleDuplicateCampaign = async (campaign) => {
-    if (pendingCampaignAction) return;
+    if (campaignMutationBusy) return;
     const duplicateDates = getDuplicateDateWindow(campaign);
     const confirmed = await confirmAction({
       title: "Duplicate campaign?",
@@ -1577,9 +1581,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           const adUnits = Array.isArray(campaign.adUnits) ? campaign.adUnits : [];
           if (
             selectedOverviewAdChannelId &&
-            !adUnits.some((adUnit) =>
+            !belongsToChannelReport(campaign._id, adUnits.some((adUnit) =>
               getAdUnitInventoryIds(adUnit).has(String(selectedOverviewAdChannelId)),
-            )
+            ), metrics)
           ) {
             return false;
           }
@@ -1612,7 +1616,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       .filter(
         (adUnit) =>
           !selectedOverviewAdChannelId ||
-          getAdUnitInventoryIds(adUnit).has(String(selectedOverviewAdChannelId)),
+          belongsToChannelReport(adUnit._id,
+            getAdUnitInventoryIds(adUnit).has(String(selectedOverviewAdChannelId)), metrics),
       )
       .filter(
         (adUnit) =>
@@ -2568,7 +2573,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 <button
                   className={`btn-icon btn-status ${effectiveCampaignEditorStatus}`}
                   disabled={
-                    campaignStatusUpdatingId === campaignEditorCampaign._id
+                    campaignMutationBusy
                   }
                   aria-busy={
                     campaignStatusUpdatingId === campaignEditorCampaign._id
@@ -2597,7 +2602,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 <button
                   className="btn-icon btn-edit"
                   type="button"
-                  disabled={Boolean(pendingCampaignAction)}
+                  disabled={campaignMutationBusy}
                   aria-busy={
                     pendingCampaignAction?.type === "duplicate" &&
                     pendingCampaignAction?.id === campaignEditorCampaign._id
@@ -2613,7 +2618,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 <button
                   className="btn-icon btn-delete"
                   type="button"
-                  disabled={Boolean(pendingCampaignAction)}
+                  disabled={campaignMutationBusy}
                   aria-busy={
                     pendingCampaignAction?.type === "delete" &&
                     pendingCampaignAction?.id === campaignEditorCampaign._id
@@ -2633,7 +2638,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 statusOverride={effectiveCampaignEditorStatus}
                 saveRevision={campaignSaveRevision}
                 onDirtyChange={setCampaignDraftDirty}
-                submitting={submitting}
+                submitting={campaignMutationBusy}
                 onSubmit={handleSubmitCampaign}
                 onCancel={handleCloseCampaignEditor}
                 adUnitManagementContent={(

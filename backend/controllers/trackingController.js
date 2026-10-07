@@ -589,6 +589,11 @@ exports.getAnalytics = async (req, res) => {
   try {
     const { limit } = req.query;
     const topLimit = Number(limit) > 0 ? Math.min(Number(limit), 500) : 5;
+    // The dashboard's channel report needs every historical relation, not just
+    // a top-N ranking. The default ranking contract remains unchanged.
+    const includeReportItems = ['1', 'true'].includes(
+      String(req.query.includeReportItems || '').trim().toLowerCase()
+    );
     const includeAdUnitDaily = Boolean(normalizeString(req.query.campaignId))
       && ['1', 'true'].includes(
         String(req.query.includeAdUnitDaily || '').trim().toLowerCase()
@@ -690,7 +695,7 @@ exports.getAnalytics = async (req, res) => {
           }
         },
         { $sort: { impressions: -1, clicks: -1 } },
-        { $limit: topLimit }
+        ...(includeReportItems ? [] : [{ $limit: topLimit }])
       ]),
       AdDailyStat.aggregate([
         { $match: dailyMatch },
@@ -726,7 +731,7 @@ exports.getAnalytics = async (req, res) => {
           }
         },
         { $sort: { impressions: -1, clicks: -1 } },
-        { $limit: topLimit }
+        ...(includeReportItems ? [] : [{ $limit: topLimit }])
       ]),
       includeAdUnitDaily
         ? AdDailyStat.aggregate([

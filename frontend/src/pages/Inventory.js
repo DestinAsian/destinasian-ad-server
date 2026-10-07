@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { adUnitAPI, inventoryAPI } from "../services/api";
+import { adUnitAPI, inventoryAPI, API_BASE_URL } from "../services/api";
 import AccountSelector from "../components/AccountSelector";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
@@ -11,6 +11,7 @@ import {
 } from "../utils/inventorySearch";
 import { sortSelectedFirst } from "../utils/listOrdering";
 import { isAdUnitRunning } from "../utils/deliveryEligibility";
+import { buildCmsScriptTag } from "../utils/cmsScript";
 import "../styles/Inventory.css";
 
 const isAdUnitLinkedToChannel = (adUnit, channelId) => {
@@ -65,7 +66,12 @@ function Inventory({ searchQuery = "" }) {
     isActive: true,
     adUnitIds: [],
   });
-  const cmsScriptTag = `<script src="https://YOUR-AD-SERVER.DOMAIN/ad-client.js"></script>`;
+  const cmsScriptTag = buildCmsScriptTag(
+    API_BASE_URL,
+    window.location.origin,
+    process.env.REACT_APP_DELIVERY_URL,
+  );
+  const editSessionRef = useRef(0);
   const inventoryFilterRef = useRef(null);
   const loadRequestIdRef = useRef(0);
   const loadAbortControllerRef = useRef(null);
@@ -142,6 +148,7 @@ function Inventory({ searchQuery = "" }) {
     setExpandedSnippets({});
     setExpandedInventoryIds(new Set());
     setInventorySummaryViewById({});
+    editSessionRef.current += 1;
     setEditingId(null);
     setPendingAction(null);
     setEditForm({
@@ -537,6 +544,8 @@ function Inventory({ searchQuery = "" }) {
   };
 
   const startEdit = (inventory) => {
+    if (pendingAction) return;
+    editSessionRef.current += 1;
     const linkedIds = adUnits.filter((unit) => isAdUnitLinkedToChannel(unit, inventory._id)).map((unit) => String(unit._id));
     setEditBaseline({ updatedAt: inventory.updatedAt, adUnitIds: linkedIds });
     setEditingId(inventory._id);
@@ -552,6 +561,7 @@ function Inventory({ searchQuery = "" }) {
   };
 
   const cancelEdit = () => {
+    editSessionRef.current += 1;
     setEditingId(null);
     setEditForm({
       name: "",
@@ -567,22 +577,33 @@ function Inventory({ searchQuery = "" }) {
     if (pendingAction) return;
     setError(null);
     const targetId = editingId;
+    const editSession = editSessionRef.current;
     setPendingAction({ type: "update", id: targetId });
 
     try {
       const changed = JSON.stringify([...editForm.adUnitIds].sort()) !== JSON.stringify([...editBaseline.adUnitIds].sort());
       const { adUnitIds, ...metadata } = editForm;
-      await inventoryAPI.update(editingId, {
+      const response = await inventoryAPI.update(targetId, {
         ...metadata, _expectedUpdatedAt: editBaseline.updatedAt,
         ...(changed ? { adUnitIds, _expectedAdUnitIds: editBaseline.adUnitIds } : {}),
       });
-      setEditingId(null);
+      if (editSession !== editSessionRef.current) return;
+      // Rebase on the successful write so a second save does not send a stale
+      // revision or replay old assignments. Only Cancel exits edit mode.
+      setEditBaseline({ updatedAt: response.data.updatedAt, adUnitIds: [...adUnitIds] });
+      setEditForm({
+        name: response.data.name || "",
+        key: response.data.key || "",
+        description: response.data.description || "",
+        isActive: response.data.isActive !== false,
+        adUnitIds: [...adUnitIds],
+      });
       setSuccessMessage("Ad Channel updated");
       await loadData({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to update ad channel"));
     } finally {
-      setPendingAction(null);
+      setPendingAction((pending) => pending?.type === "update" && pending?.id === targetId ? null : pending);
     }
   };
 
@@ -728,11 +749,16 @@ function Inventory({ searchQuery = "" }) {
               Add this script inside the {`<Head>`} element of your website or
               CMS template.
             </div>
-            <code className="ad-unit-cms-code">{cmsScriptTag}</code>
+            {cmsScriptTag ? (
+              <code className="ad-unit-cms-code">{cmsScriptTag}</code>
+            ) : (
+              <p role="alert">The public delivery URL is not configured correctly. Configure REACT_APP_API_URL or REACT_APP_DELIVERY_URL before copying the CMS tag.</p>
+            )}
             <div className="ad-unit-cms-actions">
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
+                disabled={!cmsScriptTag}
                 onClick={async () => {
                   await copyToClipboard(`${cmsScriptTag}\n`);
                 }}
@@ -988,6 +1014,7 @@ function Inventory({ searchQuery = "" }) {
                       onSubmit={handleUpdate}
                       className="inventory-edit-form"
                     >
+                      <fieldset disabled={Boolean(pendingAction)} style={{ display: "contents" }}>
                       <label className="inventory-field">
                         <span>Name</span>
                         <input
@@ -1111,6 +1138,7 @@ function Inventory({ searchQuery = "" }) {
                           Cancel
                         </button>
                       </div>
+                      </fieldset>
                     </form>
                   ) : (
                     <>
