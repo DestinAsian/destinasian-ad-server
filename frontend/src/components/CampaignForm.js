@@ -256,8 +256,8 @@ function CampaignForm({
     const metadataDirty = ["name", "description", "startDate", "endDate"]
       .some((field) => formData[field] !== baseline[field]);
     const mappingsDirty = mappingRows.some((row) => {
-      const original = baseline.mappings?.[row.adUnitId];
-      return original && JSON.stringify([...(inventoryMappings[row.adUnitId] || [])].sort())
+      const original = baseline.mappings?.[row.adUnitId] ?? row.inventoryIds;
+      return JSON.stringify([...(inventoryMappings[row.adUnitId] || [])].sort())
         !== JSON.stringify([...original].sort());
     });
     onDirtyChange(metadataDirty || Boolean(mappingsDirty));
