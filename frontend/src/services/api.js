@@ -10,6 +10,9 @@ const readRefreshRevision = () => {
 };
 
 export const readCsrfToken = () => {
+  // The authoritative API token can belong to a different hostname. An old
+  // cookie on the frontend hostname must not override an explicit renewal.
+  if (cachedCsrfToken) return cachedCsrfToken;
   const cookie = document.cookie
     .split('; ')
     .find((item) => item.startsWith(`${CSRF_COOKIE_NAME}=`));
