@@ -56,7 +56,7 @@ app.use(cookieParser());
 const { csrfProtection } = require('./middleware/csrf');
 app.use('/api', csrfProtection);
 
-app.get('/ad-client.js', (req, res) => {
+app.get(['/ad-client.js', '/api/ad-client.js'], (req, res) => {
   res.sendFile(path.resolve(__dirname, '..', 'ad-client.js'));
 });
 
