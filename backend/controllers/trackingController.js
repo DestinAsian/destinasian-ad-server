@@ -8,7 +8,7 @@ const AdImpressionEvent = require('../models/AdImpressionEvent');
 const AdClickEvent = require('../models/AdClickEvent');
 const AdDailyStat = require('../models/AdDailyStat');
 const { isAdUnitDeliverable } = require('../services/deliveryEligibilityService');
-const { runAtomicMutation } = require('../services/transactionService');
+const { applySession, runAtomicMutation } = require('../services/transactionService');
 
 const getUtcDayStart = (dateInput = new Date()) => {
   const date = new Date(dateInput);
@@ -97,6 +97,7 @@ const toObjectId = (value) => {
 };
 
 const buildDateRangeMatch = (accountId, startDate, endDate) => {
+  validateReportDates(startDate, endDate);
   const match = { account: toObjectId(accountId) || accountId };
 
   if (startDate || endDate) {
@@ -113,6 +114,7 @@ const buildDateRangeMatch = (accountId, startDate, endDate) => {
 };
 
 const buildEventDateRangeMatch = (accountId, startDate, endDate) => {
+  validateReportDates(startDate, endDate);
   const match = { account: toObjectId(accountId) || accountId };
 
   if (startDate || endDate) {
@@ -126,6 +128,16 @@ const buildEventDateRangeMatch = (accountId, startDate, endDate) => {
   }
 
   return match;
+};
+
+const validateReportDates = (start, end) => {
+  if ((start && !Number.isFinite(new Date(start).getTime()))
+    || (end && !Number.isFinite(new Date(end).getTime()))
+    || (start && end && new Date(start) > new Date(end))) {
+    const error = new Error('Invalid report date range. Start date must be on or before end date.');
+    error.statusCode = 400;
+    throw error;
+  }
 };
 
 const toDoubleExpression = (path) => ({
@@ -415,192 +427,114 @@ const updateDailyStat = async ({
 }) => {
   const statDate = getUtcDayStart(occurredAt);
   const totalRevenue = getNumericValue(impressionRevenue) + getNumericValue(clickRevenue);
-  const updated = await AdDailyStat.findOneAndUpdate(
-    {
-      statDate,
-      account,
-      campaign,
-      adUnit,
-      inventory: inventory || null
-    },
-    {
-      $inc: {
-        impressions,
-        clicks,
-        impressionRevenue: getNumericValue(impressionRevenue),
-        clickRevenue: getNumericValue(clickRevenue),
-        revenue: totalRevenue
-      },
-      $set: {
-        adCode,
-        lastAggregatedAt: new Date()
-      }
-    },
-    {
-      upsert: true,
-      new: true,
-      setDefaultsOnInsert: true,
-      ...(session ? { session } : {})
-    }
+  const filter = {
+    statDate, account, campaign, adUnit, inventory: inventory || null,
+  };
+  const increment = (field, value) => ({ $add: [{ $ifNull: [`$${field}`, 0] }, value] });
+  const pipeline = [
+    { $set: {
+      impressions: increment('impressions', impressions),
+      clicks: increment('clicks', clicks),
+      impressionRevenue: increment('impressionRevenue', getNumericValue(impressionRevenue)),
+      clickRevenue: increment('clickRevenue', getNumericValue(clickRevenue)),
+      revenue: increment('revenue', totalRevenue),
+      adCode: { $literal: adCode }, lastAggregatedAt: new Date(),
+      createdAt: { $ifNull: ['$createdAt', new Date()] },
+    } },
+    { $set: { ctr: buildCtrProjection() } },
+  ];
+  const update = (upsert) => AdDailyStat.findOneAndUpdate(
+    filter, pipeline,
+    { upsert, new: true, setDefaultsOnInsert: false, ...(session ? { session } : {}) }
   );
-
-  const impressionTotal = typeof updated.impressions === 'number' ? updated.impressions : 0;
-  const clickTotal = typeof updated.clicks === 'number' ? updated.clicks : 0;
-  const ctr = impressionTotal > 0 ? Number(((clickTotal / impressionTotal) * 100).toFixed(2)) : 0;
-
-  if (updated.ctr !== ctr) {
-    updated.ctr = ctr;
-    await updated.save(session ? { session } : undefined);
+  try {
+    await update(true);
+  } catch (error) {
+    if (session || error.code !== 11000 || !/ad_daily_stats_rollup_key/.test(String(error.message))) throw error;
+    await update(false);
   }
 };
 
-exports.recordImpression = async (req, res) => {
-  try {
-    const { adUnitId } = req.params;
-    const userIp = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers['user-agent'];
-    const referrer = req.headers['referer'];
-    const occurredAt = new Date();
-    const impressionRevenue = getNumericValue(req.body?.revenue);
-    const eventMeta = getEventMeta(req.body, impressionRevenue);
+exports.updateDailyStat = updateDailyStat;
 
-    const adUnit = await AdUnit.findOne({ adCode: adUnitId }).populate('campaign');
-    if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
-    if (!isAdUnitDeliverable(adUnit, occurredAt)) {
-      return res.status(204).end();
+/*
+ * Tracking writes use atomic increments (not a stale document save), and all
+ * records are constructed inside the transaction callback so a retry cannot
+ * reuse a Mongoose document marked as already persisted by a rolled-back save.
+ */
+const recordTrackingEvent = async (req, kind) => {
+  const isClick = kind === 'click';
+  const occurredAt = new Date();
+  const preliminary = await AdUnit.findOne({ adCode: req.params.adUnitId }).populate('campaign');
+  if (preliminary && !isAdUnitDeliverable(preliminary, occurredAt)) return false;
+  return runAtomicMutation(async (session) => {
+    const adUnit = await applySession(AdUnit.findOne({ adCode: req.params.adUnitId }).populate('campaign'), session);
+    if (!adUnit) {
+      const error = new Error('Ad unit not found');
+      error.statusCode = 404;
+      throw error;
     }
+    if (!isAdUnitDeliverable(adUnit, occurredAt)) return false;
     const campaignId = adUnit.campaign?._id || adUnit.campaign;
     const trackingInventoryId = resolveTrackingInventoryId(adUnit, req.body?.inventoryId);
-
-    const impression = new Impression({
-      adUnit: adUnit._id,
-      campaign: campaignId,
-      account: adUnit.account,
-      userIp,
-      userAgent,
-      referrer
-    });
-
-    const impressionEvent = new AdImpressionEvent({
-      adUnit: adUnit._id,
-      campaign: campaignId,
-      account: adUnit.account,
-      inventory: trackingInventoryId,
-      adCode: adUnit.adCode,
-      userIp,
-      userAgent,
-      referrer,
-      occurredAt,
-      meta: eventMeta
-    });
-
-    await runAtomicMutation(async (session) => {
-      // MongoDB does not support parallel operations on one transaction
-      // session. Keep these writes sequential so replica-set deployments do
-      // not fail nondeterministically while still committing as one unit.
-      await impression.save(session ? { session } : undefined);
-      await impressionEvent.save(session ? { session } : undefined);
-
-      adUnit.impressions += 1;
-      await adUnit.save(session ? { session } : undefined);
-
-      await Campaign.findByIdAndUpdate(
-        campaignId,
-        { $inc: { totalImpressions: 1 } },
-        session ? { session } : undefined
-      );
-
-      await updateDailyStat({
-        account: adUnit.account,
-        campaign: campaignId,
-        adUnit: adUnit._id,
-        inventory: trackingInventoryId,
-        adCode: adUnit.adCode,
-        occurredAt,
-        impressions: 1,
-        impressionRevenue,
-        session
-      });
-    });
-
-    res.json({ success: true, message: 'Impression recorded', revenue: impressionRevenue });
-  } catch (error) {
-    res.status(error.statusCode || 500).json({ error: error.message });
-  }
-};
-
-exports.recordClick = async (req, res) => {
-  try {
-    const { adUnitId } = req.params;
-    const userIp = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers['user-agent'];
-    const referrer = req.headers['referer'];
-    const occurredAt = new Date();
-    const clickRevenue = getNumericValue(req.body?.revenue);
-    const eventMeta = getEventMeta(req.body, clickRevenue);
-
-    const adUnit = await AdUnit.findOne({ adCode: adUnitId }).populate('campaign');
-    if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
-    if (!isAdUnitDeliverable(adUnit, occurredAt)) {
-      return res.status(204).end();
+    const metadata = {
+      adUnit: adUnit._id, campaign: campaignId, account: adUnit.account,
+      userIp: req.ip || req.connection?.remoteAddress,
+      userAgent: req.headers['user-agent'], referrer: req.headers.referer,
+    };
+    const RawEvent = isClick ? Click : Impression;
+    const DetailedEvent = isClick ? AdClickEvent : AdImpressionEvent;
+    const revenue = getNumericValue(req.body?.revenue);
+    await new RawEvent(metadata).save(session ? { session } : undefined);
+    await new DetailedEvent({
+      ...metadata, inventory: trackingInventoryId, adCode: adUnit.adCode,
+      ...(isClick ? { clickUrl: adUnit.clickUrl } : {}),
+      occurredAt, meta: getEventMeta(req.body, revenue),
+    }).save(session ? { session } : undefined);
+    const result = await AdUnit.updateOne(
+      { _id: adUnit._id, account: adUnit.account, campaign: campaignId, status: 'active' },
+      { $inc: { [isClick ? 'clicks' : 'impressions']: 1 } },
+      { timestamps: false, ...(session ? { session } : {}) }
+    );
+    if (result.matchedCount !== 1) {
+      const error = new Error('Ad Unit changed while recording tracking. Retry the request.');
+      error.statusCode = 409;
+      throw error;
     }
-    const campaignId = adUnit.campaign?._id || adUnit.campaign;
-    const trackingInventoryId = resolveTrackingInventoryId(adUnit, req.body?.inventoryId);
-
-    const click = new Click({
-      adUnit: adUnit._id,
-      campaign: campaignId,
-      account: adUnit.account,
-      userIp,
-      userAgent,
-      referrer
+    const campaignResult = await Campaign.updateOne(
+      { _id: campaignId, account: adUnit.account, status: 'active' },
+      { $inc: { [isClick ? 'totalClicks' : 'totalImpressions']: 1 } },
+      { timestamps: false, ...(session ? { session } : {}) }
+    );
+    if (campaignResult.matchedCount !== 1) {
+      const error = new Error('Campaign changed while recording tracking. Retry the request.');
+      error.statusCode = 409;
+      throw error;
+    }
+    await updateDailyStat({
+      account: adUnit.account, campaign: campaignId, adUnit: adUnit._id,
+      inventory: trackingInventoryId, adCode: adUnit.adCode, occurredAt,
+      impressions: isClick ? 0 : 1, clicks: isClick ? 1 : 0,
+      impressionRevenue: isClick ? 0 : revenue, clickRevenue: isClick ? revenue : 0,
+      session,
     });
+    return true;
+  }, { requireTransaction: true });
+};
 
-    const clickEvent = new AdClickEvent({
-      adUnit: adUnit._id,
-      campaign: campaignId,
-      account: adUnit.account,
-      inventory: trackingInventoryId,
-      adCode: adUnit.adCode,
-      clickUrl: adUnit.clickUrl,
-      userIp,
-      userAgent,
-      referrer,
-      occurredAt,
-      meta: eventMeta
-    });
-
-    await runAtomicMutation(async (session) => {
-      await click.save(session ? { session } : undefined);
-      await clickEvent.save(session ? { session } : undefined);
-
-      adUnit.clicks += 1;
-      await adUnit.save(session ? { session } : undefined);
-
-      await Campaign.findByIdAndUpdate(
-        campaignId,
-        { $inc: { totalClicks: 1 } },
-        session ? { session } : undefined
-      );
-
-      await updateDailyStat({
-        account: adUnit.account,
-        campaign: campaignId,
-        adUnit: adUnit._id,
-        inventory: trackingInventoryId,
-        adCode: adUnit.adCode,
-        occurredAt,
-        clicks: 1,
-        clickRevenue,
-        session
-      });
-    });
-
-    res.json({ success: true, message: 'Click recorded', revenue: clickRevenue });
+const trackingHandler = (kind) => async (req, res) => {
+  try {
+    const recorded = await recordTrackingEvent(req, kind);
+    if (!recorded) return res.status(204).end();
+    return res.json({ success: true, message: `${kind === 'click' ? 'Click' : 'Impression'} recorded`, revenue: getNumericValue(req.body?.revenue) });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ error: error.message });
+    return res.status(error.statusCode || 500).json({ error: error.message });
   }
 };
+
+exports.recordImpression = trackingHandler('impression');
+exports.recordClick = trackingHandler('click');
+
 
 exports.getTrackingStats = async (req, res) => {
   try {
@@ -647,7 +581,7 @@ exports.getTrackingStats = async (req, res) => {
       revenue: getMergedRevenueTotal(totals?.revenue, impressionRevenue, clickRevenue)
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(error.statusCode || 500).json({ error: error.message });
   }
 };
 
@@ -837,7 +771,7 @@ exports.getAnalytics = async (req, res) => {
       topCampaigns
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(error.statusCode || 500).json({ error: error.message });
   }
 };
 

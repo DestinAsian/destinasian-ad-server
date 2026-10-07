@@ -35,6 +35,7 @@ function AdUnitForm({
   submitting,
   campaignId,
   campaign,
+  saveRevision = 0,
   onSubmit,
   onCancel,
 }) {
@@ -56,6 +57,7 @@ function AdUnitForm({
   const [inventoryLoading, setInventoryLoading] = useState(true);
   const [isBannerLibraryOpen, setIsBannerLibraryOpen] = useState(false);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
+  const [initialEndDateValue, setInitialEndDateValue] = useState("");
   const [startDateTouched, setStartDateTouched] = useState(false);
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
   const [bannerLibrary, setBannerLibrary] = useState([]);
@@ -63,6 +65,7 @@ function AdUnitForm({
   const [bannerLibraryError, setBannerLibraryError] = useState(null);
   const [bannerLibrarySearch, setBannerLibrarySearch] = useState("");
   const bannerLibraryRequestRef = useRef(null);
+  const [inventoryOrdering, setInventoryOrdering] = useState([]);
 
   useEffect(() => {
     if (adUnit) {
@@ -89,7 +92,9 @@ function AdUnitForm({
         clickUrl: adUnit.clickUrl || "",
       });
       setInitialStartDateValue(formattedStart);
+      setInitialEndDateValue(formatToLocalDateTime(adUnit.endDate));
       setImagePreview(adUnit.imageUrl || null);
+      setInventoryOrdering(multiInventories.length > 0 ? multiInventories : fallbackInventory ? [fallbackInventory] : []);
     } else {
       const defaultStartDate = getRecommendedStartDate();
       const defaultEndDate = campaign?.endDate
@@ -106,6 +111,7 @@ function AdUnitForm({
       });
       setInitialStartDateValue(defaultStartDate);
       setImagePreview(null);
+      setInventoryOrdering([]);
     }
     setIsBannerLibraryOpen(false);
     setInventorySearchQuery("");
@@ -120,22 +126,29 @@ function AdUnitForm({
     setStartDateTouched(false);
     setErrors({});
     setImageError(null);
-  }, [adUnit, campaignId, campaign]);
+    // Only a new editor or an acknowledged save establishes a new baseline.
+    // A background refresh of the parent must not discard a dirty draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adUnit?._id, campaignId, saveRevision]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const loadInventories = async () => {
       try {
         setInventoryLoading(true);
-        const response = await inventoryAPI.getAll();
+        const response = await inventoryAPI.getAll(undefined, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         setInventories(response.data || []);
         setInventoryError(null);
       } catch (err) {
+        if (controller.signal.aborted) return;
         setInventoryError("Failed to load ad channels");
       } finally {
-        setInventoryLoading(false);
+        if (!controller.signal.aborted) setInventoryLoading(false);
       }
     };
     loadInventories();
+    return () => controller.abort();
   }, []);
 
   useEffect(() => () => {
@@ -328,12 +341,12 @@ function AdUnitForm({
           String(inventory?.name || "").toLowerCase().includes(normalizedInventorySearch),
         )
       : inventories;
-    const selectedIds = new Set(formData.inventoryIds.map(String));
+    const selectedIds = new Set(inventoryOrdering.map(String));
     return sortSelectedFirst(
       matchingInventories,
       (inventory) => selectedIds.has(String(inventory?._id || "")),
     );
-  }, [formData.inventoryIds, inventories, normalizedInventorySearch]);
+  }, [inventoryOrdering, inventories, normalizedInventorySearch]);
   const normalizedBannerLibrarySearch = String(bannerLibrarySearch || "").trim().toLowerCase();
   const visibleBannerLibrary = useMemo(() => {
     const matchingBanners = normalizedBannerLibrarySearch
@@ -464,15 +477,16 @@ function AdUnitForm({
       const submitData = {
         name: formData.name,
         campaign: formData.campaignId,
-        inventory: normalizedInventoryIds[0],
-        inventories: normalizedInventoryIds,
-        inventoryIds: normalizedInventoryIds,
-        endDate: formData.endDate
-          ? new Date(formData.endDate).toISOString()
-          : "",
         imageUrl: formData.imageUrl,
         clickUrl: formData.clickUrl,
       };
+      if (!isEditingAdUnit || JSON.stringify(normalizedInventoryIds) !== JSON.stringify(inventoryOrdering)) {
+        submitData.inventoryIds = normalizedInventoryIds;
+      }
+      if (!isEditingAdUnit || formData.endDate !== initialEndDateValue) {
+        submitData.endDate = new Date(formData.endDate).toISOString();
+      }
+      if (adUnit?.updatedAt) submitData._expectedUpdatedAt = adUnit.updatedAt;
 
       if (
         !isEditingAdUnit ||
@@ -636,6 +650,7 @@ function AdUnitForm({
   return (
     <>
     <form onSubmit={handleSubmit} className="ad-unit-form">
+      <fieldset disabled={submitting} style={{ display: "contents" }}>
       <div className="form-group form-full-width">
         <label htmlFor="name">Ad Unit Name *</label>
         <input
@@ -813,6 +828,7 @@ function AdUnitForm({
           Cancel
         </button>
       </div>
+      </fieldset>
     </form>
     </>
   );

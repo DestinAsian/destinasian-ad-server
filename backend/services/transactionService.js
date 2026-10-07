@@ -16,10 +16,15 @@ const applySession = (query, session) => (
     : query
 );
 
-const runAtomicMutation = async (work) => {
+const runAtomicMutation = async (work, { requireTransaction = false } = {}) => {
   if (!supportsTransactions()) {
-    // Standalone MongoDB does not support multi-document transactions. Callers
-    // still pre-validate the complete plan and use one bulk write per model.
+    if (requireTransaction) {
+      const error = new Error('This operation requires MongoDB transaction support (replica set). No changes were saved. Contact the administrator.');
+      error.statusCode = 503;
+      error.code = 'TRANSACTIONS_REQUIRED';
+      throw error;
+    }
+    // Only explicitly single-document or read-only work may use this path.
     return work(null);
   }
 

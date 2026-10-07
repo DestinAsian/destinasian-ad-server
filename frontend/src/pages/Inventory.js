@@ -10,6 +10,7 @@ import {
   filterCampaignEntriesForInventorySearch,
 } from "../utils/inventorySearch";
 import { sortSelectedFirst } from "../utils/listOrdering";
+import { isAdUnitRunning } from "../utils/deliveryEligibility";
 import "../styles/Inventory.css";
 
 const isAdUnitLinkedToChannel = (adUnit, channelId) => {
@@ -56,6 +57,7 @@ function Inventory({ searchQuery = "" }) {
     adUnitIds: [],
   });
   const [editingId, setEditingId] = useState(null);
+  const [editBaseline, setEditBaseline] = useState({ adUnitIds: [] });
   const [editForm, setEditForm] = useState({
     name: "",
     key: "",
@@ -69,18 +71,7 @@ function Inventory({ searchQuery = "" }) {
   const loadAbortControllerRef = useRef(null);
   const loadedAccountRef = useRef(null);
 
-  const isRunningAdUnit = useCallback((adUnit) => {
-    const adUnitStatus = String(adUnit?.status || "").toLowerCase();
-    if (adUnitStatus !== "active") return false;
-
-    const campaignStatus = String(adUnit?.campaign?.status || "").toLowerCase();
-    if (!campaignStatus) return true;
-    return (
-      campaignStatus === "active" ||
-      campaignStatus === "running" ||
-      campaignStatus === "live"
-    );
-  }, []);
+  const isRunningAdUnit = useCallback((adUnit) => isAdUnitRunning(adUnit), []);
 
   const loadData = useCallback(async ({ silent = false } = {}) => {
     const requestId = loadRequestIdRef.current + 1;
@@ -107,7 +98,7 @@ function Inventory({ searchQuery = "" }) {
     }
     try {
       const [inventoryResponse, adUnitResponse] = await Promise.all([
-        inventoryAPI.getAll({ runningAdsOnly }, { signal: controller.signal }),
+        inventoryAPI.getAll({ runningAdsOnly, includeStats: true }, { signal: controller.signal }),
         adUnitAPI.getAll({ view: "summary" }, { signal: controller.signal }),
       ]);
 
@@ -190,7 +181,7 @@ function Inventory({ searchQuery = "" }) {
       const linkedAdUnits = adUnits.filter((adUnit) =>
         isAdUnitLinkedToChannel(adUnit, inventory._id),
       );
-      const runningAdUnits = linkedAdUnits.filter(isRunningAdUnit);
+      const runningAdUnits = inventory.isActive ? linkedAdUnits.filter(isRunningAdUnit) : [];
 
       const buildCampaignEntries = (sourceAdUnits) => {
         const campaignMap = new Map();
@@ -546,6 +537,8 @@ function Inventory({ searchQuery = "" }) {
   };
 
   const startEdit = (inventory) => {
+    const linkedIds = adUnits.filter((unit) => isAdUnitLinkedToChannel(unit, inventory._id)).map((unit) => String(unit._id));
+    setEditBaseline({ updatedAt: inventory.updatedAt, adUnitIds: linkedIds });
     setEditingId(inventory._id);
     setEditForm({
       name: inventory.name || "",
@@ -577,7 +570,12 @@ function Inventory({ searchQuery = "" }) {
     setPendingAction({ type: "update", id: targetId });
 
     try {
-      await inventoryAPI.update(editingId, editForm);
+      const changed = JSON.stringify([...editForm.adUnitIds].sort()) !== JSON.stringify([...editBaseline.adUnitIds].sort());
+      const { adUnitIds, ...metadata } = editForm;
+      await inventoryAPI.update(editingId, {
+        ...metadata, _expectedUpdatedAt: editBaseline.updatedAt,
+        ...(changed ? { adUnitIds, _expectedAdUnitIds: editBaseline.adUnitIds } : {}),
+      });
       setEditingId(null);
       setSuccessMessage("Ad Channel updated");
       await loadData({ silent: true });
@@ -672,9 +670,9 @@ function Inventory({ searchQuery = "" }) {
     () =>
       sortSelectedFirst(
         sortedAdUnits,
-        (adUnit) => editAdUnitSelection.has(String(adUnit?._id || "")),
+        (adUnit) => editBaseline.adUnitIds.includes(String(adUnit?._id || "")),
       ),
-    [editAdUnitSelection, sortedAdUnits],
+    [editBaseline.adUnitIds, sortedAdUnits],
   );
 
   if (
@@ -1128,10 +1126,6 @@ function Inventory({ searchQuery = "" }) {
                           runningCampaigns: [],
                         };
                         const summaryView = getSummaryView(inventory._id);
-                        const currentMetrics =
-                          summaryView === "running"
-                            ? details.runningMetrics
-                            : details.linkedMetrics;
                         const unfilteredCampaigns =
                           summaryView === "running"
                             ? details.runningCampaigns
@@ -1164,21 +1158,21 @@ function Inventory({ searchQuery = "" }) {
                                   {inventory.name}
                                 </span>
                                 <span className="inventory-inline-metrics">
-                                  <span>
-                                    Impressions:{" "}
+                                  <span title="Lifetime impressions delivered on this Ad Channel">
+                                    Channel Impressions:{" "}
                                     {new Intl.NumberFormat("en-US").format(
-                                      currentMetrics.impressions,
+                                      inventory.deliveryStats?.impressions || 0,
                                     )}
                                   </span>
                                   <span>
-                                    Clicks:{" "}
+                                    Channel Clicks:{" "}
                                     {new Intl.NumberFormat("en-US").format(
-                                      currentMetrics.clicks,
+                                      inventory.deliveryStats?.clicks || 0,
                                     )}
                                   </span>
                                   <span>
                                     CTR:{" "}
-                                    {Number(currentMetrics.ctr || 0).toFixed(2)}
+                                    {Number(inventory.deliveryStats?.ctr || 0).toFixed(2)}
                                     %
                                   </span>
                                 </span>
@@ -1377,14 +1371,14 @@ function Inventory({ searchQuery = "" }) {
                                       </button>
                                       {isSnippetExpanded && (
                                         <div className="inventory-snippet-body">
-                                          <code>{`<div data-inventory="${inventory.key}" data-width="100%"></div>`}</code>
+                                          <code>{`<div data-inventory="${inventory.key}" data-inventory-id="${inventory._id}" data-width="100%"></div>`}</code>
                                           <div className="inventory-snippet-actions">
                                             <button
                                               type="button"
                                               className="btn btn-secondary btn-sm"
                                               onClick={async () => {
                                                 await copyToClipboard(
-                                                  `<div data-inventory="${inventory.key}" data-width="100%"></div>`,
+                                                  `<div data-inventory="${inventory.key}" data-inventory-id="${inventory._id}" data-width="100%"></div>`,
                                                 );
                                               }}
                                             >

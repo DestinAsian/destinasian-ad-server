@@ -28,6 +28,8 @@ const inventorySchema = new mongoose.Schema(
       min: 1,
       max: 999
     },
+    // Internal concurrency guard shared by assignment and delete transactions.
+    assignmentRevision: { type: Number, default: 0, select: false },
     description: {
       type: String,
       trim: true
