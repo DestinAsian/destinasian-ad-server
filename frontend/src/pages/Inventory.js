@@ -58,6 +58,7 @@ function Inventory({ searchQuery = "" }) {
     adUnitIds: [],
   });
   const [editingId, setEditingId] = useState(null);
+  const [editingInventory, setEditingInventory] = useState(null);
   const [editBaseline, setEditBaseline] = useState({ adUnitIds: [] });
   const [editForm, setEditForm] = useState({
     name: "",
@@ -150,6 +151,7 @@ function Inventory({ searchQuery = "" }) {
     setInventorySummaryViewById({});
     editSessionRef.current += 1;
     setEditingId(null);
+    setEditingInventory(null);
     setPendingAction(null);
     setEditForm({
       name: "",
@@ -314,9 +316,16 @@ function Inventory({ searchQuery = "" }) {
       .trim()
       .toLowerCase();
     const hasSelectionFilter = selectedInventoryFilterIds.length > 0;
-    return [...inventories]
+    const rows = [...inventories];
+    // Keep the active editor mounted even when a successful save removes the
+    // channel from the running-only result or from the current title filter.
+    if (editingInventory && !rows.some((row) => row._id === editingId)) {
+      rows.push(editingInventory);
+    }
+    return rows
       .map((inventory, index) => ({ inventory, index }))
       .filter(({ inventory }) => {
+        if (inventory._id === editingId) return true;
         if (!normalizedSearch) return true;
         const details = inventoryDetailsById.get(String(inventory?._id));
         if (!details) return false;
@@ -334,6 +343,7 @@ function Inventory({ searchQuery = "" }) {
         );
       })
       .filter(({ inventory }) => {
+        if (inventory._id === editingId) return true;
         if (!hasSelectionFilter) return true;
         const inventoryId = String(inventory?._id || "");
         return selectedInventoryFilterSet.has(inventoryId);
@@ -356,6 +366,8 @@ function Inventory({ searchQuery = "" }) {
       .map(({ inventory }) => inventory);
   }, [
     inventories,
+    editingId,
+    editingInventory,
     searchQuery,
     sortMode,
     selectedInventoryFilterIds,
@@ -549,6 +561,7 @@ function Inventory({ searchQuery = "" }) {
     const linkedIds = adUnits.filter((unit) => isAdUnitLinkedToChannel(unit, inventory._id)).map((unit) => String(unit._id));
     setEditBaseline({ updatedAt: inventory.updatedAt, adUnitIds: linkedIds });
     setEditingId(inventory._id);
+    setEditingInventory(inventory);
     setEditForm({
       name: inventory.name || "",
       key: inventory.key || "",
@@ -563,6 +576,7 @@ function Inventory({ searchQuery = "" }) {
   const cancelEdit = () => {
     editSessionRef.current += 1;
     setEditingId(null);
+    setEditingInventory(null);
     setEditForm({
       name: "",
       key: "",
@@ -588,6 +602,7 @@ function Inventory({ searchQuery = "" }) {
         ...(changed ? { adUnitIds, _expectedAdUnitIds: editBaseline.adUnitIds } : {}),
       });
       if (editSession !== editSessionRef.current) return;
+      setEditingInventory((previous) => ({ ...previous, ...response.data }));
       // Rebase on the successful write so a second save does not send a stale
       // revision or replay old assignments. Only Cancel exits edit mode.
       setEditBaseline({ updatedAt: response.data.updatedAt, adUnitIds: [...adUnitIds] });
