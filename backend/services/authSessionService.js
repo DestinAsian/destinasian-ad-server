@@ -47,6 +47,11 @@ const rotateAuthSession = async ({ refreshToken, req }) => {
   return session ? { session, refreshToken: nextRefreshToken } : null;
 };
 
+const getAuthSession = (refreshToken) => AuthSession.findOne({
+  tokenHash: hashValue(refreshToken), revokedAt: { $exists: false },
+  expiresAt: { $gt: new Date() },
+});
+
 const replaceAuthSession = async ({ currentRefreshToken, userId, accountId, tokenVersion, req }) => {
   if (currentRefreshToken) {
     await AuthSession.updateOne(
@@ -75,6 +80,7 @@ const revokeAllUserSessions = async (userId) => {
 module.exports = {
   createAuthSession,
   rotateAuthSession,
+  getAuthSession,
   replaceAuthSession,
   revokeAuthSession,
   revokeAllUserSessions

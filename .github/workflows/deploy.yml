@@ -9,10 +9,11 @@ on:
 
 concurrency:
   group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test'
     runs-on: ubuntu-latest
 
     steps:
@@ -38,8 +39,17 @@ jobs:
           VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
+          set -euo pipefail
+          if [[ "${TARGET_DIRECTORY}" != '/srv/apps/production/destinasian-ad-server' ]]; then
+            echo 'SAFETY STOP: production branch/path mismatch'
+            exit 1
+          fi
+          if [[ "${DEPLOY_SCRIPT_PATH}" != '/srv/apps/scripts/deploy-adserver.sh' ]]; then
+            echo 'SAFETY STOP: unexpected deployment script'
+            exit 1
+          fi
           ssh -o BatchMode=yes -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
-            "\"${DEPLOY_SCRIPT_PATH}\" main \"${TARGET_DIRECTORY}\" && pm2 restart adserver-backend-production && pm2 restart adserver-frontend-production && pm2 save"
+            "\"${DEPLOY_SCRIPT_PATH}\" main \"${TARGET_DIRECTORY}\""
 
       - name: Deploy staging
         if: github.ref_name == 'test'
@@ -50,5 +60,14 @@ jobs:
           VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
+          set -euo pipefail
+          if [[ "${TARGET_DIRECTORY}" != '/srv/apps/staging/destinasian-ad-server' ]]; then
+            echo 'SAFETY STOP: staging branch/path mismatch'
+            exit 1
+          fi
+          if [[ "${DEPLOY_SCRIPT_PATH}" != '/srv/apps/scripts/deploy-adserver.sh' ]]; then
+            echo 'SAFETY STOP: unexpected deployment script'
+            exit 1
+          fi
           ssh -o BatchMode=yes -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
-            "\"${DEPLOY_SCRIPT_PATH}\" test \"${TARGET_DIRECTORY}\" && pm2 restart adserver-backend-staging && pm2 restart adserver-frontend-staging && pm2 save"
+            "\"${DEPLOY_SCRIPT_PATH}\" test \"${TARGET_DIRECTORY}\""

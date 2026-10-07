@@ -14,6 +14,9 @@ const {
 const { isCampaignDeliverable } = require('../services/deliveryEligibilityService');
 const { assignCrmAdIdToAdUnit } = require('../utils/crmAdIdAssignment');
 const { applySession, runAtomicMutation } = require('../services/transactionService');
+const { pickFields, adUnitUpdateFields, duplicateKeyMessage } = require('../utils/mutationPayload');
+const { resolveServingInventory } = require('../services/servingInventoryService');
+const { assertExpectedRevision, scopedRevisionFilter } = require('../utils/mutationGuards');
 
 const toObjectIdString = (value) => {
   if (!value) {
@@ -408,7 +411,7 @@ exports.createAdUnit = async (req, res) => {
       return res.status(400).json({ error: 'At least one inventory is required' });
     }
 
-    const adUnit = new AdUnit({
+    const fields = {
       user: req.user.id,
       account: req.user.accountId,
       name,
@@ -424,12 +427,11 @@ exports.createAdUnit = async (req, res) => {
       iframeUrl,
       clickUrl,
       width: width || '100%'
-    });
+    };
 
-    await runAtomicMutation(async (session) => {
+    const adUnit = await runAtomicMutation(async (session) => {
+      const adUnit = new AdUnit(fields);
       await assignCrmAdIdToAdUnit(adUnit, {
-        campaignDoc,
-        inventoryDoc: inventoryDocs[0],
         session
       });
       await adUnit.save(session ? { session } : undefined);
@@ -446,7 +448,8 @@ exports.createAdUnit = async (req, res) => {
         error.statusCode = 409;
         throw error;
       }
-    });
+      return adUnit;
+    }, { requireTransaction: true });
 
     const populated = await AdUnit.findById(adUnit._id)
       .populate('campaign')
@@ -630,19 +633,20 @@ exports.getAdUnitCreative = async (req, res) => {
 
 exports.updateAdUnit = async (req, res) => {
   try {
-    const adUnit = await AdUnit.findById(req.params.id);
+    let adUnit = await AdUnit.findById(req.params.id);
     if (!adUnit) return res.status(404).json({ error: 'Ad unit not found' });
 
     if (adUnit.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to update this ad unit' });
     }
+    assertExpectedRevision(adUnit, req.body._expectedUpdatedAt);
 
     const dateValidation = validateDateWindowForUpdate({ payload: req.body, adUnit });
     if (!dateValidation.valid) {
       return res.status(dateValidation.statusCode).json({ error: dateValidation.error });
     }
 
-    const updatePayload = { ...req.body };
+    const updatePayload = pickFields(req.body, adUnitUpdateFields);
     const previousInventoryId = adUnit.inventory;
     const previousCampaignId = adUnit.campaign;
     const hasInventoryInput = [
@@ -711,13 +715,20 @@ exports.updateAdUnit = async (req, res) => {
     delete updatePayload.inventoryGroupId;
     delete updatePayload.inventory_group_id;
 
+    const originalAdUnit = adUnit.toObject();
     await runAtomicMutation(async (session) => {
+      // A retry must not reuse dirty fields or identifiers from an aborted
+      // attempt. Parent identifiers are also read inside the active session.
+      if (session) adUnit = AdUnit.hydrate(originalAdUnit);
       if (
         parentCampaignDoc.endDate &&
         new Date(dateValidation.endDate).getTime() > new Date(parentCampaignDoc.endDate).getTime()
       ) {
-        parentCampaignDoc.endDate = dateValidation.endDate;
-        await parentCampaignDoc.save(session ? { session } : undefined);
+        await Campaign.updateOne(
+          { _id: parentCampaignDoc._id, account: req.user.accountId },
+          { $max: { endDate: dateValidation.endDate } },
+          session ? { session } : undefined
+        );
       }
 
       Object.entries(updatePayload).forEach(([key, value]) => {
@@ -726,21 +737,30 @@ exports.updateAdUnit = async (req, res) => {
         }
       });
 
-      if (shouldClearInventoryAssignment) {
+      if (shouldClearInventoryAssignment || !adUnit.inventory) {
         adUnit.inventory = null;
         adUnit.inventories = [];
         adUnit.inventoryCode = undefined;
         adUnit.adUnitCode = undefined;
         adUnit.crmAdId = undefined;
-      } else {
+      } else if (hasInventoryInput || String(previousCampaignId) !== String(adUnit.campaign) || !adUnit.crmAdId) {
         await assignCrmAdIdToAdUnit(adUnit, {
-          campaignDoc: parentCampaignDoc,
           previousCampaignId,
           previousInventoryId,
           session
         });
       }
-      await adUnit.save(session ? { session } : undefined);
+      await adUnit.validate();
+      const saved = await AdUnit.updateOne(
+        scopedRevisionFilter(adUnit, { account: req.user.accountId, campaign: previousCampaignId }),
+        adUnit.getChanges(),
+        { runValidators: true, ...(session ? { session } : {}) }
+      );
+      if (saved.matchedCount !== 1) {
+        const error = new Error('Ad Unit changed during update. Reopen the editor and retry.');
+        error.statusCode = 409;
+        throw error;
+      }
 
       if (String(previousCampaignId) !== String(adUnit.campaign)) {
         await Campaign.updateOne(
@@ -759,7 +779,10 @@ exports.updateAdUnit = async (req, res) => {
           throw error;
         }
       }
-    });
+    }, { requireTransaction: hasInventoryInput && Boolean(updatePayload.inventory)
+      || Boolean(adUnit.inventory && !adUnit.crmAdId)
+      || String(previousCampaignId) !== String(parentCampaignDoc._id)
+      || new Date(dateValidation.endDate) > new Date(parentCampaignDoc.endDate) });
 
     const updated = await AdUnit.findById(adUnit._id)
       .populate('campaign')
@@ -768,6 +791,7 @@ exports.updateAdUnit = async (req, res) => {
 
     res.json(updated);
   } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ error: duplicateKeyMessage(error, 'Ad Unit') });
     res.status(error.statusCode || 400).json({ error: error.message });
   }
 };
@@ -796,7 +820,7 @@ exports.deleteAdUnit = async (req, res) => {
         error.statusCode = 409;
         throw error;
       }
-    });
+    }, { requireTransaction: true });
     res.json({ message: 'Ad unit deleted' });
   } catch (error) {
     res.status(error.statusCode || 500).json({ error: error.message });
@@ -902,9 +926,9 @@ exports.getAdUnitByCampaign = async (req, res) => {
  */
 exports.serveAd = async (req, res) => {
   try {
-    const { inventory, adCode, exclude } = req.query;
+    const { inventory, inventoryId, accountId, adCode, exclude } = req.query;
 
-    if (!inventory && !adCode) {
+    if (!inventory && !inventoryId && !adCode) {
       return res.status(400).json({ error: 'inventory or adCode is required' });
     }
 
@@ -923,7 +947,7 @@ exports.serveAd = async (req, res) => {
         adUnit = null;
       }
     } else {
-      const inventoryDoc = await Inventory.findOne({ key: String(inventory).toLowerCase(), isActive: true });
+      const inventoryDoc = await resolveServingInventory({ inventory, inventoryId, accountId });
       if (!inventoryDoc) {
         return res.status(204).end();
       }
@@ -937,6 +961,7 @@ exports.serveAd = async (req, res) => {
       }).select('_id');
 
       const adQuery = {
+        account: inventoryDoc.account,
         $or: [
           { inventory: inventoryDoc._id },
           { inventories: inventoryDoc._id }
@@ -985,6 +1010,6 @@ exports.serveAd = async (req, res) => {
     });
   } catch (error) {
     console.error('[AdServer] Failed to serve ad:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Internal Server Error' });
   }
 };

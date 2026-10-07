@@ -97,6 +97,11 @@ exports.protect = async (req, res, next) => {
 
     next();
   } catch (error) {
+    const invalidCredential = ['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(error.name);
+    if (!invalidCredential) {
+      console.error('[Auth] Session verification unavailable:', error.name);
+      return res.status(503).json({ success: false, message: 'Session verification is temporarily unavailable. Please retry.' });
+    }
     return res.status(401).json({
       success: false,
       message: 'Not authorized to access this route'

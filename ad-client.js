@@ -381,7 +381,7 @@
   }
 
   async function loadAdIntoContainer(container, options) {
-    const { adCode, inventory, width, containerId } = options;
+    const { adCode, inventory, inventoryId, accountId, width, containerId } = options;
     try {
       const queryParams = new URLSearchParams();
 
@@ -389,6 +389,8 @@
         queryParams.set('adCode', adCode);
       } else {
         queryParams.set('inventory', inventory);
+        if (inventoryId) queryParams.set('inventoryId', inventoryId);
+        if (accountId) queryParams.set('accountId', accountId);
 
         const usedAdCodes = Array.from(usedAdCodesByInventory[inventory] || []);
         if (usedAdCodes.length > 0) {
@@ -506,10 +508,12 @@
     }
 
     const adCode = container.dataset.adCode;
-    const inventory = container.dataset.inventory;
+    const inventory = container.dataset.inventory || container.dataset.inventoryId;
+    const inventoryId = container.dataset.inventoryId;
+    const accountId = container.dataset.accountId;
     const width = container.dataset.width || '100%';
 
-    if (!adCode && !inventory) {
+    if (!adCode && !inventory && !inventoryId) {
       reportError('[AdServer] data-ad-code or data-inventory attribute required');
       return;
     }
@@ -517,6 +521,8 @@
     const loadOptions = {
       adCode,
       inventory,
+      inventoryId,
+      accountId,
       width,
       containerId
     };
@@ -603,7 +609,7 @@
   }
 
   function autoLoad() {
-    const adElements = root.document.querySelectorAll('[data-ad-code], [data-inventory]');
+    const adElements = root.document.querySelectorAll('[data-ad-code], [data-inventory], [data-inventory-id]');
     adElements.forEach((el, index) => {
       if (!el.id) {
         el.id = `ad-server-${index}`;

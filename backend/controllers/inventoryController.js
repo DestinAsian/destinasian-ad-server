@@ -2,8 +2,12 @@ const mongoose = require('mongoose');
 const Inventory = require('../models/Inventory');
 const AdUnit = require('../models/AdUnit');
 const Campaign = require('../models/Campaign');
+const AdDailyStat = require('../models/AdDailyStat');
 const { assignCrmAdIdToAdUnit, ensureInventoryCode } = require('../utils/crmAdIdAssignment');
 const { applySession, runAtomicMutation } = require('../services/transactionService');
+const { duplicateKeyMessage } = require('../utils/mutationPayload');
+const { isAdUnitDeliverable } = require('../services/deliveryEligibilityService');
+const { assertExpectedRevision, scopedRevisionFilter } = require('../utils/mutationGuards');
 
 const slugifyKey = (value) => {
   return String(value || '')
@@ -89,7 +93,7 @@ const buildAdUnitAssignmentUpdate = (adUnit) => {
   return update;
 };
 
-const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [], session = null }) => {
+const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [], expectedAdUnitIds, session = null }) => {
   const inventoryObjectId = toObjectId(inventoryId);
   if (!inventoryObjectId) {
     const error = new Error('Invalid inventory id');
@@ -112,7 +116,7 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [], se
     ? await applySession(AdUnit.find({
         _id: { $in: selectedObjectIds },
         account: accountId
-      }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode'), session)
+      }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode updatedAt'), session)
     : [];
 
   if (selectedAdUnits.length !== selectedObjectIds.length) {
@@ -129,7 +133,13 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [], se
       { inventory: inventoryObjectId },
       { inventories: inventoryObjectId }
     ]
-  }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode'), session);
+  }).select('_id account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode updatedAt'), session);
+  if (expectedAdUnitIds !== undefined && (!Array.isArray(expectedAdUnitIds)
+    || JSON.stringify([...expectedAdUnitIds].map(String).sort()) !== JSON.stringify(linkedAdUnits.map((unit) => String(unit._id)).sort()))) {
+    const error = new Error('Ad Channel assignments changed since you opened this editor. Reopen it to review the latest data.');
+    error.statusCode = 409;
+    throw error;
+  }
 
   const unlinkOperations = [];
   for (const adUnit of linkedAdUnits) {
@@ -156,22 +166,10 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [], se
     }
     unlinkOperations.push({
       updateOne: {
-        filter: { _id: adUnit._id, account: accountId },
+        filter: scopedRevisionFilter(adUnit, { account: accountId, campaign: adUnit.campaign }),
         update: buildAdUnitAssignmentUpdate(adUnit)
       }
     });
-  }
-
-  if (unlinkOperations.length > 0) {
-    const result = await AdUnit.bulkWrite(
-      unlinkOperations,
-      session ? { session, ordered: true } : { ordered: true }
-    );
-    if (typeof result.matchedCount === 'number' && result.matchedCount !== unlinkOperations.length) {
-      const error = new Error('Ad unit relationships changed during Ad Channel update');
-      error.statusCode = 409;
-      throw error;
-    }
   }
 
   for (const adUnit of selectedAdUnits) {
@@ -198,11 +196,20 @@ const syncInventoryAdUnits = async ({ inventoryId, accountId, adUnitIds = [], se
         session
       });
     }
-    await AdUnit.updateOne(
-      { _id: adUnit._id, account: accountId },
-      buildAdUnitAssignmentUpdate(adUnit),
-      session ? { session } : undefined
-    );
+    unlinkOperations.push({ updateOne: {
+      filter: scopedRevisionFilter(adUnit, { account: accountId, campaign: adUnit.campaign }),
+      update: buildAdUnitAssignmentUpdate(adUnit),
+    } });
+  }
+  // Prepare every identifier and validate every relationship before the first
+  // assignment write. A transaction rolls the whole bulk back on any conflict.
+  if (unlinkOperations.length > 0) {
+    const result = await AdUnit.bulkWrite(unlinkOperations, { ordered: true, ...(session ? { session } : {}) });
+    if (result.matchedCount !== unlinkOperations.length) {
+      const error = new Error('Ad Unit relationships changed during Ad Channel update. Reopen the editor and retry.');
+      error.statusCode = 409;
+      throw error;
+    }
   }
 };
 
@@ -249,14 +256,14 @@ exports.createInventory = async (req, res) => {
         });
       }
       return createdInventory;
-    });
+    }, { requireTransaction: true });
 
     res.status(201).json(inventory);
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ error: 'Inventory name or key already exists' });
+      return res.status(409).json({ error: duplicateKeyMessage(error, 'Inventory') });
     }
-    res.status(400).json({ error: error.message });
+    res.status(error.statusCode || 400).json({ error: error.message });
   }
 };
 
@@ -268,14 +275,32 @@ exports.getAllInventories = async (req, res) => {
 
     const runningAdsOnly = String(req.query.runningAdsOnly || '').toLowerCase() === 'true';
     const inventories = await Inventory.find(filter).sort({ createdAt: -1 });
+    const includeStats = String(req.query.includeStats || '').toLowerCase() === 'true';
+    let statsById = new Map();
+    if (includeStats) {
+      const rows = await AdDailyStat.aggregate([
+        { $match: { account: new mongoose.Types.ObjectId(req.user.accountId), inventory: { $in: inventories.map((item) => item._id) } } },
+        { $group: { _id: '$inventory', impressions: { $sum: '$impressions' }, clicks: { $sum: '$clicks' } } },
+      ]);
+      statsById = new Map(rows.map((row) => [String(row._id), row]));
+    }
+    const withStats = (inventory) => {
+      if (!includeStats) return inventory;
+      const stats = statsById.get(String(inventory._id)) || { impressions: 0, clicks: 0 };
+      return { ...inventory.toObject(), deliveryStats: {
+        impressions: stats.impressions, clicks: stats.clicks,
+        ctr: stats.impressions > 0 ? stats.clicks / stats.impressions * 100 : 0,
+      } };
+    };
 
     if (!runningAdsOnly) {
-      return res.json(inventories);
+      return res.json(inventories.map(withStats));
     }
 
     const activeCampaignIds = await Campaign.find({
       account: req.user.accountId,
-      status: 'active'
+      status: 'active', startDate: { $lte: new Date() },
+      $or: [{ endDate: { $exists: false } }, { endDate: null }, { endDate: { $gte: new Date() } }]
     }).select('_id');
 
     if (activeCampaignIds.length === 0) {
@@ -285,11 +310,12 @@ exports.getAllInventories = async (req, res) => {
     const activeAdUnits = await AdUnit.find({
       account: req.user.accountId,
       status: 'active',
+      startDate: { $lte: new Date() }, endDate: { $gte: new Date() },
       campaign: { $in: activeCampaignIds.map((campaignDoc) => campaignDoc._id) }
-    }).select('_id inventory inventories');
+    }).select('_id status startDate endDate campaign inventory inventories').populate('campaign', 'status startDate endDate');
 
     const runningInventoryIdSet = new Set();
-    activeAdUnits.forEach((adUnit) => {
+    activeAdUnits.filter((unit) => isAdUnitDeliverable(unit)).forEach((adUnit) => {
       if (adUnit.inventory) {
         runningInventoryIdSet.add(String(adUnit.inventory));
       }
@@ -301,7 +327,7 @@ exports.getAllInventories = async (req, res) => {
     });
 
     return res.json(
-      inventories.filter((inventory) => runningInventoryIdSet.has(String(inventory._id)))
+      inventories.filter((inventory) => inventory.isActive && runningInventoryIdSet.has(String(inventory._id))).map(withStats)
     );
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -332,6 +358,7 @@ exports.updateInventory = async (req, res) => {
     if (inventory.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to update this inventory' });
     }
+    assertExpectedRevision(inventory, req.body._expectedUpdatedAt);
 
     if (req.body.name !== undefined) {
       if (!normalized.name) {
@@ -371,24 +398,39 @@ exports.updateInventory = async (req, res) => {
     if (req.body.rotationMode !== undefined) inventory.rotationMode = 'rotate';
 
     await runAtomicMutation(async (session) => {
-      await inventory.save(session ? { session } : undefined);
-
       if (Array.isArray(req.body.adUnitIds)) {
         await syncInventoryAdUnits({
           inventoryId: inventory._id,
           accountId: req.user.accountId,
           adUnitIds: req.body.adUnitIds,
+          expectedAdUnitIds: req.body._expectedAdUnitIds,
           session
         });
+        await Inventory.updateOne(
+          { _id: inventory._id, account: req.user.accountId },
+          { $inc: { assignmentRevision: 1 } },
+          { timestamps: false, ...(session ? { session } : {}) }
+        );
       }
-    });
+      await inventory.validate();
+      const saved = await Inventory.updateOne(
+        scopedRevisionFilter(inventory, { account: req.user.accountId }),
+        inventory.getChanges(),
+        { runValidators: true, ...(session ? { session } : {}) }
+      );
+      if (saved.matchedCount !== 1) {
+        const error = new Error('Ad Channel changed during update. Reopen the editor and retry.');
+        error.statusCode = 409;
+        throw error;
+      }
+    }, { requireTransaction: Array.isArray(req.body.adUnitIds) });
 
-    res.json(inventory);
+    res.json(await Inventory.findOne({ _id: inventory._id, account: req.user.accountId }));
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ error: 'Inventory name or key already exists' });
+      return res.status(409).json({ error: duplicateKeyMessage(error, 'Inventory') });
     }
-    res.status(400).json({ error: error.message });
+    res.status(error.statusCode || 400).json({ error: error.message });
   }
 };
 
@@ -427,7 +469,23 @@ exports.deleteInventory = async (req, res) => {
       });
     }
 
-    await Inventory.findByIdAndDelete(inventory._id);
+    await runAtomicMutation(async (session) => {
+      const remaining = await applySession(AdUnit.countDocuments(linkedAdUnitFilter), session);
+      if (remaining > 0) {
+        const error = new Error('Ad Units were linked before deletion. Unlink them first. No data was deleted.');
+        error.statusCode = 409;
+        throw error;
+      }
+      const deleted = await Inventory.deleteOne(
+        scopedRevisionFilter(inventory, { account: req.user.accountId }),
+        session ? { session } : undefined
+      );
+      if (deleted.deletedCount !== 1) {
+        const error = new Error('Ad Channel changed before deletion. Refresh and retry.');
+        error.statusCode = 409;
+        throw error;
+      }
+    }, { requireTransaction: true });
     res.json({ message: 'Inventory deleted' });
   } catch (error) {
     res.status(error.statusCode || 500).json({ error: error.message });

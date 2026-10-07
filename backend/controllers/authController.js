@@ -23,6 +23,7 @@ const { logSecurityEvent } = require('../services/securityAuditService');
 const {
   createAuthSession,
   rotateAuthSession,
+  getAuthSession,
   replaceAuthSession,
   revokeAuthSession,
   revokeAllUserSessions
@@ -231,24 +232,24 @@ exports.refreshSession = async (req, res) => {
   }
 
   try {
-    const rotated = await rotateAuthSession({ refreshToken: currentRefreshToken, req });
-    if (!rotated) {
+    const existingSession = await getAuthSession(currentRefreshToken);
+    if (!existingSession) {
       clearAuthCookies(res);
       return res.status(401).json({ success: false, message: 'Session has expired.' });
     }
 
-    const user = await User.findById(rotated.session.user);
+    const user = await User.findById(existingSession.user);
     if (!user || user.isActive === false
-      || Number(user.tokenVersion || 0) !== Number(rotated.session.tokenVersion || 0)) {
-      await revokeAuthSession(rotated.refreshToken);
+      || Number(user.tokenVersion || 0) !== Number(existingSession.tokenVersion || 0)) {
+      await revokeAuthSession(currentRefreshToken);
       clearAuthCookies(res);
       return res.status(401).json({ success: false, message: 'Session has expired.' });
     }
 
     const accessibleAccounts = await getAccessibleAccountsForUser(user._id, user.role);
-    const currentAccount = getCurrentAccount(accessibleAccounts, rotated.session.account);
+    const currentAccount = getCurrentAccount(accessibleAccounts, existingSession.account);
     if (!currentAccount) {
-      await revokeAuthSession(rotated.refreshToken);
+      await revokeAuthSession(currentRefreshToken);
       clearAuthCookies(res);
       return res.status(401).json({ success: false, message: 'Account access is no longer available.' });
     }
@@ -257,6 +258,12 @@ exports.refreshSession = async (req, res) => {
     const accessToken = setupOnly
       ? generateOwnerSetupToken(user._id, currentAccount._id, user.tokenVersion)
       : generateAccessToken(user._id, currentAccount._id, user.tokenVersion);
+    // Validate all DB-backed requirements before consuming the refresh token.
+    // A temporary read failure must leave the original session usable.
+    const rotated = await rotateAuthSession({ refreshToken: currentRefreshToken, req });
+    if (!rotated) {
+      return res.status(409).json({ success: false, code: 'SESSION_REFRESH_CONFLICT', message: 'Session was refreshed by another request. Please retry.' });
+    }
     setAuthCookies(res, {
       accessToken,
       refreshToken: rotated.refreshToken,
@@ -271,8 +278,8 @@ exports.refreshSession = async (req, res) => {
       extra: { twoFactorSetupRequired: setupOnly }
     }));
   } catch (error) {
-    clearAuthCookies(res);
-    return res.status(401).json({ success: false, message: 'Session could not be refreshed.' });
+    console.error('[Auth] Session refresh unavailable:', error.name);
+    return res.status(503).json({ success: false, message: 'Session refresh is temporarily unavailable. Please retry.' });
   }
 };
 

@@ -11,6 +11,8 @@ const {
   isAdUnitSummaryView
 } = require('../services/adUnitSummaryService');
 const { applySession, runAtomicMutation } = require('../services/transactionService');
+const { pickFields, campaignUpdateFields, duplicateKeyMessage } = require('../utils/mutationPayload');
+const { assertExpectedRevision, scopedRevisionFilter } = require('../utils/mutationGuards');
 
 const normalizeString = (value) => {
   if (typeof value !== 'string') {
@@ -303,7 +305,7 @@ const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings, s
   const adUnitQuery = AdUnit.find({
     account: accountId,
     campaign: campaignId
-  }).select('_id name account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode');
+  }).select('_id name account campaign inventory inventories crmAdId sourceCode inventoryCode campaignCode adUnitCode updatedAt');
   const adUnits = await applySession(adUnitQuery, session);
 
   const adUnitById = new Map(adUnits.map((adUnit) => [adUnit._id.toString(), adUnit]));
@@ -326,6 +328,13 @@ const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings, s
     .filter((mapping) => String(mapping.adUnitId || '').trim())
     .map((mapping) => {
       const adUnitId = String(mapping.adUnitId).trim();
+      assertExpectedRevision(adUnitById.get(adUnitId), mapping._expectedUpdatedAt);
+      if (mapping._expectedInventoryIds !== undefined && JSON.stringify(mapping._expectedInventoryIds)
+        !== JSON.stringify(normalizeAdUnitInventoryIds(adUnitById.get(adUnitId)))) {
+        const error = new Error('Ad Unit assignments changed since you opened this editor. Reopen it to review the latest data.');
+        error.statusCode = 409;
+        throw error;
+      }
       const rawInventoryIds = Array.isArray(mapping.inventoryIds)
         ? mapping.inventoryIds
         : (mapping.inventories || []);
@@ -372,9 +381,7 @@ const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings, s
     .map((mapping) => ({
       updateOne: {
         filter: {
-          _id: adUnitById.get(mapping.adUnitId)._id,
-          account: accountId,
-          campaign: campaignId
+          ...scopedRevisionFilter(adUnitById.get(mapping.adUnitId), { account: accountId, campaign: campaignId })
         },
         update: {
           $set: { inventory: null, inventories: [] },
@@ -415,7 +422,17 @@ const applyAdUnitInventoryMappings = async ({ accountId, campaignId, mappings, s
     adUnit.inventories = mapping.inventoryIds.map((id) => new mongoose.Types.ObjectId(id));
     adUnit.inventory = adUnit.inventories[0];
     await assignCrmAdIdToAdUnit(adUnit, { previousInventoryId, session });
-    await adUnit.save(session ? { session } : undefined);
+    await adUnit.validate();
+    const saved = await AdUnit.updateOne(
+      scopedRevisionFilter(adUnitById.get(adUnitId), { account: accountId, campaign: campaignId }),
+      adUnit.getChanges(),
+      { runValidators: true, ...(session ? { session } : {}) }
+    );
+    if (saved.matchedCount !== 1) {
+      const error = new Error('Ad Unit assignment changed during update. Reopen the editor and retry.');
+      error.statusCode = 409;
+      throw error;
+    }
   }
 };
 
@@ -427,21 +444,25 @@ exports.createCampaign = async (req, res) => {
       return res.status(dateValidation.statusCode).json({ error: dateValidation.error });
     }
 
-    const campaign = new Campaign({
+    const fields = {
       user: req.user.id,
       account: req.user.accountId,
       name,
       description,
       startDate: dateValidation.startDate,
       endDate: dateValidation.endDate
-    });
+    };
 
-    await campaign.save();
-    await ensureCampaignCode(campaign);
+    const campaign = await runAtomicMutation(async (session) => {
+      const campaign = new Campaign(fields);
+      await campaign.save(session ? { session } : undefined);
+      await ensureCampaignCode(campaign, { session });
+      return campaign;
+    }, { requireTransaction: true });
     res.status(201).json(campaign);
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ error: 'Campaign name already exists' });
+      return res.status(409).json({ error: duplicateKeyMessage(error, 'Campaign') });
     }
     res.status(error.statusCode || 400).json({ error: error.message });
   }
@@ -746,6 +767,7 @@ exports.updateCampaign = async (req, res) => {
     if (!campaign.account || campaign.account.toString() !== req.user.accountId) {
       return res.status(403).json({ error: 'Not authorized to update this campaign' });
     }
+    assertExpectedRevision(campaign, req.body._expectedUpdatedAt);
 
     const dateValidation = validateCampaignUpdateDates({ payload: req.body, campaign });
     if (!dateValidation.valid) {
@@ -764,7 +786,7 @@ exports.updateCampaign = async (req, res) => {
       });
     }
 
-    const updatePayload = { ...req.body };
+    const updatePayload = pickFields(req.body, campaignUpdateFields);
     updatePayload.startDate = dateValidation.startDate;
     updatePayload.endDate = dateValidation.endDate;
 
@@ -781,7 +803,7 @@ exports.updateCampaign = async (req, res) => {
       }
 
       const updatedCampaign = await Campaign.findOneAndUpdate(
-        { _id: campaign._id, account: req.user.accountId },
+        scopedRevisionFilter(campaign, { account: req.user.accountId }),
         updatePayload,
         {
           new: true,
@@ -795,7 +817,7 @@ exports.updateCampaign = async (req, res) => {
         throw conflictError;
       }
       return updatedCampaign._id;
-    });
+    }, { requireTransaction: Array.isArray(req.body.adUnitInventoryMappings) && req.body.adUnitInventoryMappings.length > 0 });
 
     const refreshedCampaign = await Campaign.findById(updatedCampaignId).populate({
       path: 'adUnits',
@@ -805,7 +827,7 @@ exports.updateCampaign = async (req, res) => {
     res.json(refreshedCampaign);
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ error: 'Campaign name already exists' });
+      return res.status(409).json({ error: duplicateKeyMessage(error, 'Campaign') });
     }
     res.status(error.statusCode || 400).json({ error: error.message });
   }
@@ -896,6 +918,7 @@ exports.getCampaignAdUnitInventories = async (req, res) => {
     const mappings = adUnits.map((adUnit) => ({
       adUnitId: adUnit._id,
       adUnitName: adUnit.name,
+      updatedAt: adUnit.updatedAt,
       inventoryIds: normalizeAdUnitInventoryIds(adUnit),
       inventories: Array.isArray(adUnit.inventories) ? adUnit.inventories : []
     }));
@@ -928,7 +951,7 @@ exports.updateCampaignAdUnitInventories = async (req, res) => {
         mappings,
         session
       });
-    });
+    }, { requireTransaction: mappings.length > 0 });
 
     const adUnits = await AdUnit.find({
       account: req.user.accountId,

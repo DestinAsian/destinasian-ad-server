@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { adUnitAPI, inventoryAPI } from "../services/api";
+import { adUnitAPI, inventoryAPI, API_BASE_URL } from "../services/api";
 import AccountSelector from "../components/AccountSelector";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
@@ -10,6 +10,8 @@ import {
   filterCampaignEntriesForInventorySearch,
 } from "../utils/inventorySearch";
 import { sortSelectedFirst } from "../utils/listOrdering";
+import { isAdUnitRunning } from "../utils/deliveryEligibility";
+import { buildCmsScriptTag } from "../utils/cmsScript";
 import "../styles/Inventory.css";
 
 const isAdUnitLinkedToChannel = (adUnit, channelId) => {
@@ -56,6 +58,8 @@ function Inventory({ searchQuery = "" }) {
     adUnitIds: [],
   });
   const [editingId, setEditingId] = useState(null);
+  const [editingInventory, setEditingInventory] = useState(null);
+  const [editBaseline, setEditBaseline] = useState({ adUnitIds: [] });
   const [editForm, setEditForm] = useState({
     name: "",
     key: "",
@@ -63,24 +67,18 @@ function Inventory({ searchQuery = "" }) {
     isActive: true,
     adUnitIds: [],
   });
-  const cmsScriptTag = `<script src="https://YOUR-AD-SERVER.DOMAIN/ad-client.js"></script>`;
+  const cmsScriptTag = buildCmsScriptTag(
+    API_BASE_URL,
+    window.location.origin,
+    process.env.REACT_APP_DELIVERY_URL,
+  );
+  const editSessionRef = useRef(0);
   const inventoryFilterRef = useRef(null);
   const loadRequestIdRef = useRef(0);
   const loadAbortControllerRef = useRef(null);
   const loadedAccountRef = useRef(null);
 
-  const isRunningAdUnit = useCallback((adUnit) => {
-    const adUnitStatus = String(adUnit?.status || "").toLowerCase();
-    if (adUnitStatus !== "active") return false;
-
-    const campaignStatus = String(adUnit?.campaign?.status || "").toLowerCase();
-    if (!campaignStatus) return true;
-    return (
-      campaignStatus === "active" ||
-      campaignStatus === "running" ||
-      campaignStatus === "live"
-    );
-  }, []);
+  const isRunningAdUnit = useCallback((adUnit) => isAdUnitRunning(adUnit), []);
 
   const loadData = useCallback(async ({ silent = false } = {}) => {
     const requestId = loadRequestIdRef.current + 1;
@@ -107,7 +105,7 @@ function Inventory({ searchQuery = "" }) {
     }
     try {
       const [inventoryResponse, adUnitResponse] = await Promise.all([
-        inventoryAPI.getAll({ runningAdsOnly }, { signal: controller.signal }),
+        inventoryAPI.getAll({ runningAdsOnly, includeStats: true }, { signal: controller.signal }),
         adUnitAPI.getAll({ view: "summary" }, { signal: controller.signal }),
       ]);
 
@@ -151,7 +149,9 @@ function Inventory({ searchQuery = "" }) {
     setExpandedSnippets({});
     setExpandedInventoryIds(new Set());
     setInventorySummaryViewById({});
+    editSessionRef.current += 1;
     setEditingId(null);
+    setEditingInventory(null);
     setPendingAction(null);
     setEditForm({
       name: "",
@@ -190,7 +190,7 @@ function Inventory({ searchQuery = "" }) {
       const linkedAdUnits = adUnits.filter((adUnit) =>
         isAdUnitLinkedToChannel(adUnit, inventory._id),
       );
-      const runningAdUnits = linkedAdUnits.filter(isRunningAdUnit);
+      const runningAdUnits = inventory.isActive ? linkedAdUnits.filter(isRunningAdUnit) : [];
 
       const buildCampaignEntries = (sourceAdUnits) => {
         const campaignMap = new Map();
@@ -316,9 +316,16 @@ function Inventory({ searchQuery = "" }) {
       .trim()
       .toLowerCase();
     const hasSelectionFilter = selectedInventoryFilterIds.length > 0;
-    return [...inventories]
+    const rows = [...inventories];
+    // Keep the active editor mounted even when a successful save removes the
+    // channel from the running-only result or from the current title filter.
+    if (editingInventory && !rows.some((row) => row._id === editingId)) {
+      rows.push(editingInventory);
+    }
+    return rows
       .map((inventory, index) => ({ inventory, index }))
       .filter(({ inventory }) => {
+        if (inventory._id === editingId) return true;
         if (!normalizedSearch) return true;
         const details = inventoryDetailsById.get(String(inventory?._id));
         if (!details) return false;
@@ -336,6 +343,7 @@ function Inventory({ searchQuery = "" }) {
         );
       })
       .filter(({ inventory }) => {
+        if (inventory._id === editingId) return true;
         if (!hasSelectionFilter) return true;
         const inventoryId = String(inventory?._id || "");
         return selectedInventoryFilterSet.has(inventoryId);
@@ -358,6 +366,8 @@ function Inventory({ searchQuery = "" }) {
       .map(({ inventory }) => inventory);
   }, [
     inventories,
+    editingId,
+    editingInventory,
     searchQuery,
     sortMode,
     selectedInventoryFilterIds,
@@ -546,7 +556,12 @@ function Inventory({ searchQuery = "" }) {
   };
 
   const startEdit = (inventory) => {
+    if (pendingAction) return;
+    editSessionRef.current += 1;
+    const linkedIds = adUnits.filter((unit) => isAdUnitLinkedToChannel(unit, inventory._id)).map((unit) => String(unit._id));
+    setEditBaseline({ updatedAt: inventory.updatedAt, adUnitIds: linkedIds });
     setEditingId(inventory._id);
+    setEditingInventory(inventory);
     setEditForm({
       name: inventory.name || "",
       key: inventory.key || "",
@@ -559,7 +574,9 @@ function Inventory({ searchQuery = "" }) {
   };
 
   const cancelEdit = () => {
+    editSessionRef.current += 1;
     setEditingId(null);
+    setEditingInventory(null);
     setEditForm({
       name: "",
       key: "",
@@ -574,17 +591,34 @@ function Inventory({ searchQuery = "" }) {
     if (pendingAction) return;
     setError(null);
     const targetId = editingId;
+    const editSession = editSessionRef.current;
     setPendingAction({ type: "update", id: targetId });
 
     try {
-      await inventoryAPI.update(editingId, editForm);
-      setEditingId(null);
+      const changed = JSON.stringify([...editForm.adUnitIds].sort()) !== JSON.stringify([...editBaseline.adUnitIds].sort());
+      const { adUnitIds, ...metadata } = editForm;
+      const response = await inventoryAPI.update(targetId, {
+        ...metadata, _expectedUpdatedAt: editBaseline.updatedAt,
+        ...(changed ? { adUnitIds, _expectedAdUnitIds: editBaseline.adUnitIds } : {}),
+      });
+      if (editSession !== editSessionRef.current) return;
+      setEditingInventory((previous) => ({ ...previous, ...response.data }));
+      // Rebase on the successful write so a second save does not send a stale
+      // revision or replay old assignments. Only Cancel exits edit mode.
+      setEditBaseline({ updatedAt: response.data.updatedAt, adUnitIds: [...adUnitIds] });
+      setEditForm({
+        name: response.data.name || "",
+        key: response.data.key || "",
+        description: response.data.description || "",
+        isActive: response.data.isActive !== false,
+        adUnitIds: [...adUnitIds],
+      });
       setSuccessMessage("Ad Channel updated");
       await loadData({ silent: true });
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to update ad channel"));
     } finally {
-      setPendingAction(null);
+      setPendingAction((pending) => pending?.type === "update" && pending?.id === targetId ? null : pending);
     }
   };
 
@@ -672,9 +706,9 @@ function Inventory({ searchQuery = "" }) {
     () =>
       sortSelectedFirst(
         sortedAdUnits,
-        (adUnit) => editAdUnitSelection.has(String(adUnit?._id || "")),
+        (adUnit) => editBaseline.adUnitIds.includes(String(adUnit?._id || "")),
       ),
-    [editAdUnitSelection, sortedAdUnits],
+    [editBaseline.adUnitIds, sortedAdUnits],
   );
 
   if (
@@ -730,11 +764,16 @@ function Inventory({ searchQuery = "" }) {
               Add this script inside the {`<Head>`} element of your website or
               CMS template.
             </div>
-            <code className="ad-unit-cms-code">{cmsScriptTag}</code>
+            {cmsScriptTag ? (
+              <code className="ad-unit-cms-code">{cmsScriptTag}</code>
+            ) : (
+              <p role="alert">The public delivery URL is not configured correctly. Configure REACT_APP_API_URL or REACT_APP_DELIVERY_URL before copying the CMS tag.</p>
+            )}
             <div className="ad-unit-cms-actions">
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
+                disabled={!cmsScriptTag}
                 onClick={async () => {
                   await copyToClipboard(`${cmsScriptTag}\n`);
                 }}
@@ -990,6 +1029,7 @@ function Inventory({ searchQuery = "" }) {
                       onSubmit={handleUpdate}
                       className="inventory-edit-form"
                     >
+                      <fieldset disabled={Boolean(pendingAction)} style={{ display: "contents" }}>
                       <label className="inventory-field">
                         <span>Name</span>
                         <input
@@ -1113,6 +1153,7 @@ function Inventory({ searchQuery = "" }) {
                           Cancel
                         </button>
                       </div>
+                      </fieldset>
                     </form>
                   ) : (
                     <>
@@ -1128,10 +1169,6 @@ function Inventory({ searchQuery = "" }) {
                           runningCampaigns: [],
                         };
                         const summaryView = getSummaryView(inventory._id);
-                        const currentMetrics =
-                          summaryView === "running"
-                            ? details.runningMetrics
-                            : details.linkedMetrics;
                         const unfilteredCampaigns =
                           summaryView === "running"
                             ? details.runningCampaigns
@@ -1164,21 +1201,21 @@ function Inventory({ searchQuery = "" }) {
                                   {inventory.name}
                                 </span>
                                 <span className="inventory-inline-metrics">
-                                  <span>
-                                    Impressions:{" "}
+                                  <span title="Lifetime impressions delivered on this Ad Channel">
+                                    Channel Impressions:{" "}
                                     {new Intl.NumberFormat("en-US").format(
-                                      currentMetrics.impressions,
+                                      inventory.deliveryStats?.impressions || 0,
                                     )}
                                   </span>
                                   <span>
-                                    Clicks:{" "}
+                                    Channel Clicks:{" "}
                                     {new Intl.NumberFormat("en-US").format(
-                                      currentMetrics.clicks,
+                                      inventory.deliveryStats?.clicks || 0,
                                     )}
                                   </span>
                                   <span>
                                     CTR:{" "}
-                                    {Number(currentMetrics.ctr || 0).toFixed(2)}
+                                    {Number(inventory.deliveryStats?.ctr || 0).toFixed(2)}
                                     %
                                   </span>
                                 </span>
@@ -1377,14 +1414,14 @@ function Inventory({ searchQuery = "" }) {
                                       </button>
                                       {isSnippetExpanded && (
                                         <div className="inventory-snippet-body">
-                                          <code>{`<div data-inventory="${inventory.key}" data-width="100%"></div>`}</code>
+                                          <code>{`<div data-inventory="${inventory.key}" data-inventory-id="${inventory._id}" data-width="100%"></div>`}</code>
                                           <div className="inventory-snippet-actions">
                                             <button
                                               type="button"
                                               className="btn btn-secondary btn-sm"
                                               onClick={async () => {
                                                 await copyToClipboard(
-                                                  `<div data-inventory="${inventory.key}" data-width="100%"></div>`,
+                                                  `<div data-inventory="${inventory.key}" data-inventory-id="${inventory._id}" data-width="100%"></div>`,
                                                 );
                                               }}
                                             >

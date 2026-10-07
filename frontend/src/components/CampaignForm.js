@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { campaignAPI, inventoryAPI } from "../services/api";
 import { sortAlphabetically, sortSelectedFirst } from "../utils/listOrdering";
+import { buildCampaignUpdate, reconcileAssignmentDraft } from "../utils/editorState";
 
 const getInventoryId = (inventory) => {
   if (!inventory) return null;
@@ -64,6 +65,8 @@ function CampaignForm({
   onCancel,
   adUnitManagementContent,
   statusOverride,
+  saveRevision = 0,
+  onDirtyChange,
   submitting = false,
 }) {
   const [formData, setFormData] = useState({
@@ -82,6 +85,10 @@ function CampaignForm({
   );
   const [isAssignmentOpen, setIsAssignmentOpen] = useState(true);
   const [initialStartDateValue, setInitialStartDateValue] = useState("");
+  const [initialEndDateValue, setInitialEndDateValue] = useState("");
+  const [assignmentOrdering, setAssignmentOrdering] = useState({});
+  const assignmentRevisionRef = useRef(saveRevision);
+  const baselineRef = useRef(null);
 
   const isEditingCampaign = Boolean(campaign);
   const effectiveCampaignStatus = statusOverride || campaign?.status;
@@ -105,6 +112,9 @@ function CampaignForm({
 
   useEffect(() => {
     setIsAssignmentOpen(true);
+  }, [campaign?._id]);
+
+  useEffect(() => {
     if (campaign) {
       const formattedStart = formatToLocalDateTime(campaign.startDate);
       setFormData({
@@ -114,6 +124,11 @@ function CampaignForm({
         endDate: formatToLocalDateTime(campaign.endDate),
       });
       setInitialStartDateValue(formattedStart);
+      setInitialEndDateValue(formatToLocalDateTime(campaign.endDate));
+      baselineRef.current = {
+        name: campaign.name || "", description: campaign.description || "",
+        startDate: formattedStart, endDate: formatToLocalDateTime(campaign.endDate),
+      };
     } else {
       setFormData({
         name: "",
@@ -126,7 +141,7 @@ function CampaignForm({
     // Keep in-progress form edits stable when the surrounding list refreshes
     // and replaces the campaign object with a newer summary instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaign?._id]);
+  }, [campaign?._id, saveRevision]);
 
   useEffect(() => {
     let isActive = true;
@@ -143,6 +158,8 @@ function CampaignForm({
         nextMappingState[mapping.adUnitId] = [...mapping.inventoryIds];
       });
       setInventoryMappings(nextMappingState);
+      setAssignmentOrdering(nextMappingState);
+      baselineRef.current = { ...baselineRef.current, mappings: nextMappingState };
     };
 
     const loadSupportData = async () => {
@@ -219,6 +236,35 @@ function CampaignForm({
     // A list refresh must not overwrite checkbox changes already made by the user.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign?._id]);
+
+  useEffect(() => {
+    if (!campaign || assignmentStatus !== "success") return;
+    const rows = buildMappingsFromCampaign(campaign);
+    const saved = assignmentRevisionRef.current !== saveRevision;
+    assignmentRevisionRef.current = saveRevision;
+    setMappingRows(rows);
+    setInventoryMappings((draft) => {
+      const next = reconcileAssignmentDraft(rows, saved ? {} : draft);
+      if (saved) {
+        baselineRef.current = { ...baselineRef.current, mappings: next };
+      }
+      return next;
+    });
+    setAssignmentOrdering((order) => reconcileAssignmentDraft(rows, saved ? {} : order));
+  }, [campaign, saveRevision, assignmentStatus]);
+
+  useEffect(() => {
+    const baseline = baselineRef.current;
+    if (!baseline || !onDirtyChange) return;
+    const metadataDirty = ["name", "description", "startDate", "endDate"]
+      .some((field) => formData[field] !== baseline[field]);
+    const mappingsDirty = mappingRows.some((row) => {
+      const original = baseline.mappings?.[row.adUnitId] ?? row.inventoryIds;
+      return JSON.stringify([...(inventoryMappings[row.adUnitId] || [])].sort())
+        !== JSON.stringify([...original].sort());
+    });
+    onDirtyChange(metadataDirty || Boolean(mappingsDirty));
+  }, [formData, inventoryMappings, mappingRows, onDirtyChange]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -298,26 +344,18 @@ function CampaignForm({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validateForm()) {
-      const mappings = mappingRows.map((row) => ({
+      const mappings = mappingRows.filter((row) => JSON.stringify(inventoryMappings[row.adUnitId] || [])
+        !== JSON.stringify(baselineRef.current?.mappings?.[row.adUnitId] ?? row.inventoryIds)).map((row) => ({
         adUnitId: row.adUnitId,
         inventoryIds: [...new Set(inventoryMappings[row.adUnitId] || [])],
+        _expectedInventoryIds: baselineRef.current?.mappings?.[row.adUnitId] ?? row.inventoryIds,
       }));
 
-      const submitData = {
-        ...formData,
-        endDate: formData.endDate
-          ? new Date(formData.endDate).toISOString()
-          : "",
-      };
+      const submitData = buildCampaignUpdate(formData, initialStartDateValue, isEditingCampaign, initialEndDateValue);
+      if (campaign?.updatedAt) submitData._expectedUpdatedAt = campaign.updatedAt;
 
       if (assignmentStatus === "success") {
         submitData.adUnitInventoryMappings = mappings;
-      }
-
-      if (!isEditingCampaign || formData.startDate !== initialStartDateValue) {
-        submitData.startDate = formData.startDate
-          ? new Date(formData.startDate).toISOString()
-          : "";
       }
 
       onSubmit(submitData);
@@ -342,7 +380,7 @@ function CampaignForm({
             {sortSelectedFirst(
               inventories,
               (inventory) =>
-                (inventoryMappings[row.adUnitId] || []).includes(inventory._id),
+                (assignmentOrdering[row.adUnitId] || []).includes(inventory._id),
             ).map((inventory) => {
               const checked = (inventoryMappings[row.adUnitId] || []).includes(inventory._id);
               return (
@@ -353,6 +391,7 @@ function CampaignForm({
                   <input
                     type="checkbox"
                     checked={checked}
+                    disabled={submitting || assignmentStatus !== "success"}
                     onChange={() =>
                       toggleInventoryMapping(row.adUnitId, inventory._id)
                     }
@@ -370,6 +409,7 @@ function CampaignForm({
   return (
     <>
       <form className="campaign-form" onSubmit={handleSubmit}>
+        <fieldset disabled={submitting} style={{ display: "contents" }}>
         <div className="form-group">
           <label htmlFor="name">Campaign Name *</label>
           <input
@@ -508,6 +548,7 @@ function CampaignForm({
             Cancel
           </button>
         </div>
+        </fieldset>
       </form>
     </>
   );

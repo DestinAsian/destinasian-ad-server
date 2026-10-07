@@ -30,11 +30,13 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { getApiErrorMessage } from "../utils/apiError";
+import { getDuplicateDateWindow } from "../utils/editorState";
 import {
   getCampaignIdsForAutomaticExpansion,
   getCampaignTitleSearchRows,
 } from "../utils/campaignSearch";
 import { sortAlphabetically } from "../utils/listOrdering";
+import { belongsToChannelReport } from "../utils/reportMembership";
 
 ChartJS.register(
   BarElement,
@@ -387,6 +389,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   });
   const [campaignEditorId, setCampaignEditorId] = useState(null);
   const [campaignEditorStatus, setCampaignEditorStatus] = useState(null);
+  const [campaignSaveRevision, setCampaignSaveRevision] = useState(0);
+  const [adUnitSaveRevision, setAdUnitSaveRevision] = useState(0);
+  const [campaignDraftDirty, setCampaignDraftDirty] = useState(false);
   const [campaignStatusUpdatingId, setCampaignStatusUpdatingId] =
     useState(null);
   const [expandedCampaignIds, setExpandedCampaignIds] = useState(
@@ -412,6 +417,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const campaignPageRef = useRef(1);
   const campaignRequestIdRef = useRef(0);
   const campaignAbortControllerRef = useRef(null);
+  const campaignRowsRef = useRef([]);
+  const editorRequestRef = useRef(0);
   const loadedCampaignAccountRef = useRef(null);
   const analyticsRequestIdRef = useRef(0);
   const analyticsAbortControllerRef = useRef(null);
@@ -428,6 +435,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const [submitting, setSubmitting] = useState(false);
   const [pendingCampaignAction, setPendingCampaignAction] = useState(null);
   const [pendingAdUnitAction, setPendingAdUnitAction] = useState(null);
+  const campaignMutationBusy = submitting || Boolean(pendingCampaignAction)
+    || Boolean(campaignStatusUpdatingId) || Boolean(pendingAdUnitAction);
   const { notifyError: setError, notifySuccess: setSuccessMessage } = useToast();
   const confirmAction = useConfirm();
 
@@ -513,16 +522,10 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
             ? finalResponse.data.pagination.hasMore
             : finalRows.length >= CAMPAIGN_PAGE_SIZE;
 
-        let dedupedRows = [];
-        setCampaigns((prev) => {
-          const source = reset ? campaignRows : [...prev, ...campaignRows];
-          dedupedRows = Array.from(
-            new Map(
-              source.map((campaign) => [campaign._id, campaign]),
-            ).values(),
-          );
-          return dedupedRows;
-        });
+        const source = reset ? campaignRows : [...campaignRowsRef.current, ...campaignRows];
+        const dedupedRows = Array.from(new Map(source.map((campaign) => [campaign._id, campaign])).values());
+        campaignRowsRef.current = dedupedRows;
+        setCampaigns(dedupedRows);
         setCampaignHasMore(Boolean(hasMore));
         const resultingPage = preservePageCount ? pageCount : page;
         campaignPageRef.current = resultingPage;
@@ -555,6 +558,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         selectedCampaignRef.current = nextSelectedCampaignId;
         setSelectedCampaign(nextSelectedCampaignId);
       } catch (error) {
+        if (campaignRequestIdRef.current !== requestId) return;
         if (error?.code === "ERR_CANCELED") return;
         console.error("Error fetching campaigns:", error);
         setError("Failed to refresh campaign data. The previous data is still displayed.");
@@ -590,6 +594,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   const loadMoreCampaigns = useCallback(() => {
     if (
       loading ||
+      campaignsRefreshing ||
       campaignsLoadingMore ||
       !campaignHasMore ||
       !isCampaignView
@@ -600,6 +605,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     fetchCampaigns({ page: campaignPage + 1, reset: false });
   }, [
     loading,
+    campaignsRefreshing,
     campaignsLoadingMore,
     campaignHasMore,
     isCampaignView,
@@ -640,6 +646,10 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     analyticsAbortControllerRef.current = controller;
 
     try {
+      if (!dateRange.startDate || !dateRange.endDate || dateRange.startDate > dateRange.endDate) {
+        setAnalyticsError("Choose a valid date range: Start Date must be on or before End Date.");
+        return;
+      }
       if (!currentAccount?.id) {
         setAnalytics({
           impressions: 0,
@@ -661,6 +671,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         startDate: dateRange.startDate || undefined,
         endDate: dateRange.endDate || undefined,
         inventoryId: selectedOverviewAdChannelId || undefined,
+        includeReportItems: selectedOverviewAdChannelId ? true : undefined,
         campaignId:
           overviewMode === "campaign"
             ? selectedOverviewCampaignId || undefined
@@ -689,6 +700,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       });
       setAnalyticsError("");
     } catch (error) {
+      if (analyticsRequestIdRef.current !== requestId) return;
       if (error?.code === "ERR_CANCELED") return;
       console.error("Error fetching analytics:", error);
       setAnalyticsError(
@@ -719,16 +731,27 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   }, [fetchAnalytics]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const loadInventories = async () => {
       try {
-        const response = await inventoryAPI.getAll();
+        const response = await inventoryAPI.getAll(undefined, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         setInventories(response.data || []);
       } catch (error) {
+        if (controller.signal.aborted) return;
         console.error("Error fetching inventories:", error);
+        setError("Ad channel filters could not be loaded. Reload the page to retry.");
       }
     };
 
     setCampaigns([]);
+    campaignRowsRef.current = [];
+    editorRequestRef.current += 1;
+    setEditingCampaign(null);
+    setEditingAdUnit(null);
+    setShowAdUnitModal(false);
+    setShowCampaignModal(false);
+    setInventories([]);
     setCampaignPage(1);
     campaignPageRef.current = 1;
     setCampaignHasMore(true);
@@ -761,15 +784,18 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     setExpandedCampaignIds(new Set());
     setDateRange(getDefaultDateRange());
     loadInventories();
-  }, [currentAccount?.id]);
+    return () => controller.abort();
+  }, [currentAccount?.id, setError]);
 
   useEffect(() => {
+    const controller = new AbortController();
     const loadOverviewFilterOptions = async () => {
       try {
         const [campaignResponse, adUnitResponse] = await Promise.all([
-          campaignAPI.getAll({ view: "summary" }),
-          adUnitAPI.getAll({ view: "summary" }),
+          campaignAPI.getAll({ view: "summary" }, { signal: controller.signal }),
+          adUnitAPI.getAll({ view: "summary" }, { signal: controller.signal }),
         ]);
+        if (controller.signal.aborted) return;
         const rows = Array.isArray(campaignResponse.data?.data)
           ? campaignResponse.data.data
           : Array.isArray(campaignResponse.data)
@@ -780,8 +806,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           Array.isArray(adUnitResponse.data) ? adUnitResponse.data : [],
         );
       } catch (loadError) {
-        setOverviewCampaignOptions([]);
-        setOverviewAdUnitOptions([]);
+        if (controller.signal.aborted) return;
+        setError("Report filters could not be refreshed. Reload the page to retry.");
       }
     };
 
@@ -797,7 +823,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     }
 
     loadOverviewFilterOptions();
-  }, [currentAccount?.id]);
+    return () => controller.abort();
+  }, [currentAccount?.id, setError]);
 
   const sortedOverviewCampaignOptions = useMemo(
     () =>
@@ -968,21 +995,48 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   }, []);
 
   const handleOpenCreateModal = () => {
+    editorRequestRef.current += 1;
     setEditingCampaign(null);
     setShowCampaignModal(true);
     setError(null);
   };
 
-  const handleOpenCampaignEditor = (campaign) => {
-    selectedCampaignRef.current = campaign._id;
-    setSelectedCampaign(campaign._id);
-    setEditingCampaign(campaign);
-    setCampaignEditorId(campaign._id);
-    setCampaignEditorStatus(campaign.status);
-    setError(null);
+  const handleOpenCampaignEditor = async (campaign) => {
+    if (pendingCampaignAction) return;
+    const requestId = ++editorRequestRef.current;
+    setPendingCampaignAction({ type: "load", id: campaign._id });
+    try {
+      const response = await campaignAPI.getById(campaign._id);
+      if (editorRequestRef.current !== requestId) return;
+      selectedCampaignRef.current = campaign._id;
+      setSelectedCampaign(campaign._id);
+      setEditingCampaign(response.data);
+      setCampaignEditorId(campaign._id);
+      setCampaignEditorStatus(response.data.status);
+      setCampaignDraftDirty(false);
+      setError(null);
+    } catch (error) {
+      if (editorRequestRef.current === requestId) setError(getApiErrorMessage(error, "Failed to load campaign editor"));
+    } finally {
+      if (editorRequestRef.current === requestId) setPendingCampaignAction(null);
+    }
+  };
+
+  const refreshCampaignEditor = async (campaignId) => {
+    const requestId = editorRequestRef.current;
+    try {
+      const response = await campaignAPI.getById(campaignId);
+      if (requestId !== editorRequestRef.current) return;
+      setEditingCampaign((previous) => previous?._id === campaignId
+        ? { ...previous, adUnits: response.data.adUnits }
+        : previous);
+    } catch (error) {
+      if (requestId === editorRequestRef.current) setError("The action was saved, but the editor could not refresh. Reopen it before the next action.");
+    }
   };
 
   const handleCloseCampaignEditor = () => {
+    editorRequestRef.current += 1;
     if (campaignEditorId && campaignEditorStatus) {
       setCampaigns((previousCampaigns) =>
         previousCampaigns.map((campaign) =>
@@ -999,6 +1053,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleCloseCampaignModal = () => {
+    editorRequestRef.current += 1;
     setShowCampaignModal(false);
     setCampaignEditorId(null);
     setCampaignEditorStatus(null);
@@ -1007,6 +1062,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleOpenCreateAdUnitModal = (campaignId = null) => {
+    editorRequestRef.current += 1;
     if (campaignId) {
       selectedCampaignRef.current = campaignId;
       setSelectedCampaign(campaignId);
@@ -1016,7 +1072,14 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     setError(null);
   };
 
-  const handleOpenCreateAdUnitFromCampaignEditor = (campaignId) => {
+  const confirmDiscardCampaignDraft = async () => !campaignDraftDirty || await confirmAction({
+    title: "Unsaved campaign changes",
+    message: "Save the Campaign first to keep your changes. Continue without saving?",
+    confirmLabel: "Discard and continue",
+  });
+
+  const handleOpenCreateAdUnitFromCampaignEditor = async (campaignId) => {
+    if (!await confirmDiscardCampaignDraft()) return;
     handleCloseCampaignEditor();
     handleOpenCreateAdUnitModal(campaignId);
   };
@@ -1027,10 +1090,13 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
     closeCampaignEditor = false,
   ) => {
     if (pendingAdUnitAction) return;
+    if (closeCampaignEditor && !await confirmDiscardCampaignDraft()) return;
+    const requestId = ++editorRequestRef.current;
     setError(null);
     setPendingAdUnitAction({ type: "load", id: adUnit._id });
     try {
       const response = await adUnitAPI.getById(adUnit._id);
+      if (requestId !== editorRequestRef.current) return;
       const detailedAdUnit = response.data;
       const resolvedCampaignId =
         campaignId ||
@@ -1045,33 +1111,43 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       setEditingAdUnit(detailedAdUnit);
       setShowAdUnitModal(true);
     } catch (err) {
+      if (requestId !== editorRequestRef.current) return;
       setError(
         err.response?.data?.error ||
         err.response?.data?.message ||
         "Failed to load ad unit details",
       );
     } finally {
-      setPendingAdUnitAction(null);
+      setPendingAdUnitAction((pending) => pending?.type === "load" && pending?.id === adUnit._id ? null : pending);
     }
   };
 
   const handleCloseAdUnitModal = () => {
+    editorRequestRef.current += 1;
     setShowAdUnitModal(false);
     setEditingAdUnit(null);
     setError(null);
   };
 
   const handleSubmitCampaign = async (formData) => {
+    if (campaignMutationBusy) return;
+    const requestId = editorRequestRef.current;
     setSubmitting(true);
     setError(null);
     try {
       if (editingCampaign) {
-        await campaignAPI.update(editingCampaign._id, formData);
+        const response = await campaignAPI.update(editingCampaign._id, formData);
+        if (requestId === editorRequestRef.current) {
+          setEditingCampaign(response.data);
+          setCampaignEditorStatus(response.data.status);
+          setCampaignSaveRevision((revision) => revision + 1);
+          setCampaignDraftDirty(false);
+        }
         setSuccessMessage("Campaign updated successfully!");
       } else {
         await campaignAPI.create(formData);
         setSuccessMessage("Campaign created successfully!");
-        handleCloseCampaignModal();
+        if (requestId === editorRequestRef.current) handleCloseCampaignModal();
       }
       await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
     } catch (err) {
@@ -1082,7 +1158,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleDeleteCampaign = async (campaignId) => {
-    if (pendingCampaignAction) return;
+    if (campaignMutationBusy) return;
     const confirmed = await confirmAction({
       title: "Delete campaign?",
       message:
@@ -1111,19 +1187,26 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleSubmitAdUnit = async (formData) => {
+    if (submitting) return;
+    const requestId = editorRequestRef.current;
     setSubmitting(true);
     setError(null);
     try {
       if (editingAdUnit) {
-        await adUnitAPI.update(editingAdUnit._id, formData);
+        const response = await adUnitAPI.update(editingAdUnit._id, formData);
+        if (requestId === editorRequestRef.current) {
+          setEditingAdUnit(response.data);
+          setAdUnitSaveRevision((revision) => revision + 1);
+        }
         setSuccessMessage("Ad unit updated successfully!");
       } else {
         await adUnitAPI.create(formData);
         setSuccessMessage("Ad unit created successfully!");
-        handleCloseAdUnitModal();
+        if (requestId === editorRequestRef.current) handleCloseAdUnitModal();
       }
       if (isCampaignView) {
         await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
+        if (campaignEditorId) await refreshCampaignEditor(campaignEditorId);
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to save ad unit"));
@@ -1147,6 +1230,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       setSuccessMessage("Ad unit deleted successfully!");
       if (isCampaignView) {
         await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
+        if (campaignEditorId) await refreshCampaignEditor(campaignEditorId);
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to delete ad unit"));
@@ -1156,14 +1240,17 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleToggleCampaignStatus = async (campaignId, currentStatus) => {
-    if (campaignStatusUpdatingId === campaignId) return;
+    if (campaignMutationBusy) return;
 
     const newStatus = currentStatus === "active" ? "paused" : "active";
+    const requestId = editorRequestRef.current;
     setCampaignStatusUpdatingId(campaignId);
     try {
       const response = await campaignAPI.updateStatus(campaignId, newStatus);
       const savedStatus = response.data?.status || newStatus;
-      setCampaignEditorStatus(savedStatus);
+      if (requestId === editorRequestRef.current) setCampaignEditorStatus(savedStatus);
+      setEditingCampaign((previous) => previous?._id === campaignId ? { ...previous, status: savedStatus, updatedAt: response.data.updatedAt } : previous);
+      setCampaigns((previous) => previous.map((item) => item._id === campaignId ? { ...item, status: savedStatus } : item));
       setSuccessMessage(
         `Campaign ${savedStatus === "active" ? "activated" : "paused"} successfully!`,
       );
@@ -1175,7 +1262,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleToggleAdUnitStatus = async (adUnitId, currentStatus) => {
-    if (pendingAdUnitAction) return;
+    if (campaignMutationBusy) return;
     try {
       setPendingAdUnitAction({ type: "status", id: adUnitId });
       const newStatus = currentStatus === "active" ? "paused" : "active";
@@ -1185,6 +1272,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       );
       if (isCampaignView) {
         await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
+        if (campaignEditorId) await refreshCampaignEditor(campaignEditorId);
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to update ad unit status"));
@@ -1231,7 +1319,14 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
   };
 
   const handleDuplicateCampaign = async (campaign) => {
-    if (pendingCampaignAction) return;
+    if (campaignMutationBusy) return;
+    const duplicateDates = getDuplicateDateWindow(campaign);
+    const confirmed = await confirmAction({
+      title: "Duplicate campaign?",
+      message: `The new Campaign will start ${new Date(duplicateDates.startDate).toLocaleString()} and end ${new Date(duplicateDates.endDate).toLocaleString()}. The original Campaign will not change.`,
+      confirmLabel: "Create copy",
+    });
+    if (!confirmed) return;
     try {
       setPendingCampaignAction({ type: "duplicate", id: campaign._id });
       const existing = new Set(campaigns.map((c) => c.name));
@@ -1239,8 +1334,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       await campaignAPI.create({
         name,
         description: campaign.description || "",
-        startDate: campaign.startDate,
-        endDate: campaign.endDate,
+        ...duplicateDates,
       });
       setSuccessMessage("Campaign duplicated successfully!");
       await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
@@ -1293,6 +1387,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       setSuccessMessage("Ad unit duplicated successfully!");
       if (isCampaignView) {
         await fetchCampaigns({ reset: true, silent: true, preservePageCount: true });
+        if (campaignEditorId) await refreshCampaignEditor(campaignEditorId);
       }
     } catch (err) {
       setError(getApiErrorMessage(err, "Failed to duplicate ad unit"));
@@ -1393,8 +1488,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       const refreshedCampaign = campaigns.find(
         (campaign) => campaign._id === campaignEditorId,
       );
-      if (refreshedCampaign) return refreshedCampaign;
-      return editingCampaign?._id === campaignEditorId ? editingCampaign : null;
+      if (editingCampaign?._id === campaignEditorId) return editingCampaign;
+      return refreshedCampaign || null;
     },
     [campaignEditorId, campaigns, editingCampaign],
   );
@@ -1486,9 +1581,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
           const adUnits = Array.isArray(campaign.adUnits) ? campaign.adUnits : [];
           if (
             selectedOverviewAdChannelId &&
-            !adUnits.some((adUnit) =>
+            !belongsToChannelReport(campaign._id, adUnits.some((adUnit) =>
               getAdUnitInventoryIds(adUnit).has(String(selectedOverviewAdChannelId)),
-            )
+            ), metrics)
           ) {
             return false;
           }
@@ -1521,7 +1616,8 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
       .filter(
         (adUnit) =>
           !selectedOverviewAdChannelId ||
-          getAdUnitInventoryIds(adUnit).has(String(selectedOverviewAdChannelId)),
+          belongsToChannelReport(adUnit._id,
+            getAdUnitInventoryIds(adUnit).has(String(selectedOverviewAdChannelId)), metrics),
       )
       .filter(
         (adUnit) =>
@@ -2477,7 +2573,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 <button
                   className={`btn-icon btn-status ${effectiveCampaignEditorStatus}`}
                   disabled={
-                    campaignStatusUpdatingId === campaignEditorCampaign._id
+                    campaignMutationBusy
                   }
                   aria-busy={
                     campaignStatusUpdatingId === campaignEditorCampaign._id
@@ -2506,7 +2602,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 <button
                   className="btn-icon btn-edit"
                   type="button"
-                  disabled={Boolean(pendingCampaignAction)}
+                  disabled={campaignMutationBusy}
                   aria-busy={
                     pendingCampaignAction?.type === "duplicate" &&
                     pendingCampaignAction?.id === campaignEditorCampaign._id
@@ -2522,7 +2618,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
                 <button
                   className="btn-icon btn-delete"
                   type="button"
-                  disabled={Boolean(pendingCampaignAction)}
+                  disabled={campaignMutationBusy}
                   aria-busy={
                     pendingCampaignAction?.type === "delete" &&
                     pendingCampaignAction?.id === campaignEditorCampaign._id
@@ -2540,7 +2636,9 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
               <CampaignForm
                 campaign={campaignEditorCampaign}
                 statusOverride={effectiveCampaignEditorStatus}
-                submitting={submitting}
+                saveRevision={campaignSaveRevision}
+                onDirtyChange={setCampaignDraftDirty}
+                submitting={campaignMutationBusy}
                 onSubmit={handleSubmitCampaign}
                 onCancel={handleCloseCampaignEditor}
                 adUnitManagementContent={(
@@ -2693,6 +2791,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         >
           <CampaignForm
             campaign={editingCampaign}
+            saveRevision={campaignSaveRevision}
             submitting={submitting}
             onSubmit={handleSubmitCampaign}
             onCancel={handleCloseCampaignModal}
@@ -2711,6 +2810,7 @@ function Dashboard({ view = "overview", searchQuery = "" }) {
         >
           <AdUnitForm
             adUnit={editingAdUnit}
+            saveRevision={adUnitSaveRevision}
             submitting={submitting}
             campaignId={selectedCampaign}
             campaign={campaigns.find((c) => c._id === selectedCampaign)}

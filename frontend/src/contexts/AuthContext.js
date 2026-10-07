@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { ensureCsrfToken, secureFetch } from '../services/api';
+import { initializeAuthSession, secureFetch } from '../services/api';
 
 const AuthContext = createContext();
 const normalizeRole = (role) => (role === 'owner' || role === 'admin' ? 'owner' : 'editor');
@@ -84,15 +84,11 @@ export const AuthProvider = ({ children }) => {
     const initAuth = async () => {
       clearLegacyAuthStorage();
       try {
-        await ensureCsrfToken();
-        const refreshResponse = await secureFetch('/auth/refresh', { method: 'POST' });
-        if (refreshResponse.ok) {
-          applyAuthenticatedResponse(await refreshResponse.json());
-        } else if (refreshResponse.status !== 401) {
-          setSessionValidationWarning('Unable to verify your session because the server is temporarily unavailable.');
-        }
+        applyAuthenticatedResponse(await initializeAuthSession());
       } catch (error) {
-        setSessionValidationWarning('Unable to verify your session because the network is unavailable.');
+        if (error.status !== 401 && error.status !== 403) {
+          setSessionValidationWarning('Unable to verify your session because the server or network is temporarily unavailable.');
+        }
       }
 
       try {
