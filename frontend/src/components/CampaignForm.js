@@ -112,6 +112,9 @@ function CampaignForm({
 
   useEffect(() => {
     setIsAssignmentOpen(true);
+  }, [campaign?._id]);
+
+  useEffect(() => {
     if (campaign) {
       const formattedStart = formatToLocalDateTime(campaign.startDate);
       setFormData({
