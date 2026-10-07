@@ -6,10 +6,10 @@ export const buildCmsScriptTag = (apiUrl, pageOrigin, deliveryUrl = "") => {
     const base = deliveryUrl ? new URL(String(deliveryUrl)) : api;
     if (!/^https?:$/.test(base.protocol) || base.username || base.password) return null;
     if (base.search || base.hash) return null;
-    const relativeApi = !deliveryUrl && !/^https?:\/\//i.test(String(apiUrl || "/api"));
+    const proxyApi = !deliveryUrl && api.origin === new URL(pageOrigin).origin;
     const prefix = deliveryUrl
       ? base.pathname.replace(/\/$/, "")
-      : relativeApi
+      : proxyApi
         ? base.pathname.replace(/\/$/, "")
         : base.pathname.replace(/\/api\/?$/, "").replace(/\/$/, "");
     // A non-standard API path needs an explicit public delivery URL.
