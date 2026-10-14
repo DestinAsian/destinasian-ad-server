@@ -1,13 +1,5 @@
-const STAGING_DASHBOARD_ORIGIN = 'https://admin-staging.destinasian.com';
+const { isStagingDashboard } = require('./stagingPublicAds');
 const DAI_TESTING_ORIGIN = 'https://test.destinasian.co.id';
-
-const isStagingDashboard = (dashboardUrl) => {
-  try {
-    return new URL(dashboardUrl).origin === STAGING_DASHBOARD_ORIGIN;
-  } catch {
-    return false;
-  }
-};
 
 const isPublicAdRoute = (requestPath) => (
   /^\/(?:api\/)?ad-client\.js$/.test(requestPath)

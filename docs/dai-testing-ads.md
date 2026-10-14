@@ -18,6 +18,14 @@ This addition does not permit DAI to call dashboard management APIs. Existing
 origins listed in `CORS_ORIGIN` retain their existing access. Production does not
 receive this automatic DAI testing origin addition.
 
+DA's older staging SDK tags specify only an inventory name. Because DA and DAI
+can both own names such as `homepage`, `footer`, and `ros`, staging requests from
+`https://test.destinasian.com` with only a name are additionally scoped to the
+existing DA account `69b93d4c08ec4bf1fc9d0245`. Explicit account IDs, inventory
+IDs, and ad codes are never replaced. Requests from other origins or without an
+origin retain the existing resolver behavior, including rejection of ambiguous
+names. This compatibility rule does not run with the production dashboard URL.
+
 ## Server application
 
 Deploy the reviewed `test` branch changes to the staging ad server only. The

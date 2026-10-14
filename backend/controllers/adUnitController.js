@@ -16,6 +16,7 @@ const { assignCrmAdIdToAdUnit } = require('../utils/crmAdIdAssignment');
 const { applySession, runAtomicMutation } = require('../services/transactionService');
 const { pickFields, adUnitUpdateFields, duplicateKeyMessage } = require('../utils/mutationPayload');
 const { resolveServingInventory } = require('../services/servingInventoryService');
+const { getLegacyServingAccountId } = require('../config/stagingPublicAds');
 const { assertExpectedRevision, scopedRevisionFilter } = require('../utils/mutationGuards');
 
 const toObjectIdString = (value) => {
@@ -926,7 +927,11 @@ exports.getAdUnitByCampaign = async (req, res) => {
  */
 exports.serveAd = async (req, res) => {
   try {
-    const { inventory, inventoryId, accountId, adCode, exclude } = req.query;
+    const { inventory, inventoryId, adCode, exclude } = req.query;
+    const accountId = getLegacyServingAccountId({
+      ...req.query,
+      origin: req.get?.('origin') || req.headers?.origin
+    });
 
     if (!inventory && !inventoryId && !adCode) {
       return res.status(400).json({ error: 'inventory or adCode is required' });
