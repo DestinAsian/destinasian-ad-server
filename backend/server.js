@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 require('dotenv').config();
 const { connectDatabase } = require('./config/database');
+const { createCorsOptions } = require('./config/cors');
 
 const app = express();
 
@@ -18,37 +19,11 @@ if (trustProxy) {
 const { initializeCampaignStatsJob } = require('./jobs/updateCampaignStats');
 const { initializeEndDateEnforcementJob } = require('./jobs/enforceEndDates');
 
-const configuredCorsOrigins = String(process.env.CORS_ORIGIN || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const allowedCorsOrigins = configuredCorsOrigins.length > 0
-  ? configuredCorsOrigins
-  : ['http://localhost:3000', 'http://localhost:3001'];
-
-const corsOriginHandler = (origin, callback) => {
-  if (!origin || allowedCorsOrigins.includes(origin)) {
-    return callback(null, true);
-  }
-  console.warn(`[security-audit] ${JSON.stringify({
-    event: 'cors_origin_rejected',
-    timestamp: new Date().toISOString(),
-    origin
-  })}`);
-  const error = new Error('Origin is not allowed by CORS policy.');
-  error.statusCode = 403;
-  return callback(error);
-};
-
 // Middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
-app.use(cors({
-  origin: corsOriginHandler,
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
-}));
+app.use(cors(createCorsOptions()));
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true }));
 app.use(cookieParser());
